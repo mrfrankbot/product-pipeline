@@ -14,6 +14,7 @@ export const ensureDbPath = async (): Promise<string> => {
 };
 
 let dbInstance: ReturnType<typeof drizzle> | null = null;
+let rawSqlite: InstanceType<typeof Database> | null = null;
 
 const initTables = (sqlite: InstanceType<typeof Database>) => {
   sqlite.exec(`
@@ -60,10 +61,21 @@ const initTables = (sqlite: InstanceType<typeof Database>) => {
 export const getDb = async () => {
   if (!dbInstance) {
     const filePath = await ensureDbPath();
-    const sqlite = new Database(filePath);
-    initTables(sqlite);
-    dbInstance = drizzle(sqlite, { schema });
+    rawSqlite = new Database(filePath);
+    initTables(rawSqlite);
+    dbInstance = drizzle(rawSqlite, { schema });
   }
 
   return dbInstance;
+};
+
+/**
+ * Get the raw better-sqlite3 instance for direct SQL queries.
+ * Must call getDb() first to initialize.
+ */
+export const getRawDb = async (): Promise<InstanceType<typeof Database>> => {
+  if (!rawSqlite) {
+    await getDb(); // Initialize
+  }
+  return rawSqlite!;
 };
