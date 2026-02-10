@@ -7,9 +7,12 @@
     "ebaysync": "./dist/cli/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && vite build --config vite.config.ts",
+    "build:server": "tsc",
+    "build:web": "vite build --config vite.config.ts",
     "dev": "tsx src/server/index.ts",
     "dev:server": "tsx src/server/index.ts",
+    "dev:web": "vite --config vite.config.ts",
     "start": "node dist/server/index.js",
     "cli": "tsx src/cli/index.ts"
   },
