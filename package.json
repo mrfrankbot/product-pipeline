@@ -1,0 +1,30 @@
+{
+  "name": "ebay-sync",
+  "version": "0.1.0",
+  "description": "Shopify ↔ eBay sync tool for UsedCameraGear.com",
+  "type": "module",
+  "bin": {
+    "ebaysync": "./dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli/index.ts",
+    "start": "node dist/cli/index.ts"
+  },
+  "dependencies": {
+    "@shopify/shopify-api": "^11.0.0",
+    "commander": "^12.0.0",
+    "better-sqlite3": "^11.0.0",
+    "drizzle-orm": "^0.35.0",
+    "chalk": "^5.3.0",
+    "ora": "^8.0.0",
+    "open": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/node": "^22.0.0",
+    "drizzle-kit": "^0.26.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.6.0"
+  }
+}
