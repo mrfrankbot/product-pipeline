@@ -16,6 +16,13 @@ export const apiKeyAuth = (req: Request, res: Response, next: NextFunction) => {
     return next();
   }
 
+  // Allow same-origin requests from the SPA frontend (no API key needed)
+  const referer = req.headers.referer || req.headers.origin || '';
+  const host = req.headers.host || '';
+  if (referer && (referer.includes(host) || referer.includes('ebay-sync-app-production.up.railway.app'))) {
+    return next();
+  }
+
   const providedKey = req.headers['x-api-key'] || req.query.api_key;
   
   if (!providedKey || providedKey !== apiKey) {
