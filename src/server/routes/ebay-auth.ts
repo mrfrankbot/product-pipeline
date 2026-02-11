@@ -168,4 +168,19 @@ router.get('/ebay/auth/status', async (_req: Request, res: Response) => {
   }
 });
 
+/**
+ * DELETE /ebay/auth — Revoke/clear the stored eBay token
+ */
+router.delete('/ebay/auth', async (_req: Request, res: Response) => {
+  try {
+    const db = await getRawDb();
+    db.prepare("DELETE FROM auth_tokens WHERE platform = 'ebay'").run();
+    info('[eBay Auth] Token cleared successfully');
+    res.json({ ok: true, message: 'eBay token cleared. Re-authorize at /ebay/auth' });
+  } catch (err) {
+    logError(`[eBay Auth] Failed to clear token: ${err}`);
+    res.status(500).json({ error: 'Failed to clear eBay token' });
+  }
+});
+
 export default router;
