@@ -11,6 +11,7 @@ import apiRoutes from './routes/api.js';
 import ebayNotificationRoutes from './routes/ebay-notifications.js';
 import shopifyWebhookRoutes from './routes/shopify-webhooks.js';
 import shopifyAuthRoutes from './routes/shopify-auth.js';
+import ebayAuthRoutes from './routes/ebay-auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,6 +52,7 @@ app.use(apiRoutes);
 app.use(ebayNotificationRoutes);
 app.use(shopifyWebhookRoutes);
 app.use(shopifyAuthRoutes);
+app.use(ebayAuthRoutes);
 
 // Serve static frontend (built Vite app)
 const webDistPath = path.join(__dirname, '..', '..', 'dist', 'web');
@@ -60,7 +62,7 @@ app.use(express.static(webDistPath));
 // Express 5 uses named catch-all params: {*path}
 app.get('/{*path}', (req, res) => {
   // Don't serve HTML for API/webhook routes
-  if (req.path.startsWith('/api') || req.path.startsWith('/webhooks') || req.path.startsWith('/auth') || req.path === '/health') {
+  if (req.path.startsWith('/api') || req.path.startsWith('/webhooks') || req.path.startsWith('/auth') || req.path.startsWith('/ebay/auth') || req.path === '/health') {
     res.status(404).json({ error: 'Not found' });
     return;
   }
