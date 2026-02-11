@@ -47,9 +47,17 @@ const required = (value: string | undefined, label: string): string => {
   return value;
 };
 
+const safeParseFile = async (filePath: string): Promise<Record<string, string>> => {
+  try {
+    return await parseKeyValueFile(filePath);
+  } catch {
+    return {};
+  }
+};
+
 const loadEbayCredentials = async (): Promise<EbayCredentials> => {
   const filePath = path.join(CREDENTIALS_DIR, 'ebay-api.txt');
-  const data = await parseKeyValueFile(filePath);
+  const data = await safeParseFile(filePath);
 
   const appId =
     process.env.EBAY_APP_ID ||
@@ -87,7 +95,7 @@ const loadEbayCredentials = async (): Promise<EbayCredentials> => {
 
 const loadShopifyCredentials = async (): Promise<ShopifyCredentials> => {
   const filePath = path.join(CREDENTIALS_DIR, 'shopify-usedcameragear-api.txt');
-  const data = await parseKeyValueFile(filePath);
+  const data = await safeParseFile(filePath);
 
   const clientId =
     process.env.SHOPIFY_CLIENT_ID ||
