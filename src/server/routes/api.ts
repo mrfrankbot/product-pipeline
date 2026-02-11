@@ -243,6 +243,111 @@ router.post('/api/listings/link', async (req: Request, res: Response) => {
   }
 });
 
+/** GET /api/mappings — List all mappings grouped by type */
+router.get('/api/mappings', async (_req: Request, res: Response) => {
+  try {
+    const { getAllMappings } = await import('../../sync/mapping-service.js');
+    const mappings = await getAllMappings();
+    res.json(mappings);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch mappings', detail: String(err) });
+  }
+});
+
+/** GET /api/mappings/:type — List mappings of a specific type */
+router.get('/api/mappings/:type', async (req: Request, res: Response) => {
+  try {
+    const mappingType = Array.isArray(req.params.type) ? req.params.type[0] : req.params.type;
+    const { getMappingsByType } = await import('../../sync/mapping-service.js');
+    const mappings = await getMappingsByType(mappingType);
+    res.json({ data: mappings });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch mappings', detail: String(err) });
+  }
+});
+
+/** POST /api/mappings — Create a new mapping */
+router.post('/api/mappings', async (req: Request, res: Response) => {
+  try {
+    const { mappingType, sourceValue, targetValue, isDefault } = req.body;
+    
+    if (!mappingType || !targetValue) {
+      res.status(400).json({ error: 'mappingType and targetValue are required' });
+      return;
+    }
+    
+    const { createMapping } = await import('../../sync/mapping-service.js');
+    const mapping = await createMapping(
+      mappingType,
+      sourceValue || null,
+      targetValue,
+      Boolean(isDefault)
+    );
+    
+    info(`[API] Created mapping: ${mappingType} ${sourceValue} → ${targetValue}`);
+    res.json(mapping);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create mapping', detail: String(err) });
+  }
+});
+
+/** PUT /api/mappings/:id — Update a mapping */
+router.put('/api/mappings/:id', async (req: Request, res: Response) => {
+  try {
+    const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const id = parseInt(idParam);
+    const { sourceValue, targetValue, isDefault } = req.body;
+    
+    if (isNaN(id)) {
+      res.status(400).json({ error: 'Invalid mapping ID' });
+      return;
+    }
+    
+    const { updateMapping } = await import('../../sync/mapping-service.js');
+    const mapping = await updateMapping(id, {
+      sourceValue: sourceValue !== undefined ? sourceValue : undefined,
+      targetValue,
+      isDefault: isDefault !== undefined ? Boolean(isDefault) : undefined,
+    });
+    
+    if (!mapping) {
+      res.status(404).json({ error: 'Mapping not found' });
+      return;
+    }
+    
+    info(`[API] Updated mapping ${id}: ${mapping.sourceValue} → ${mapping.targetValue}`);
+    res.json(mapping);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update mapping', detail: String(err) });
+  }
+});
+
+/** DELETE /api/mappings/:id — Delete a mapping */
+router.delete('/api/mappings/:id', async (req: Request, res: Response) => {
+  try {
+    const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const id = parseInt(idParam);
+    
+    if (isNaN(id)) {
+      res.status(400).json({ error: 'Invalid mapping ID' });
+      return;
+    }
+    
+    const { deleteMapping } = await import('../../sync/mapping-service.js');
+    const deleted = await deleteMapping(id);
+    
+    if (!deleted) {
+      res.status(404).json({ error: 'Mapping not found' });
+      return;
+    }
+    
+    info(`[API] Deleted mapping ${id}`);
+    res.json({ ok: true, message: 'Mapping deleted' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete mapping', detail: String(err) });
+  }
+});
+
 /** POST /api/sync/trigger — Manually trigger a full sync */
 router.post('/api/sync/trigger', async (req: Request, res: Response) => {
   const since = req.query.since as string;

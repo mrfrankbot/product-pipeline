@@ -11,7 +11,8 @@ import { getDb } from '../db/client.js';
 import { productMappings, syncLog } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { info, warn, error as logError } from '../utils/logger.js';
-import { mapCondition, mapCategory, cleanTitle, parsePrice } from './mapper.js';
+import { mapCondition, mapCategory } from '../sync/mapping-service.js';
+import { cleanTitle, parsePrice } from './mapper.js';
 
 export interface ProductSyncResult {
   processed: number;
@@ -40,14 +41,14 @@ const DEFAULT_LOCATION = '305 W 700 S, Salt Lake City, UT 84101';
 /**
  * Map a Shopify product to eBay inventory item and offer.
  */
-const mapShopifyProductToEbay = (
+const mapShopifyProductToEbay = async (
   shopifyProduct: any,
   variant: any,
   settings: Record<string, string>,
-): { inventoryItem: Omit<EbayInventoryItem, 'sku'>; offer: Omit<EbayOffer, 'offerId' | 'sku'> } => {
+): Promise<{ inventoryItem: Omit<EbayInventoryItem, 'sku'>; offer: Omit<EbayOffer, 'offerId' | 'sku'> }> => {
   
-  const condition = mapCondition(shopifyProduct.tags);
-  const categoryId = mapCategory(shopifyProduct.productType);
+  const condition = await mapCondition(shopifyProduct.tags);
+  const categoryId = await mapCategory(shopifyProduct.productType);
   const price = parsePrice(variant.price);
   const quantity = Math.max(0, variant.inventoryQuantity || 0);
   
@@ -168,7 +169,7 @@ const syncProductToEbay = async (
     const existingItem = await getInventoryItem(ebayToken, variant.sku);
     
     // Map to eBay format
-    const { inventoryItem, offer } = mapShopifyProductToEbay(product, variant, settings);
+    const { inventoryItem, offer } = await mapShopifyProductToEbay(product, variant, settings);
     
     // Create/update inventory item
     await createOrReplaceInventoryItem(ebayToken, variant.sku, inventoryItem);

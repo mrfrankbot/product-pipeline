@@ -131,6 +131,9 @@ async function start() {
     // Seed default settings
     seedDefaultSettings(rawDb);
 
+    // Seed default field mappings
+    seedDefaultMappings(rawDb);
+
     app.listen(PORT, () => {
       info(`[Server] EbaySync running on http://localhost:${PORT}`);
       info(`[Server] Health: http://localhost:${PORT}/health`);
@@ -171,6 +174,18 @@ function initExtraTables(db: import('better-sqlite3').Database) {
     )
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS field_mappings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      mapping_type TEXT NOT NULL,
+      source_value TEXT,
+      target_value TEXT NOT NULL,
+      is_default BOOLEAN DEFAULT FALSE,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
   info('[Server] Extra tables initialized');
 }
 
@@ -191,6 +206,96 @@ function seedDefaultSettings(db: import('better-sqlite3').Database) {
   for (const [key, value] of Object.entries(defaults)) {
     stmt.run(key, value);
   }
+}
+
+/**
+ * Seed default field mappings if they don't exist
+ */
+function seedDefaultMappings(db: import('better-sqlite3').Database) {
+  const checkExisting = db.prepare(`SELECT COUNT(*) as count FROM field_mappings`).get() as any;
+  if (checkExisting?.count > 0) {
+    return; // Already seeded
+  }
+
+  const stmt = db.prepare(`
+    INSERT INTO field_mappings (mapping_type, source_value, target_value, is_default) 
+    VALUES (?, ?, ?, ?)
+  `);
+
+  // Condition mappings
+  const conditionMappings = [
+    ['condition', 'New', 'NEW', false],
+    ['condition', 'Like New', 'LIKE_NEW', false],
+    ['condition', 'Mint', 'LIKE_NEW', false],
+    ['condition', 'Excellent', 'VERY_GOOD', false],
+    ['condition', 'Good', 'GOOD', false],
+    ['condition', 'Fair', 'ACCEPTABLE', false],
+    ['condition', 'Acceptable', 'ACCEPTABLE', false],
+    ['condition', 'For Parts', 'FOR_PARTS_OR_NOT_WORKING', false],
+    ['condition', null, 'GOOD', true], // Default condition
+  ];
+
+  // Field mappings
+  const fieldMappings = [
+    ['field', 'title', 'Title', false],
+    ['field', 'body_html', 'Description', false],
+    ['field', 'vendor', 'Brand', false],
+    ['field', 'images[0]', 'GalleryURL', false],
+  ];
+
+  // Category mappings (from existing mapper.ts)
+  const categoryMappings = [
+    ['category', 'Camera', '31388', false],
+    ['category', 'Cameras', '31388', false],
+    ['category', 'Mirrorless', '31388', false],
+    ['category', 'DSLR', '31388', false],
+    ['category', 'Lens', '3323', false],
+    ['category', 'Lenses', '3323', false],
+    ['category', 'Flash', '48515', false],
+    ['category', 'Strobe', '48515', false],
+    ['category', 'Light', '183331', false],
+    ['category', 'LED', '183331', false],
+    ['category', 'Tripod', '30090', false],
+    ['category', 'Monopod', '30090', false],
+    ['category', 'Gimbal', '183329', false],
+    ['category', 'Stabilizer', '183329', false],
+    ['category', 'Head', '30090', false],
+    ['category', 'Bag', '16031', false],
+    ['category', 'Case', '16031', false],
+    ['category', 'Backpack', '16031', false],
+    ['category', 'Filter', '48518', false],
+    ['category', 'Memory', '96991', false],
+    ['category', 'Card', '96991', false],
+    ['category', 'SD', '96991', false],
+    ['category', 'Battery', '48511', false],
+    ['category', 'Charger', '48511', false],
+    ['category', 'Video', '29996', false],
+    ['category', 'Cinema', '29996', false],
+    ['category', 'Monitor', '29996', false],
+    ['category', 'Cable', '182094', false],
+    ['category', 'Adapter', '182094', false],
+    ['category', 'Converter', '182094', false],
+    ['category', null, '48519', true], // Default: Other Camera Accessories
+  ];
+
+  // Inventory location mapping
+  const inventoryMappings = [
+    ['inventory_location', 'default', 'all', true],
+  ];
+
+  // Insert all mappings
+  const allMappings = [
+    ...conditionMappings,
+    ...fieldMappings,
+    ...categoryMappings,
+    ...inventoryMappings,
+  ];
+
+  for (const mapping of allMappings) {
+    stmt.run(...mapping);
+  }
+
+  info('[Server] Seeded default field mappings');
 }
 
 /**

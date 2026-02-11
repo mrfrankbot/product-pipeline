@@ -40,3 +40,13 @@ export const authTokens = sqliteTable('auth_tokens', {
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
 });
+
+export const fieldMappings = sqliteTable('field_mappings', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  mappingType: text('mapping_type').notNull(), // 'category', 'condition', 'field', 'inventory_location'
+  sourceValue: text('source_value'), // Shopify value
+  targetValue: text('target_value').notNull(), // eBay value
+  isDefault: integer('is_default', { mode: 'boolean' }).default(false),
+  createdAt: text('created_at').default("datetime('now')"),
+  updatedAt: text('updated_at').default("datetime('now')"),
+});
