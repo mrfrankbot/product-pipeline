@@ -26,6 +26,8 @@ import {
   resolveMapping 
 } from '../sync/attribute-mapping-service.js';
 import { cleanTitle, parsePrice } from './mapper.js';
+import { getCategoryId, getCategoryName } from './category-mapper.js';
+import { getAspects } from './aspect-mapper.js';
 
 export interface ProductSyncResult {
   processed: number;
@@ -62,9 +64,10 @@ const mapShopifyProductToEbay = async (
   const description = await getEbayDescription(shopifyProduct);
   const handlingTime = await getEbayHandlingTime(shopifyProduct);
   
-  // Get category from mapping or use default
+  // Get category: prefer explicit mapping, fall back to smart category mapper
   const categoryMapping = await getMapping('listing', 'primary_category');
-  const categoryId = await resolveMapping(categoryMapping, shopifyProduct) || '48519'; // Default: Other Camera Accessories
+  const mappedCategory = await resolveMapping(categoryMapping, shopifyProduct);
+  // mappedCategory is used later only if explicitly set; smart mapper is the primary
   
   const price = parsePrice(variant.price);
   const quantity = Math.max(0, variant.inventoryQuantity || 0);
@@ -94,17 +97,13 @@ const mapShopifyProductToEbay = async (
   // Handle UPC — eBay rejects all-zeros, use 'Does Not Apply' instead
   const effectiveUpc = upc && upc !== '0000000000000' && upc !== '000000000000' ? upc : undefined;
 
-  // Build item specifics (aspects) — eBay requires these for most categories
-  const productType = shopifyProduct.productType || 'Camera Accessory';
-  const aspects: Record<string, string[]> = {
-    'Brand': [brand],
-    'MPN': [mpn],
-    'Type': [productType],
-    'Compatible Brand': ['Universal'],
-    'Compatible Model': ['Universal'],
-    'Color': ['Black'],
-    'Country/Region of Manufacture': ['Unknown'],
-  };
+  // Smart category mapping based on product type
+  const smartCategoryId = getCategoryId(shopifyProduct.productType);
+  const smartCategoryName = getCategoryName(shopifyProduct.productType);
+  info(`Category mapped: "${shopifyProduct.productType}" → ${smartCategoryId} (${smartCategoryName})`);
+
+  // Dynamic item specifics based on category
+  const aspects = getAspects(smartCategoryId, shopifyProduct, variant);
 
   const inventoryItem: Omit<EbayInventoryItem, 'sku'> = {
     product: {
@@ -147,7 +146,7 @@ const mapShopifyProductToEbay = async (
       returnPolicyId: cachedPolicies?.returnPolicyId || '',
     },
     merchantLocationKey: 'pictureline-slc',
-    categoryId,
+    categoryId: mappedCategory || smartCategoryId,
     tax: {
       applyTax: true,
     },
