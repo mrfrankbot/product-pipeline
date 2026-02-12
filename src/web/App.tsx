@@ -36,15 +36,31 @@ const AppFrame: React.FC = () => {
   const navigate = useNavigate();
   const { sidebarOpen, toggleSidebar } = useAppStore();
 
-  // Mock badge counts (replace with real data from API)
+  // Enhanced badge counts with error indicators
   const getBadgeCount = (path: string) => {
     switch (path) {
       case '/listings':
         return 3; // Unmapped products
       case '/orders':
         return 2; // Pending orders
+      case '/mappings':
+        return undefined; // No badge for mappings normally
+      case '/logs':
+        return 5; // Recent errors/warnings
       case '/settings':
-        return 0; // Auth issues
+        return 1; // Auth issues
+      default:
+        return undefined;
+    }
+  };
+
+  const getErrorIndicator = (path: string) => {
+    // Show warning/error indicators for pages with issues
+    switch (path) {
+      case '/logs':
+        return 'error'; // Recent errors detected
+      case '/settings':
+        return 'warning'; // Auth issues
       default:
         return undefined;
     }
@@ -87,6 +103,7 @@ const AppFrame: React.FC = () => {
       icon: <FileText className="nav-icon" />,
       selected: location.pathname === '/logs',
       onClick: () => navigate('/logs'),
+      badge: getBadgeCount('/logs'),
     },
     {
       label: 'Settings',
@@ -101,11 +118,28 @@ const AppFrame: React.FC = () => {
   const navigationMarkup = (
     <Navigation location={location.pathname}>
       <Navigation.Section
-        items={navigationItems.map(item => ({
-          ...item,
-          icon: undefined, // Remove icon from Polaris navigation (we'll add custom styling)
-          badge: item.badge ? String(item.badge) : undefined,
-        }))}
+        items={navigationItems.map(item => {
+          const errorIndicator = getErrorIndicator(item.url);
+          return {
+            ...item,
+            icon: undefined, // Remove icon from Polaris navigation (we'll add custom styling)
+            badge: item.badge ? String(item.badge) : undefined,
+            // Add visual error indicators via suffix or prefix
+            suffix: errorIndicator ? (
+              <span 
+                style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  backgroundColor: errorIndicator === 'error' ? '#d72c0d' : '#ffd60a',
+                  display: 'inline-block',
+                  marginLeft: '4px'
+                }}
+                title={errorIndicator === 'error' ? 'Errors detected' : 'Warnings detected'}
+              />
+            ) : undefined,
+          };
+        })}
       />
     </Navigation>
   );
