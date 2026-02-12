@@ -393,6 +393,21 @@ router.get('/api/test/product-info/:productId', async (req: Request, res: Respon
     const product = data.product;
     const variant = product.variants?.[0];
     
+    // Also get inventory levels to find location_id
+    let locationId = null;
+    if (variant?.inventory_item_id) {
+      try {
+        const invResponse = await fetch(
+          `https://usedcameragear.myshopify.com/admin/api/2024-01/inventory_levels.json?inventory_item_ids=${variant.inventory_item_id}`,
+          { headers: { 'X-Shopify-Access-Token': tokenRow.access_token } }
+        );
+        if (invResponse.ok) {
+          const invData = await invResponse.json() as any;
+          locationId = invData.inventory_levels?.[0]?.location_id;
+        }
+      } catch { /* ignore */ }
+    }
+    
     res.json({ 
       ok: true, 
       product: {
@@ -405,6 +420,7 @@ router.get('/api/test/product-info/:productId', async (req: Request, res: Respon
           price: variant.price,
           inventory_item_id: variant.inventory_item_id,
           inventory_quantity: variant.inventory_quantity,
+          location_id: locationId,
         } : null,
       }
     });
