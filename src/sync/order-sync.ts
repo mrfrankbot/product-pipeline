@@ -82,14 +82,41 @@ export const syncOrders = async (
     failed: 0,
     errors: [],
   };
+
+  // ╔══════════════════════════════════════════════════════════════════╗
+  // ║ SAFETY GUARD: NEVER pull historical orders.                     ║
+  // ║ If no createdAfter is provided, default to 24 hours ago.        ║
+  // ║ Maximum lookback is 7 days — anything older is rejected.        ║
+  // ║                                                                 ║
+  // ║ WHY: On 2026-02-11, a sync without a date filter pulled ALL     ║
+  // ║ historical eBay orders into Shopify, which cascaded into        ║
+  // ║ Lightspeed POS. Took significant manual work to clean up.       ║
+  // ║ This guard ensures it NEVER happens again.                      ║
+  // ╚══════════════════════════════════════════════════════════════════╝
+  const MAX_LOOKBACK_DAYS = 7;
+  const maxLookbackMs = MAX_LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
+  const defaultLookback = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  
+  let createdAfter = options.createdAfter || defaultLookback;
+  
+  // Enforce maximum lookback — never go further than 7 days
+  const requestedDate = new Date(createdAfter).getTime();
+  const oldestAllowed = Date.now() - maxLookbackMs;
+  if (requestedDate < oldestAllowed) {
+    warn(`[OrderSync] SAFETY: Requested date ${createdAfter} exceeds ${MAX_LOOKBACK_DAYS}-day max lookback. Clamping to ${new Date(oldestAllowed).toISOString()}`);
+    createdAfter = new Date(oldestAllowed).toISOString();
+  }
+  
+  info(`[OrderSync] SAFETY: Only syncing orders created after ${createdAfter} (max ${MAX_LOOKBACK_DAYS} day lookback)`);
+
   const db = await getDb();
 
   // Fetch eBay orders
   info('Fetching eBay orders...');
   const ebayOrders = await fetchAllEbayOrders(ebayAccessToken, {
-    createdAfter: options.createdAfter,
+    createdAfter,
   });
-  info(`Found ${ebayOrders.length} eBay orders`);
+  info(`Found ${ebayOrders.length} eBay orders (since ${createdAfter})`);
 
   for (const ebayOrder of ebayOrders) {
     try {

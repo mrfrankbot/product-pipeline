@@ -28,7 +28,8 @@ export async function runOrderSync(options: {
       return null;
     }
 
-    // Default createdAfter to 24 hours ago if not specified
+    // SAFETY: Always default to 24h ago. Core syncOrders() also enforces 7-day max lookback.
+    // After the 2026-02-11 incident where all historical orders were pulled, we NEVER sync without a date filter.
     const createdAfter = options.since || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     
     info(`[SyncHelper] Syncing orders created after: ${createdAfter}`);
