@@ -1,4 +1,4 @@
-import { updateInventoryQuantity, getInventoryItem } from '../ebay/inventory.js';
+import { updateInventoryQuantity, getInventoryItem, getOffersBySku, withdrawOffer, publishOffer, createOffer, getBusinessPolicies } from '../ebay/inventory.js';
 import { getDb } from '../db/client.js';
 import { productMappings, syncLog } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
@@ -14,13 +14,15 @@ export interface InventorySyncResult {
 
 /**
  * Update eBay inventory quantity for a specific SKU.
+ * CRITICAL: If quantity is 0, the eBay listing MUST be ended (withdrawn).
+ * If quantity goes from 0 to >0, the listing is republished.
  */
 export const updateEbayInventory = async (
   ebayToken: string,
   sku: string,
   quantity: number,
   options: { dryRun?: boolean } = {},
-): Promise<{ success: boolean; error?: string }> => {
+): Promise<{ success: boolean; error?: string; action?: string }> => {
   
   try {
     // Check if inventory item exists on eBay
@@ -40,11 +42,170 @@ export const updateEbayInventory = async (
       return { success: true };
     }
     
+    // Get offers for this SKU to check listing status
+    const offersResult = await getOffersBySku(ebayToken, sku);
+    const offer = offersResult.offers?.[0];
+    
+    // *** CRITICAL RULE: Quantity 0 → END the listing ***
+    if (quantity === 0) {
+      info(`🚨 Inventory → 0 for ${sku} — ENDING eBay listing`);
+      
+      // Update inventory item to 0 first
+      await updateInventoryQuantity(ebayToken, sku, 0);
+      
+      // Withdraw (end) the offer if it's published
+      if (offer?.offerId && offer.listingId) {
+        try {
+          await withdrawOffer(ebayToken, offer.offerId);
+          info(`✅ eBay listing ENDED for SKU ${sku} (offer ${offer.offerId})`);
+        } catch (withdrawErr: any) {
+          // Offer may already be unpublished
+          if (withdrawErr.message?.includes('INVALID_OFFER_STATUS')) {
+            info(`Offer ${offer.offerId} was already unpublished/ended`);
+          } else {
+            throw withdrawErr;
+          }
+        }
+      }
+      
+      // Update local mapping status to 'ended'
+      const db = await getDb();
+      await db
+        .update(productMappings)
+        .set({ status: 'ended', updatedAt: new Date() })
+        .where(eq(productMappings.ebayInventoryItemId, sku))
+        .run();
+      
+      await db
+        .insert(syncLog)
+        .values({
+          direction: 'shopify_to_ebay',
+          entityType: 'inventory',
+          entityId: sku,
+          status: 'success',
+          detail: `Listing ENDED: quantity ${currentQuantity} → 0`,
+          createdAt: new Date(),
+        })
+        .run();
+      
+      return { success: true, action: 'ended' };
+    }
+    
+    // *** RESTOCK RELIST: Quantity was 0, now >0 → republish ***
+    const db = await getDb();
+    const mapping = await db
+      .select()
+      .from(productMappings)
+      .where(eq(productMappings.ebayInventoryItemId, sku))
+      .get();
+    
+    if (mapping?.status === 'ended' && quantity > 0) {
+      info(`📦 Restocking ${sku}: 0 → ${quantity} — RELISTING on eBay`);
+      
+      // Update inventory quantity first
+      await updateInventoryQuantity(ebayToken, sku, quantity);
+      
+      // Try to republish the existing offer
+      if (offer?.offerId) {
+        try {
+          const publishResult = await publishOffer(ebayToken, offer.offerId);
+          const newListingId = publishResult.listingId;
+          info(`✅ eBay listing RELISTED: ${newListingId} for SKU ${sku}`);
+          
+          // Update mapping to active with new listing ID
+          await db
+            .update(productMappings)
+            .set({ 
+              status: 'active', 
+              ebayListingId: newListingId,
+              updatedAt: new Date() 
+            })
+            .where(eq(productMappings.ebayInventoryItemId, sku))
+            .run();
+          
+          await db
+            .insert(syncLog)
+            .values({
+              direction: 'shopify_to_ebay',
+              entityType: 'inventory',
+              entityId: sku,
+              status: 'success',
+              detail: `Listing RELISTED: ${newListingId}, quantity 0 → ${quantity}`,
+              createdAt: new Date(),
+            })
+            .run();
+          
+          return { success: true, action: 'relisted' };
+        } catch (pubErr: any) {
+          warn(`Failed to republish offer ${offer.offerId}: ${pubErr.message}`);
+          // Fall through to try creating a new offer
+        }
+      }
+      
+      // If no existing offer or republish failed, create a new one
+      info(`Creating new offer for relisting ${sku}...`);
+      try {
+        const policies = await getBusinessPolicies(ebayToken);
+        
+        // Get category from the offer or default
+        const categoryId = (offer as any)?.categoryId || '48519';
+        
+        const newOffer = await createOffer(ebayToken, {
+          sku,
+          marketplaceId: 'EBAY_US',
+          format: 'FIXED_PRICE',
+          availableQuantity: quantity,
+          pricingSummary: offer?.pricingSummary || {
+            price: { value: '19.99', currency: 'USD' },
+          },
+          listingPolicies: {
+            fulfillmentPolicyId: policies.fulfillmentPolicyId,
+            paymentPolicyId: policies.paymentPolicyId,
+            returnPolicyId: policies.returnPolicyId,
+          },
+          categoryId,
+          merchantLocationKey: 'pictureline-slc',
+          tax: { applyTax: true },
+        });
+        
+        const publishResult = await publishOffer(ebayToken, newOffer.offerId);
+        const newListingId = publishResult.listingId;
+        info(`✅ eBay listing RELISTED (new offer): ${newListingId} for SKU ${sku}`);
+        
+        await db
+          .update(productMappings)
+          .set({ 
+            status: 'active', 
+            ebayListingId: newListingId,
+            updatedAt: new Date() 
+          })
+          .where(eq(productMappings.ebayInventoryItemId, sku))
+          .run();
+        
+        await db
+          .insert(syncLog)
+          .values({
+            direction: 'shopify_to_ebay',
+            entityType: 'inventory',
+            entityId: sku,
+            status: 'success',
+            detail: `Listing RELISTED (new offer): ${newListingId}, quantity 0 → ${quantity}`,
+            createdAt: new Date(),
+          })
+          .run();
+        
+        return { success: true, action: 'relisted' };
+      } catch (newOfferErr: any) {
+        logError(`Failed to create new offer for relist of ${sku}: ${newOfferErr.message}`);
+        return { success: false, error: `Relist failed: ${newOfferErr.message}` };
+      }
+    }
+    
+    // *** Normal inventory update ***
     await updateInventoryQuantity(ebayToken, sku, quantity);
     info(`Updated eBay inventory: ${sku} → ${quantity} units`);
     
     // Log sync
-    const db = await getDb();
     await db
       .insert(syncLog)
       .values({
@@ -57,7 +218,7 @@ export const updateEbayInventory = async (
       })
       .run();
     
-    return { success: true };
+    return { success: true, action: 'updated' };
     
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);

@@ -56,6 +56,9 @@ export interface EbayOffer {
   tax?: {
     applyTax: boolean;
   };
+  status?: string; // PUBLISHED, UNPUBLISHED, etc
+  listingId?: string; // eBay listing ID when published
+  listing?: { listingId?: string }; // nested format from some endpoints
 }
 
 export interface EbayOfferResponse {
@@ -331,4 +334,38 @@ export const deleteInventoryItem = async (
     path: `/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`,
     accessToken,
   });
+};
+
+/**
+ * Withdraw (end) an offer — takes the listing off eBay but keeps inventory item.
+ * POST /sell/inventory/v1/offer/{offerId}/withdraw
+ */
+export const withdrawOffer = async (
+  accessToken: string,
+  offerId: string,
+): Promise<void> => {
+  await ebayRequest({
+    method: 'POST',
+    path: `/sell/inventory/v1/offer/${offerId}/withdraw`,
+    accessToken,
+  });
+};
+
+/**
+ * Get an offer by its ID.
+ * GET /sell/inventory/v1/offer/{offerId}
+ */
+export const getOffer = async (
+  accessToken: string,
+  offerId: string,
+): Promise<EbayOffer | null> => {
+  try {
+    return await ebayRequest<EbayOffer>({
+      path: `/sell/inventory/v1/offer/${offerId}`,
+      accessToken,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('404')) return null;
+    throw err;
+  }
 };

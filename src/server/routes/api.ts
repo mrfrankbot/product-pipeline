@@ -207,6 +207,255 @@ router.post('/api/sync/inventory', async (req: Request, res: Response) => {
   }
 });
 
+/** POST /api/sync/prices — Sync Shopify prices to eBay */
+router.post('/api/sync/prices', async (req: Request, res: Response) => {
+  try {
+    const db = await getRawDb();
+    const dryRun = req.query.dry === 'true';
+    
+    // Get tokens
+    const ebayRow = db.prepare(`SELECT access_token FROM auth_tokens WHERE platform = 'ebay'`).get() as any;
+    const shopifyRow = db.prepare(`SELECT access_token FROM auth_tokens WHERE platform = 'shopify'`).get() as any;
+    
+    if (!ebayRow?.access_token) {
+      res.status(400).json({ error: 'eBay token not found. Complete OAuth first.' });
+      return;
+    }
+    
+    if (!shopifyRow?.access_token) {
+      res.status(400).json({ error: 'Shopify token not found. Complete OAuth first.' });
+      return;
+    }
+    
+    info(`[API] Price sync triggered${dryRun ? ' (DRY RUN)' : ''}`);
+    res.json({ ok: true, message: 'Price sync triggered', dryRun });
+    
+    // Run sync in background
+    try {
+      const { syncPrices } = await import('../../sync/price-sync.js');
+      const result = await syncPrices(
+        ebayRow.access_token,
+        shopifyRow.access_token,
+        { dryRun }
+      );
+      info(`[API] Price sync complete: ${result.updated} updated, ${result.skipped} skipped, ${result.failed} failed`);
+    } catch (err) {
+      info(`[API] Price sync error: ${err}`);
+    }
+    
+  } catch (err) {
+    res.status(500).json({ error: 'Price sync failed', detail: String(err) });
+  }
+});
+
+/** POST /api/sync/inventory/:sku — Sync specific SKU inventory from Shopify to eBay */
+router.post('/api/sync/inventory/:sku', async (req: Request, res: Response) => {
+  try {
+    const db = await getRawDb();
+    const sku = Array.isArray(req.params.sku) ? req.params.sku[0] : req.params.sku;
+    const quantity = req.body.quantity as number;
+    
+    if (quantity === undefined || quantity === null) {
+      res.status(400).json({ error: 'quantity required in request body' });
+      return;
+    }
+    
+    // Get eBay token
+    const ebayRow = db.prepare(`SELECT access_token FROM auth_tokens WHERE platform = 'ebay'`).get() as any;
+    if (!ebayRow?.access_token) {
+      res.status(400).json({ error: 'eBay token not found.' });
+      return;
+    }
+    
+    info(`[API] Single inventory sync: ${sku} → ${quantity}`);
+    
+    const { updateEbayInventory } = await import('../../sync/inventory-sync.js');
+    const result = await updateEbayInventory(ebayRow.access_token, sku, quantity);
+    
+    res.json({ ok: result.success, sku, quantity, action: result.action, error: result.error });
+    
+  } catch (err) {
+    res.status(500).json({ error: 'Inventory sync failed', detail: String(err) });
+  }
+});
+
+/** POST /api/test/update-price — Update test product price in Shopify */
+router.post('/api/test/update-price', async (req: Request, res: Response) => {
+  try {
+    const db = await getRawDb();
+    const tokenRow = db.prepare(`SELECT access_token FROM auth_tokens WHERE platform = 'shopify'`).get() as any;
+    if (!tokenRow?.access_token) {
+      res.status(400).json({ error: 'No Shopify token' });
+      return;
+    }
+
+    const productId = req.body.productId as string;
+    const variantId = req.body.variantId as string;
+    const price = req.body.price as string;
+    
+    if (!productId || !variantId || !price) {
+      res.status(400).json({ error: 'productId, variantId, and price required' });
+      return;
+    }
+
+    const response = await fetch(`https://usedcameragear.myshopify.com/admin/api/2024-01/variants/${variantId}.json`, {
+      method: 'PUT',
+      headers: {
+        'X-Shopify-Access-Token': tokenRow.access_token,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ variant: { id: variantId, price } }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      res.status(500).json({ error: 'Failed to update price', detail: errText });
+      return;
+    }
+
+    const data = await response.json() as any;
+    info(`[API] Test product price updated: variant ${variantId} → $${price}`);
+    res.json({ ok: true, variant: data.variant });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed', detail: String(err) });
+  }
+});
+
+/** POST /api/test/update-inventory — Update test product inventory in Shopify */
+router.post('/api/test/update-inventory', async (req: Request, res: Response) => {
+  try {
+    const db = await getRawDb();
+    const tokenRow = db.prepare(`SELECT access_token FROM auth_tokens WHERE platform = 'shopify'`).get() as any;
+    if (!tokenRow?.access_token) {
+      res.status(400).json({ error: 'No Shopify token' });
+      return;
+    }
+
+    const inventoryItemId = req.body.inventoryItemId as string;
+    const locationId = req.body.locationId as string;
+    const quantity = req.body.quantity as number;
+    
+    if (!inventoryItemId || !locationId || quantity === undefined) {
+      res.status(400).json({ error: 'inventoryItemId, locationId, and quantity required' });
+      return;
+    }
+
+    // Shopify requires "set" operation with inventory_levels/set
+    const response = await fetch('https://usedcameragear.myshopify.com/admin/api/2024-01/inventory_levels/set.json', {
+      method: 'POST',
+      headers: {
+        'X-Shopify-Access-Token': tokenRow.access_token,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        location_id: locationId,
+        inventory_item_id: inventoryItemId,
+        available: quantity,
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      res.status(500).json({ error: 'Failed to update inventory', detail: errText });
+      return;
+    }
+
+    const data = await response.json() as any;
+    info(`[API] Test product inventory updated: item ${inventoryItemId} → ${quantity}`);
+    res.json({ ok: true, inventoryLevel: data.inventory_level });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed', detail: String(err) });
+  }
+});
+
+/** GET /api/test/product-info/:productId — Get full Shopify product details for testing */
+router.get('/api/test/product-info/:productId', async (req: Request, res: Response) => {
+  try {
+    const db = await getRawDb();
+    const tokenRow = db.prepare(`SELECT access_token FROM auth_tokens WHERE platform = 'shopify'`).get() as any;
+    if (!tokenRow?.access_token) {
+      res.status(400).json({ error: 'No Shopify token' });
+      return;
+    }
+
+    const productId = Array.isArray(req.params.productId) ? req.params.productId[0] : req.params.productId;
+    const response = await fetch(`https://usedcameragear.myshopify.com/admin/api/2024-01/products/${productId}.json`, {
+      headers: { 'X-Shopify-Access-Token': tokenRow.access_token },
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      res.status(500).json({ error: 'Failed to fetch product', detail: errText });
+      return;
+    }
+
+    const data = await response.json() as any;
+    const product = data.product;
+    const variant = product.variants?.[0];
+    
+    res.json({ 
+      ok: true, 
+      product: {
+        id: product.id,
+        title: product.title,
+        status: product.status,
+        variant: variant ? {
+          id: variant.id,
+          sku: variant.sku,
+          price: variant.price,
+          inventory_item_id: variant.inventory_item_id,
+          inventory_quantity: variant.inventory_quantity,
+        } : null,
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed', detail: String(err) });
+  }
+});
+
+/** GET /api/test/ebay-offer/:sku — Get eBay offer details for a SKU */
+router.get('/api/test/ebay-offer/:sku', async (req: Request, res: Response) => {
+  try {
+    const db = await getRawDb();
+    const ebayRow = db.prepare(`SELECT access_token FROM auth_tokens WHERE platform = 'ebay'`).get() as any;
+    if (!ebayRow?.access_token) {
+      res.status(400).json({ error: 'No eBay token' });
+      return;
+    }
+
+    const sku = Array.isArray(req.params.sku) ? req.params.sku[0] : req.params.sku;
+    
+    const { getOffersBySku, getInventoryItem } = await import('../../ebay/inventory.js');
+    
+    const [offers, inventoryItem] = await Promise.all([
+      getOffersBySku(ebayRow.access_token, sku),
+      getInventoryItem(ebayRow.access_token, sku),
+    ]);
+    
+    const offer = offers.offers?.[0];
+    
+    res.json({ 
+      ok: true, 
+      sku,
+      inventoryItem: inventoryItem ? {
+        quantity: inventoryItem.availability?.shipToLocationAvailability?.quantity,
+        condition: inventoryItem.condition,
+        title: inventoryItem.product?.title,
+      } : null,
+      offer: offer ? {
+        offerId: offer.offerId,
+        status: (offer as any).status,
+        listingId: (offer as any).listingId,
+        price: offer.pricingSummary?.price?.value,
+        quantity: offer.availableQuantity,
+        format: offer.format,
+      } : null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed', detail: String(err) });
+  }
+});
+
 /** POST /api/listings/link — Manually link eBay listing to Shopify product */
 router.post('/api/listings/link', async (req: Request, res: Response) => {
   try {
