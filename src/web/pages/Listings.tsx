@@ -5,117 +5,49 @@ import {
   Button,
   ButtonGroup,
   Card,
-  Filters,
+  Checkbox,
+  Divider,
   IndexTable,
+  InlineStack,
+  BlockStack,
   Layout,
+  List,
   Page,
   Pagination,
   Spinner,
   Text,
   TextField,
-  Modal,
-  Toast,
-  Divider,
-  Box,
-  InlineStack,
-  BlockStack,
+  Thumbnail,
 } from '@shopify/polaris';
-import {
-  RefreshCw,
-  Search,
-  Filter,
-  Download,
-  Upload,
-  ExternalLink,
-  Edit,
-  Trash2,
-  Link,
-  Unlink,
-  CheckCircle,
-  XCircle,
-  Clock,
-  AlertTriangle,
-  TrendingUp,
-  Package,
-} from 'lucide-react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { ExternalLink, RefreshCw, RotateCw, Search, XCircle } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate, useParams } from 'react-router-dom';
+import { apiClient, useListings, useMappings, useSyncProducts } from '../hooks/useApi';
 import { useAppStore } from '../store';
-import StatusIndicator from '../components/StatusIndicator';
 
-interface Listing {
-  id: number;
+interface ListingRecord {
+  id: string;
   shopifyProductId: string;
-  shopifyProductHandle?: string;
+  ebayListingId?: string | null;
+  ebayInventoryItemId?: string | null;
+  status: string;
+  originalPrice?: number | null;
+  lastRepublishedAt?: number | string | null;
+  promotedAt?: number | string | null;
+  adRate?: number | null;
+  createdAt?: number | string | null;
+  updatedAt?: number | string | null;
   shopifyTitle?: string;
   shopifySku?: string;
-  ebayListingId: string;
-  ebayItemId?: string;
-  ebayTitle?: string;
-  ebayInventoryItemId?: string | null;
-  status: 'synced' | 'pending' | 'error' | 'stale' | 'active' | 'inactive';
-  healthScore?: number;
-  lastSynced?: string;
-  price?: number;
-  quantity?: number;
-  views?: number;
-  watchers?: number;
-  createdAt: number;
-  updatedAt: number;
-  error?: string;
 }
 
-interface ListingsResponse {
-  data: Listing[];
-  total: number;
-  limit: number;
-  offset: number;
-}
-
-interface ListingHealth {
-  listingId: string;
-  score: number;
-  issues: string[];
-  recommendations: string[];
-}
-
-interface StaleListing {
-  listingId: string;
-  reason: string;
-  daysStale: number;
-}
-
-// API helper functions
-const api = {
-  async get<T>(endpoint: string): Promise<T> {
-    const response = await fetch(`/api${endpoint}`);
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    return response.json();
-  },
-  
-  async post<T>(endpoint: string, data?: any): Promise<T> {
-    const response = await fetch(`/api${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: data ? JSON.stringify(data) : undefined,
-    });
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    return response.json();
-  },
-  
-  async put<T>(endpoint: string, data?: any): Promise<T> {
-    const response = await fetch(`/api${endpoint}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: data ? JSON.stringify(data) : undefined,
-    });
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    return response.json();
-  },
+const formatMoney = (value?: number | null) => {
+  if (value === null || value === undefined) return '—';
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
 };
 
 const formatTimestamp = (value?: number | string | null) => {
   if (!value) return '—';
-  
   let date: Date;
   if (typeof value === 'number') {
     const ms = value > 1_000_000_000_000 ? value : value * 1000;
@@ -123,510 +55,514 @@ const formatTimestamp = (value?: number | string | null) => {
   } else {
     date = new Date(value);
   }
-  
   if (Number.isNaN(date.getTime())) return '—';
   return date.toLocaleString();
 };
 
-const getStatusBadge = (status: string, healthScore?: number) => {
-  const normalized = status?.toLowerCase();
-  
-  if (normalized === 'synced' || normalized === 'active') {
-    const tone = healthScore && healthScore < 70 ? 'warning' : 'success';
-    return <Badge tone={tone}>{status}</Badge>;
-  }
-  if (normalized === 'pending') {
-    return <Badge tone="info">Pending</Badge>;
-  }
-  if (normalized === 'error' || normalized === 'failed') {
-    return <Badge tone="critical">Error</Badge>;
-  }
-  if (normalized === 'stale') {
-    return <Badge tone="warning">Stale</Badge>;
-  }
-  if (normalized === 'inactive') {
-    return <Badge tone="warning">Inactive</Badge>;
-  }
-  
-  return <Badge tone="info">{status ?? 'Unknown'}</Badge>;
+const normalizeListing = (listing: any): ListingRecord => {
+  const shopifyProductId =
+    listing.shopifyProductId ?? listing.shopify_product_id ?? String(listing.shopifyProductID ?? listing.id ?? '');
+  return {
+    id: String(listing.id ?? shopifyProductId),
+    shopifyProductId: String(shopifyProductId),
+    ebayListingId: listing.ebayListingId ?? listing.ebay_listing_id ?? listing.ebayItemId ?? null,
+    ebayInventoryItemId: listing.ebayInventoryItemId ?? listing.ebay_inventory_item_id ?? null,
+    status: listing.status ?? 'inactive',
+    originalPrice: listing.originalPrice ?? listing.original_price ?? listing.price ?? null,
+    lastRepublishedAt: listing.lastRepublishedAt ?? listing.last_republished_at ?? null,
+    promotedAt: listing.promotedAt ?? listing.promoted_at ?? null,
+    adRate: listing.adRate ?? listing.ad_rate ?? null,
+    createdAt: listing.createdAt ?? listing.created_at ?? null,
+    updatedAt: listing.updatedAt ?? listing.updated_at ?? null,
+    shopifyTitle: listing.shopifyTitle ?? listing.shopify_title,
+    shopifySku: listing.shopifySku ?? listing.shopify_sku,
+  };
 };
 
-const Listings: React.FC = () => {
-  // State
-  const [listings, setListings] = useState<Listing[]>([]);
-  const [total, setTotal] = useState(0);
-  const [limit] = useState(25);
-  const [offset, setOffset] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  
-  // Filters & Search
-  const [searchValue, setSearchValue] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState<string[]>([]);
-  const [selectedItems, setSelectedItems] = useState<string[]>([]);
-  
-  // Modals
-  const [showLinkModal, setShowLinkModal] = useState(false);
-  const [showHealthModal, setShowHealthModal] = useState(false);
-  const [linkModalData, setLinkModalData] = useState<{shopifyId: string; ebayId: string}>({shopifyId: '', ebayId: ''});
-  
-  // Toast
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-  
+const getStatusPresentation = (listing: ListingRecord) => {
+  if (!listing.ebayListingId) {
+    return { label: 'Missing', tone: 'critical' as const, dot: '#d72c0d' };
+  }
+  const normalized = listing.status.toLowerCase();
+  if (normalized === 'active' || normalized === 'synced') {
+    return { label: 'Active', tone: 'success' as const, dot: '#008060' };
+  }
+  if (normalized === 'error' || normalized === 'failed') {
+    return { label: 'Error', tone: 'warning' as const, dot: '#b98900' };
+  }
+  if (normalized === 'inactive') {
+    return { label: 'Inactive', tone: 'info' as const, dot: '#8c9196' };
+  }
+  if (normalized === 'pending') {
+    return { label: 'Pending', tone: 'attention' as const, dot: '#0b62d6' };
+  }
+  return { label: listing.status || 'Unknown', tone: 'info' as const, dot: '#8c9196' };
+};
+
+const ListingDetail: React.FC = () => {
+  const { id } = useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { addNotification } = useAppStore();
-  
-  // Queries
-  const { data: healthData } = useQuery({
-    queryKey: ['listings-health'],
-    queryFn: () => api.get<ListingHealth[]>('/listings/health'),
-    staleTime: 60000,
+
+  const { data: listingResponse, isLoading: listingLoading, error: listingError } = useListings({
+    limit: 50,
+    offset: 0,
+    search: id,
   });
-  
-  const { data: staleData } = useQuery({
-    queryKey: ['listings-stale'],
-    queryFn: () => api.get<StaleListing[]>('/listings/stale'),
-    staleTime: 60000,
+
+  const listing = useMemo(() => {
+    const normalized = (listingResponse?.data ?? []).map(normalizeListing);
+    return (
+      normalized.find((item) => item.shopifyProductId === id || item.id === id) ??
+      normalized[0] ??
+      null
+    );
+  }, [listingResponse, id]);
+
+  const { data: productInfo, isLoading: productLoading } = useQuery({
+    queryKey: ['product-info', id],
+    queryFn: () => apiClient.get<{ ok: boolean; product?: any }>(`/test/product-info/${id}`),
+    enabled: Boolean(id),
   });
-  
-  // Mutations
-  const syncProductMutation = useMutation({
-    mutationFn: (productId: string) => api.put(`/sync/products/${productId}`),
+
+  const sku = productInfo?.product?.variant?.sku ?? listing?.shopifySku;
+  const { data: ebayOffer, isLoading: ebayLoading } = useQuery({
+    queryKey: ['ebay-offer', sku],
+    queryFn: () => apiClient.get<{ ok: boolean; offer?: any; inventoryItem?: any }>(`/test/ebay-offer/${sku}`),
+    enabled: Boolean(sku),
+  });
+
+  const { data: mappings } = useMappings();
+
+  const syncMutation = useMutation({
+    mutationFn: () => apiClient.put(`/sync/products/${id}`),
     onSuccess: () => {
-      addNotification({ type: 'success', title: 'Product sync initiated' });
       queryClient.invalidateQueries({ queryKey: ['listings'] });
+      addNotification({ type: 'success', title: 'Sync started', autoClose: 4000 });
     },
     onError: (error) => {
-      addNotification({ type: 'error', title: 'Sync failed', message: error.message });
+      addNotification({ type: 'error', title: 'Sync failed', message: error instanceof Error ? error.message : 'Unknown error' });
     },
   });
-  
+
   const endListingMutation = useMutation({
-    mutationFn: (productId: string) => api.post(`/sync/products/${productId}/end`),
+    mutationFn: () => apiClient.post(`/sync/products/${id}/end`),
     onSuccess: () => {
-      addNotification({ type: 'success', title: 'Listing ended successfully' });
       queryClient.invalidateQueries({ queryKey: ['listings'] });
+      addNotification({ type: 'success', title: 'Listing ended', autoClose: 4000 });
     },
     onError: (error) => {
-      addNotification({ type: 'error', title: 'Failed to end listing', message: error.message });
-    },
-  });
-  
-  const linkProductsMutation = useMutation({
-    mutationFn: (data: {shopifyProductId: string; ebayItemId: string}) => 
-      api.post('/listings/link', data),
-    onSuccess: () => {
-      addNotification({ type: 'success', title: 'Products linked successfully' });
-      queryClient.invalidateQueries({ queryKey: ['listings'] });
-      setShowLinkModal(false);
-    },
-    onError: (error) => {
-      addNotification({ type: 'error', title: 'Failed to link products', message: error.message });
-    },
-  });
-  
-  const bulkSyncMutation = useMutation({
-    mutationFn: (productIds: string[]) => 
-      Promise.all(productIds.map(id => api.put(`/sync/products/${id}`))),
-    onSuccess: () => {
-      addNotification({ type: 'success', title: `${selectedItems.length} products synced` });
-      queryClient.invalidateQueries({ queryKey: ['listings'] });
-      setSelectedItems([]);
-    },
-    onError: (error) => {
-      addNotification({ type: 'error', title: 'Bulk sync failed', message: error.message });
-    },
-  });
-  
-  const republishStaleMutation = useMutation({
-    mutationFn: () => api.post('/listings/republish-stale'),
-    onSuccess: () => {
-      addNotification({ type: 'success', title: 'Stale listings republished' });
-      queryClient.invalidateQueries({ queryKey: ['listings'] });
-    },
-    onError: (error) => {
-      addNotification({ type: 'error', title: 'Failed to republish stale listings', message: error.message });
-    },
-  });
-  
-  const applyPriceDropsMutation = useMutation({
-    mutationFn: () => api.post('/listings/apply-price-drops'),
-    onSuccess: () => {
-      addNotification({ type: 'success', title: 'Price drops applied' });
-      queryClient.invalidateQueries({ queryKey: ['listings'] });
-    },
-    onError: (error) => {
-      addNotification({ type: 'error', title: 'Failed to apply price drops', message: error.message });
+      addNotification({ type: 'error', title: 'Failed to end listing', message: error instanceof Error ? error.message : 'Unknown error' });
     },
   });
 
-  // Load listings with filters
-  const loadListings = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const mappingCards = useMemo(() => {
+    if (!mappings) return [] as Array<{ title: string; items: string[] }>;
+    const toItems = (list: any[]) =>
+      list
+        .slice(0, 6)
+        .map((item) => `${item.field_name} → ${item.mapping_type === 'constant' ? item.target_value : item.source_value}`)
+        .filter(Boolean);
+    return [
+      { title: 'Listing mappings', items: toItems(mappings.listing ?? []) },
+      { title: 'Sales mappings', items: toItems(mappings.sales ?? []) },
+      { title: 'Shipping mappings', items: toItems(mappings.shipping ?? []) },
+      { title: 'Payment mappings', items: toItems(mappings.payment ?? []) },
+    ].filter((card) => card.items.length > 0);
+  }, [mappings]);
 
-    try {
-      const params = new URLSearchParams({
-        limit: limit.toString(),
-        offset: offset.toString(),
-      });
-      
-      if (searchValue) params.append('search', searchValue);
-      if (selectedStatus.length > 0) params.append('status', selectedStatus.join(','));
-      
-      const response = await fetch(`/api/listings?${params}`);
-      if (!response.ok) throw new Error('Failed to fetch listings');
-      
-      const data = (await response.json()) as ListingsResponse;
-      
-      // Enhance listings with health data (defensive — API may return object or array)
-      const healthArr = Array.isArray(healthData) ? healthData : [];
-      const staleArr = Array.isArray(staleData) ? staleData : [];
-      const listingsArr = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
-      const enhancedListings = listingsArr.map((listing: any) => {
-        const health = healthArr.find(h => h.listingId === listing.ebayListingId);
-        const stale = staleArr.find(s => s.listingId === listing.ebayListingId);
-        
-        return {
-          ...listing,
-          healthScore: health?.score,
-          status: stale ? 'stale' as const : listing.status,
-        };
-      });
-      
-      setListings(enhancedListings);
-      setTotal(data.total ?? 0);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch listings');
-    } finally {
-      setLoading(false);
-    }
-  }, [limit, offset, searchValue, selectedStatus, healthData, staleData]);
+  const syncHistory = useMemo(() => {
+    if (!listing) return [] as Array<{ label: string; value: string }>;
+    const events = [
+      { label: 'Created', value: formatTimestamp(listing.createdAt) },
+      { label: 'Last updated', value: formatTimestamp(listing.updatedAt) },
+      { label: 'Last republished', value: formatTimestamp(listing.lastRepublishedAt) },
+      { label: 'Promoted', value: formatTimestamp(listing.promotedAt) },
+    ];
+    return events.filter((event) => event.value !== '—');
+  }, [listing]);
 
-  useEffect(() => {
-    void loadListings();
-  }, [loadListings]);
-
-  // Filter functions
-  const clearAllFilters = useCallback(() => {
-    setSearchValue('');
-    setSelectedStatus([]);
-    setOffset(0);
-  }, []);
-
-  const filters = [
+  const product = productInfo?.product;
+  const productVariant = product?.variant;
+  const secondaryActions: Array<{ content: string; destructive?: boolean; onAction: () => void }> = [
     {
-      key: 'status',
-      label: 'Status',
-      filter: (
-        <Filters
-          queryValue={searchValue}
-          queryPlaceholder="Search listings..."
-          onQueryChange={setSearchValue}
-          onQueryClear={() => setSearchValue('')}
-          filters={[
-            {
-              key: 'status',
-              label: 'Status',
-              filter: (
-                <div>
-                  {/* Status filter implementation would go here */}
-                </div>
-              ),
-            },
-          ]}
-          onClearAll={clearAllFilters}
-        />
-      ),
+      content: 'End listing',
+      destructive: true,
+      onAction: () => endListingMutation.mutate(),
     },
   ];
 
-  // Table row actions
-  const promotePrimaryActions = useMemo(() => {
-    if (selectedItems.length === 0) return [];
-    
-    return [
-      {
-        content: `Sync Selected (${selectedItems.length})`,
-        onAction: () => bulkSyncMutation.mutate(selectedItems),
-        loading: bulkSyncMutation.isPending,
+  if (listing?.ebayListingId) {
+    secondaryActions.push({
+      content: 'View on eBay',
+      onAction: () => {
+        window.open(`https://www.ebay.com/itm/${listing.ebayListingId}`, '_blank');
       },
-    ];
-  }, [selectedItems, bulkSyncMutation]);
-
-  // Pagination
-  const pagination = useMemo(() => {
-    const hasPrevious = offset > 0;
-    const hasNext = offset + limit < total;
-
-    return (
-      <Pagination
-        hasPrevious={hasPrevious}
-        onPrevious={() => setOffset(Math.max(0, offset - limit))}
-        hasNext={hasNext}
-        onNext={() => setOffset(offset + limit)}
-      />
-    );
-  }, [limit, offset, total]);
-
-  // Table headings
-  const headings = [
-    { title: 'Product' },
-    { title: 'eBay Listing' },
-    { title: 'Status' },
-    { title: 'Health' },
-    { title: 'Price' },
-    { title: 'Quantity' },
-    { title: 'Performance' },
-    { title: 'Last Synced' },
-    { title: 'Actions' },
-  ] as any;
-
-  const rowMarkup = listings.map((listing, index) => (
-    <IndexTable.Row
-      id={String(listing.id)}
-      key={listing.id}
-      position={index}
-      selected={selectedItems.includes(String(listing.id))}
-    >
-      <IndexTable.Cell>
-        <div style={{ minWidth: '200px' }}>
-          <BlockStack gap="100">
-            <Text variant="bodyMd" fontWeight="semibold" as="span">
-              {listing.shopifyTitle || listing.shopifyProductId}
-            </Text>
-            {listing.shopifySku && (
-              <Text variant="bodySm" tone="subdued" as="span">
-                SKU: {listing.shopifySku}
-              </Text>
-            )}
-          </BlockStack>
-        </div>
-      </IndexTable.Cell>
-      
-      <IndexTable.Cell>
-        <div style={{ minWidth: '150px' }}>
-          <BlockStack gap="100">
-            <Text variant="bodyMd" as="span">
-              {listing.ebayTitle || listing.ebayListingId}
-            </Text>
-            <Text variant="bodySm" tone="subdued" as="span">
-              ID: {listing.ebayListingId}
-            </Text>
-          </BlockStack>
-        </div>
-      </IndexTable.Cell>
-      
-      <IndexTable.Cell>
-        <div className="flex items-center gap-2">
-          <StatusIndicator
-            type="sync"
-            status={listing.status === 'synced' ? 'idle' : 
-                   listing.status === 'pending' ? 'syncing' :
-                   listing.status === 'error' ? 'error' : 'idle'}
-            size="sm"
-          />
-          {getStatusBadge(listing.status, listing.healthScore)}
-        </div>
-      </IndexTable.Cell>
-      
-      <IndexTable.Cell>
-        {listing.healthScore ? (
-          <div className="flex items-center gap-2">
-            <div 
-              className={`w-3 h-3 rounded-full ${
-                listing.healthScore >= 80 ? 'bg-green-500' :
-                listing.healthScore >= 60 ? 'bg-yellow-500' : 'bg-red-500'
-              }`} 
-            />
-            <Text variant="bodySm" as="span">
-              {listing.healthScore}/100
-            </Text>
-          </div>
-        ) : (
-          <Text variant="bodySm" tone="subdued" as="span">—</Text>
-        )}
-      </IndexTable.Cell>
-      
-      <IndexTable.Cell>
-        <Text variant="bodyMd" as="span">
-          {listing.price ? `$${listing.price.toFixed(2)}` : '—'}
-        </Text>
-      </IndexTable.Cell>
-      
-      <IndexTable.Cell>
-        <Text variant="bodyMd" as="span">
-          {listing.quantity ?? '—'}
-        </Text>
-      </IndexTable.Cell>
-      
-      <IndexTable.Cell>
-        {listing.views || listing.watchers ? (
-          <BlockStack gap="050">
-            {listing.views && (
-              <Text variant="bodySm" tone="subdued" as="span">
-                {listing.views} views
-              </Text>
-            )}
-            {listing.watchers && (
-              <Text variant="bodySm" tone="subdued" as="span">
-                {listing.watchers} watchers
-              </Text>
-            )}
-          </BlockStack>
-        ) : (
-          <Text variant="bodySm" tone="subdued" as="span">—</Text>
-        )}
-      </IndexTable.Cell>
-      
-      <IndexTable.Cell>
-        <Text variant="bodySm" tone="subdued" as="span">
-          {formatTimestamp(listing.lastSynced || listing.updatedAt)}
-        </Text>
-      </IndexTable.Cell>
-      
-      <IndexTable.Cell>
-        <ButtonGroup>
-          <Button
-            size="micro"
-            icon={<RefreshCw className="w-3 h-3" />}
-            onClick={() => syncProductMutation.mutate(listing.shopifyProductId)}
-            loading={syncProductMutation.isPending}
-            accessibilityLabel="Sync product"
-          />
-          <Button
-            size="micro"
-            icon={<ExternalLink className="w-3 h-3" />}
-            onClick={() => window.open(`https://www.ebay.com/itm/${listing.ebayListingId}`, '_blank')}
-            accessibilityLabel="View on eBay"
-          />
-          <Button
-            size="micro"
-            icon={<XCircle className="w-3 h-3" />}
-            tone="critical"
-            onClick={() => endListingMutation.mutate(listing.shopifyProductId)}
-            loading={endListingMutation.isPending}
-            accessibilityLabel="End listing"
-          />
-        </ButtonGroup>
-      </IndexTable.Cell>
-    </IndexTable.Row>
-  ));
+    });
+  }
 
   return (
-    <Page 
-      title="Products & Listings"
+    <Page
+      title={product?.title ?? listing?.shopifyTitle ?? 'Product detail'}
+      subtitle={listing?.shopifyProductId ? `Shopify ID ${listing.shopifyProductId}` : undefined}
+      backAction={{ content: 'Back to products', onAction: () => navigate('/listings') }}
       primaryAction={{
-        content: 'Link Products',
-        onAction: () => setShowLinkModal(true),
+        content: 'Sync now',
+        onAction: () => syncMutation.mutate(),
+        loading: syncMutation.isPending,
       }}
-      secondaryActions={[
-        {
-          content: 'View Health Report',
-          onAction: () => setShowHealthModal(true),
-        },
-        {
-          content: 'Refresh',
-          onAction: () => loadListings(),
-        },
-      ]}
+      secondaryActions={secondaryActions}
     >
-      {/* Summary Cards */}
+      {(listingLoading || productLoading) && (
+        <div style={{ padding: '2rem', textAlign: 'center' }}>
+          <Spinner accessibilityLabel="Loading product detail" size="large" />
+        </div>
+      )}
+
+      {listingError && (
+        <Banner tone="critical" title="Unable to load product detail">
+          <p>{listingError instanceof Error ? listingError.message : 'Something went wrong.'}</p>
+        </Banner>
+      )}
+
+      {listing && (
+        <Layout>
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="400">
+                <InlineStack gap="300" align="space-between">
+                  <Text variant="headingMd" as="h2">Shopify product</Text>
+                  {product?.status && <Badge tone="info">{product.status}</Badge>}
+                </InlineStack>
+                <InlineStack gap="400" align="start">
+                  <Thumbnail
+                    size="large"
+                    source="https://cdn.shopify.com/s/files/1/0533/2089/files/placeholder-images-image_large.png"
+                    alt={product?.title ?? 'Product image'}
+                  />
+                  <BlockStack gap="200">
+                    <Text variant="headingLg" as="h3">{product?.title ?? listing.shopifyTitle ?? 'Untitled product'}</Text>
+                    <Text variant="bodyMd" tone="subdued" as="p">SKU: {productVariant?.sku ?? listing.shopifySku ?? '—'}</Text>
+                    <Text variant="bodyMd" as="p">Price: {formatMoney(Number(productVariant?.price ?? listing.originalPrice ?? 0) || null)}</Text>
+                    <Text variant="bodyMd" as="p">Inventory: {productVariant?.inventory_quantity ?? '—'}</Text>
+                    <Text variant="bodySm" tone="subdued" as="p">Inventory Item ID: {productVariant?.inventory_item_id ?? listing.ebayInventoryItemId ?? '—'}</Text>
+                  </BlockStack>
+                </InlineStack>
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="400">
+                <InlineStack gap="300" align="space-between">
+                  <Text variant="headingMd" as="h2">eBay listing</Text>
+                  <Badge tone={getStatusPresentation(listing).tone}>{getStatusPresentation(listing).label}</Badge>
+                </InlineStack>
+                {ebayLoading ? (
+                  <Spinner accessibilityLabel="Loading eBay details" size="small" />
+                ) : (
+                  <BlockStack gap="200">
+                    <Text variant="bodyMd" as="p">Listing ID: {listing.ebayListingId ?? '—'}</Text>
+                    <Text variant="bodyMd" as="p">Offer ID: {ebayOffer?.offer?.offerId ?? '—'}</Text>
+                    <Text variant="bodyMd" as="p">eBay price: {formatMoney(Number(ebayOffer?.offer?.price ?? 0) || null)}</Text>
+                    <Text variant="bodyMd" as="p">Available: {ebayOffer?.offer?.quantity ?? ebayOffer?.inventoryItem?.quantity ?? '—'}</Text>
+                    <Text variant="bodyMd" as="p">Category: {ebayOffer?.inventoryItem?.condition ?? '—'}</Text>
+                  </BlockStack>
+                )}
+                <Divider />
+                <InlineStack gap="200">
+                  <Button
+                    icon={<ExternalLink className="w-4 h-4" />}
+                    onClick={() => listing.ebayListingId && window.open(`https://www.ebay.com/itm/${listing.ebayListingId}`, '_blank')}
+                    disabled={!listing.ebayListingId}
+                  >
+                    View on eBay
+                  </Button>
+                  <Button
+                    icon={<ExternalLink className="w-4 h-4" />}
+                    onClick={() => listing.ebayListingId && window.open(`https://www.ebay.com/sh/lst/active`, '_blank')}
+                    disabled={!listing.ebayListingId}
+                  >
+                    Edit on eBay
+                  </Button>
+                </InlineStack>
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="300">
+                <Text variant="headingMd" as="h2">Field mapping</Text>
+                {mappingCards.length === 0 ? (
+                  <Text tone="subdued" as="p">No mapping data available.</Text>
+                ) : (
+                  <InlineStack gap="400" align="start" wrap>
+                    {mappingCards.map((card) => (
+                      <Card key={card.title} padding="300">
+                        <BlockStack gap="200">
+                          <Text variant="headingSm" as="h3">{card.title}</Text>
+                          <List>
+                            {card.items.map((item) => (
+                              <List.Item key={item}>{item}</List.Item>
+                            ))}
+                          </List>
+                        </BlockStack>
+                      </Card>
+                    ))}
+                  </InlineStack>
+                )}
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="300">
+                <Text variant="headingMd" as="h2">Sync history</Text>
+                {syncHistory.length === 0 ? (
+                  <Text tone="subdued" as="p">No sync activity recorded yet.</Text>
+                ) : (
+                  <BlockStack gap="200">
+                    {syncHistory.map((event) => (
+                      <InlineStack key={event.label} align="space-between">
+                        <Text variant="bodySm" tone="subdued" as="span">{event.label}</Text>
+                        <Text variant="bodySm" as="span">{event.value}</Text>
+                      </InlineStack>
+                    ))}
+                  </BlockStack>
+                )}
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        </Layout>
+      )}
+    </Page>
+  );
+};
+
+const Listings: React.FC = () => {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { addNotification } = useAppStore();
+  const syncProducts = useSyncProducts();
+
+  const [searchValue, setSearchValue] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'missing' | 'error' | 'inactive' | 'pending'>('all');
+  const [offset, setOffset] = useState(0);
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
+
+  const limit = 50;
+
+  useEffect(() => {
+    setOffset(0);
+  }, [searchValue, statusFilter]);
+
+  const statusParam = useMemo(() => {
+    if (statusFilter === 'all' || statusFilter === 'missing') return undefined;
+    if (statusFilter === 'active') return 'active,synced';
+    return statusFilter;
+  }, [statusFilter]);
+
+  const { data, isLoading, error } = useListings({
+    limit,
+    offset,
+    search: searchValue || undefined,
+    status: statusParam,
+  });
+
+  const listings = useMemo(() => (data?.data ?? []).map(normalizeListing), [data]);
+  const pageListings = useMemo(() => {
+    if (statusFilter !== 'missing') return listings;
+    return listings.filter((listing) => !listing.ebayListingId);
+  }, [listings, statusFilter]);
+
+  const total = data?.total ?? 0;
+
+  const stats = useMemo(() => {
+    const active = listings.filter((listing) => getStatusPresentation(listing).label === 'Active').length;
+    const missing = listings.filter((listing) => !listing.ebayListingId).length;
+    const errorCount = listings.filter((listing) => getStatusPresentation(listing).label === 'Error').length;
+    return { active, missing, errorCount };
+  }, [listings]);
+
+  const selectedIdsOnPage = useMemo(() => pageListings.map((listing) => listing.shopifyProductId), [pageListings]);
+  const allSelectedOnPage = selectedIdsOnPage.length > 0 && selectedIdsOnPage.every((id) => selectedItems.includes(id));
+
+  const toggleSelectAll = useCallback((value: boolean) => {
+    if (value) {
+      setSelectedItems((prev) => Array.from(new Set([...prev, ...selectedIdsOnPage])));
+      return;
+    }
+    setSelectedItems((prev) => prev.filter((id) => !selectedIdsOnPage.includes(id)));
+  }, [selectedIdsOnPage]);
+
+  const toggleSelection = useCallback((id: string) => {
+    setSelectedItems((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  }, []);
+
+  const bulkEndMutation = useMutation({
+    mutationFn: (productIds: string[]) =>
+      Promise.all(productIds.map((productId) => apiClient.post(`/sync/products/${productId}/end`))),
+    onSuccess: (_, productIds) => {
+      queryClient.invalidateQueries({ queryKey: ['listings'] });
+      addNotification({ type: 'success', title: `${productIds.length} listings ended`, autoClose: 4000 });
+      setSelectedItems([]);
+    },
+    onError: (error) => {
+      addNotification({ type: 'error', title: 'Bulk end failed', message: error instanceof Error ? error.message : 'Unknown error' });
+    },
+  });
+
+  const bulkRelistMutation = useMutation({
+    mutationFn: (productIds: string[]) =>
+      Promise.all(productIds.map((productId) => apiClient.put(`/sync/products/${productId}`))),
+    onSuccess: (_, productIds) => {
+      queryClient.invalidateQueries({ queryKey: ['listings'] });
+      addNotification({ type: 'success', title: `${productIds.length} listings relisted`, autoClose: 4000 });
+      setSelectedItems([]);
+    },
+    onError: (error) => {
+      addNotification({ type: 'error', title: 'Bulk relist failed', message: error instanceof Error ? error.message : 'Unknown error' });
+    },
+  });
+
+  const rowMarkup = pageListings.map((listing, index) => {
+    const status = getStatusPresentation(listing);
+    const productLabel = listing.shopifyTitle ?? `Shopify product ${listing.shopifyProductId}`;
+    return (
+      <IndexTable.Row
+        id={listing.shopifyProductId}
+        key={listing.id}
+        position={index}
+        onClick={() => navigate(`/listings/${listing.shopifyProductId}`)}
+      >
+        <IndexTable.Cell>
+          <div onClick={(event) => event.stopPropagation()}>
+            <Checkbox
+              label=""
+              checked={selectedItems.includes(listing.shopifyProductId)}
+              onChange={() => toggleSelection(listing.shopifyProductId)}
+            />
+          </div>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <BlockStack gap="100">
+            <Text variant="bodyMd" fontWeight="semibold" as="p">{productLabel}</Text>
+            <Text variant="bodySm" tone="subdued" as="p">ID: {listing.shopifyProductId}</Text>
+            {listing.shopifySku && <Text variant="bodySm" tone="subdued" as="p">SKU: {listing.shopifySku}</Text>}
+          </BlockStack>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <BlockStack gap="100">
+            <Text variant="bodyMd" as="p">{listing.ebayListingId ?? 'No listing linked'}</Text>
+            <Text variant="bodySm" tone="subdued" as="p">Inventory ID: {listing.ebayInventoryItemId ?? '—'}</Text>
+          </BlockStack>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <InlineStack gap="200" align="start">
+            <div
+              style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                backgroundColor: status.dot,
+                marginTop: '6px',
+              }}
+            />
+            <Badge tone={status.tone}>{status.label}</Badge>
+          </InlineStack>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <Text variant="bodyMd" as="p">{formatMoney(listing.originalPrice ?? null)}</Text>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <Text variant="bodySm" tone="subdued" as="p">{formatTimestamp(listing.updatedAt)}</Text>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <div onClick={(event) => event.stopPropagation()}>
+            <ButtonGroup>
+              <Button
+                size="micro"
+                icon={<RefreshCw className="w-3 h-3" />}
+                onClick={() => syncProducts.mutate([listing.shopifyProductId])}
+                loading={syncProducts.isPending}
+              >
+                Sync
+              </Button>
+              <Button
+                size="micro"
+                icon={<ExternalLink className="w-3 h-3" />}
+                onClick={() => listing.ebayListingId && window.open(`https://www.ebay.com/itm/${listing.ebayListingId}`, '_blank')}
+                disabled={!listing.ebayListingId}
+              >
+                View
+              </Button>
+            </ButtonGroup>
+          </div>
+        </IndexTable.Cell>
+      </IndexTable.Row>
+    );
+  });
+
+  const pagination = (
+    <Pagination
+      hasPrevious={offset > 0}
+      onPrevious={() => setOffset(Math.max(0, offset - limit))}
+      hasNext={offset + limit < total}
+      onNext={() => setOffset(offset + limit)}
+    />
+  );
+
+  return (
+    <Page
+      title="Products & Listings"
+      subtitle="Shopify catalog synced to eBay listings"
+      primaryAction={{
+        content: 'Sync all products',
+        onAction: () => syncProducts.mutate([]),
+        loading: syncProducts.isPending,
+      }}
+    >
       <Layout>
         <Layout.Section>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem' }}>
-            <Card>
-              <div className="text-center p-4">
-                <div className="flex items-center justify-center mb-2">
-                  <Package className="w-6 h-6 text-shopify-500" />
-                </div>
-                <Text variant="headingLg" as="h3">{total}</Text>
-                <Text variant="bodyMd" tone="subdued" as="p">Total Listings</Text>
-              </div>
-            </Card>
-            
-            <Card>
-              <div className="text-center p-4">
-                <div className="flex items-center justify-center mb-2">
-                  <CheckCircle className="w-6 h-6 text-green-500" />
-                </div>
-                <Text variant="headingLg" as="h3">
-                  {listings.filter(l => l.status === 'synced' || l.status === 'active').length}
-                </Text>
-                <Text variant="bodyMd" tone="subdued" as="p">Active Listings</Text>
-              </div>
-            </Card>
-            
-            <Card>
-              <div className="text-center p-4">
-                <div className="flex items-center justify-center mb-2">
-                  <AlertTriangle className="w-6 h-6 text-yellow-500" />
-                </div>
-                <Text variant="headingLg" as="h3">
-                  {(Array.isArray(staleData) ? staleData.length : 0) || listings.filter(l => l.status === 'stale').length || 0}
-                </Text>
-                <Text variant="bodyMd" tone="subdued" as="p">Stale Listings</Text>
-              </div>
-            </Card>
-            
-            <Card>
-              <div className="text-center p-4">
-                <div className="flex items-center justify-center mb-2">
-                  <XCircle className="w-6 h-6 text-red-500" />
-                </div>
-                <Text variant="headingLg" as="h3">
-                  {listings.filter(l => l.status === 'error').length}
-                </Text>
-                <Text variant="bodyMd" tone="subdued" as="p">Errors</Text>
-              </div>
-            </Card>
-          </div>
-        </Layout.Section>
-
-        {/* Bulk Actions */}
-        <Layout.Section>
           <Card>
-            <div className="p-4">
-              <InlineStack gap="300" align="space-between">
-                <Text variant="headingMd" as="h3">Bulk Actions</Text>
-                <ButtonGroup>
-                  <Button
-                    icon={<RefreshCw className="w-4 h-4" />}
-                    loading={republishStaleMutation.isPending}
-                    onClick={() => republishStaleMutation.mutate()}
-                  >
-                    Republish Stale
-                  </Button>
-                  <Button
-                    icon={<TrendingUp className="w-4 h-4" />}
-                    loading={applyPriceDropsMutation.isPending}
-                    onClick={() => applyPriceDropsMutation.mutate()}
-                  >
-                    Apply Price Drops
-                  </Button>
-                </ButtonGroup>
+            <BlockStack gap="300">
+              <InlineStack align="space-between" gap="300">
+                <BlockStack gap="100">
+                  <Text variant="headingLg" as="h2">Catalog snapshot</Text>
+                  <Text variant="bodySm" tone="subdued" as="p">Real-time status for the current page of products.</Text>
+                </BlockStack>
+                <InlineStack gap="400">
+                  <BlockStack gap="100" inlineAlign="center">
+                    <Text variant="headingMd" as="p">{stats.active}</Text>
+                    <Text variant="bodySm" tone="subdued" as="p">Active</Text>
+                  </BlockStack>
+                  <BlockStack gap="100" inlineAlign="center">
+                    <Text variant="headingMd" as="p">{stats.missing}</Text>
+                    <Text variant="bodySm" tone="subdued" as="p">Missing</Text>
+                  </BlockStack>
+                  <BlockStack gap="100" inlineAlign="center">
+                    <Text variant="headingMd" as="p">{stats.errorCount}</Text>
+                    <Text variant="bodySm" tone="subdued" as="p">Errors</Text>
+                  </BlockStack>
+                </InlineStack>
               </InlineStack>
-            </div>
+            </BlockStack>
           </Card>
         </Layout.Section>
 
-        {error && (
-          <Layout.Section>
-            <Banner tone="critical" title="Unable to load listings">
-              <p>{error}</p>
-            </Banner>
-          </Layout.Section>
-        )}
-
-        {/* Main Table */}
         <Layout.Section>
           <Card>
-            <div style={{ padding: '1rem' }}>
-              {/* Search */}
-              <div style={{ marginBottom: '1rem' }}>
+            <BlockStack gap="300">
+              <InlineStack gap="300" align="space-between">
                 <TextField
                   label=""
-                  placeholder="Search listings by title, SKU, or eBay ID..."
+                  placeholder="Search by title, SKU, or eBay listing ID"
                   value={searchValue}
                   onChange={setSearchValue}
                   prefix={<Search className="w-4 h-4" />}
@@ -634,191 +570,97 @@ const Listings: React.FC = () => {
                   onClearButtonClick={() => setSearchValue('')}
                   autoComplete="off"
                 />
-              </div>
-              
-              {/* Status Filter */}
-              <div style={{ marginBottom: '1rem' }}>
-                <InlineStack gap="200">
-                  <Button
-                    pressed={selectedStatus.length === 0}
-                    onClick={() => setSelectedStatus([])}
-                  >
-                    All
-                  </Button>
-                  <Button
-                    pressed={selectedStatus.includes('active')}
-                    onClick={() => setSelectedStatus(['active', 'synced'])}
-                  >
-                    Active
-                  </Button>
-                  <Button
-                    pressed={selectedStatus.includes('pending')}
-                    onClick={() => setSelectedStatus(['pending'])}
-                  >
-                    Pending
-                  </Button>
-                  <Button
-                    pressed={selectedStatus.includes('stale')}
-                    onClick={() => setSelectedStatus(['stale'])}
-                  >
-                    Stale
-                  </Button>
-                  <Button
-                    pressed={selectedStatus.includes('error')}
-                    onClick={() => setSelectedStatus(['error'])}
-                  >
-                    Errors
-                  </Button>
+                <InlineStack gap="200" wrap>
+                  <Button pressed={statusFilter === 'all'} onClick={() => setStatusFilter('all')}>All</Button>
+                  <Button pressed={statusFilter === 'active'} onClick={() => setStatusFilter('active')}>Active</Button>
+                  <Button pressed={statusFilter === 'missing'} onClick={() => setStatusFilter('missing')}>Missing</Button>
+                  <Button pressed={statusFilter === 'error'} onClick={() => setStatusFilter('error')}>Errors</Button>
+                  <Button pressed={statusFilter === 'inactive'} onClick={() => setStatusFilter('inactive')}>Inactive</Button>
+                  <Button pressed={statusFilter === 'pending'} onClick={() => setStatusFilter('pending')}>Pending</Button>
                 </InlineStack>
-              </div>
-            </div>
+              </InlineStack>
 
-            {loading ? (
-              <div className="text-center py-8">
-                <Spinner accessibilityLabel="Loading listings" size="large" />
-              </div>
-            ) : (
-              <IndexTable
-                resourceName={{ singular: 'listing', plural: 'listings' }}
-                itemCount={listings.length}
-                selectedItemsCount={selectedItems.length}
-                onSelectionChange={(selectionType, toggleType, selection) => {
-                  if (selectionType === 'all') {
-                    setSelectedItems(toggleType ? listings.map(l => String(l.id)) : []);
-                  } else if (selectionType === 'page') {
-                    setSelectedItems(toggleType ? listings.map(l => String(l.id)) : []);
-                  } else if (selectionType === 'single' && typeof selection === 'string') {
-                    setSelectedItems(prev => 
-                      prev.includes(selection) 
-                        ? prev.filter(id => id !== selection)
-                        : [...prev, selection]
-                    );
-                  }
-                }}
-                headings={headings}
-                promotedBulkActions={promotePrimaryActions}
-                selectable
-              >
-                {rowMarkup}
-              </IndexTable>
-            )}
+              {selectedItems.length > 0 && (
+                <Card padding="200">
+                  <InlineStack align="space-between" gap="300">
+                    <Text variant="bodyMd" as="p">{selectedItems.length} selected</Text>
+                    <ButtonGroup>
+                      <Button
+                        icon={<RefreshCw className="w-4 h-4" />}
+                        onClick={() => syncProducts.mutate(selectedItems)}
+                        loading={syncProducts.isPending}
+                      >
+                        Bulk sync
+                      </Button>
+                      <Button
+                        icon={<RotateCw className="w-4 h-4" />}
+                        onClick={() => bulkRelistMutation.mutate(selectedItems)}
+                        loading={bulkRelistMutation.isPending}
+                      >
+                        Bulk relist
+                      </Button>
+                      <Button
+                        icon={<XCircle className="w-4 h-4" />}
+                        tone="critical"
+                        onClick={() => bulkEndMutation.mutate(selectedItems)}
+                        loading={bulkEndMutation.isPending}
+                      >
+                        Bulk end
+                      </Button>
+                    </ButtonGroup>
+                  </InlineStack>
+                </Card>
+              )}
+
+              {error && (
+                <Banner tone="critical" title="Unable to load listings">
+                  <p>{error instanceof Error ? error.message : 'Something went wrong.'}</p>
+                </Banner>
+              )}
+
+              <Divider />
+
+              {isLoading ? (
+                <div style={{ textAlign: 'center', padding: '2rem' }}>
+                  <Spinner accessibilityLabel="Loading listings" size="large" />
+                </div>
+              ) : (
+                <IndexTable
+                  resourceName={{ singular: 'listing', plural: 'listings' }}
+                  itemCount={pageListings.length}
+                  headings={[
+                    {
+                      id: 'select',
+                      title: (
+                        <Checkbox
+                          label=""
+                          checked={allSelectedOnPage}
+                          onChange={(value) => toggleSelectAll(Boolean(value))}
+                        />
+                      ),
+                    },
+                    { title: 'Product' },
+                    { title: 'eBay listing' },
+                    { title: 'Status' },
+                    { title: 'Price' },
+                    { title: 'Last updated' },
+                    { title: 'Quick actions' },
+                  ]}
+                >
+                  {rowMarkup}
+                </IndexTable>
+              )}
+            </BlockStack>
           </Card>
         </Layout.Section>
 
         <Layout.Section>
-          {pagination}
+          <InlineStack align="center">{pagination}</InlineStack>
         </Layout.Section>
       </Layout>
-
-      {/* Link Products Modal */}
-      <Modal
-        open={showLinkModal}
-        onClose={() => setShowLinkModal(false)}
-        title="Link Shopify Product to eBay Listing"
-        primaryAction={{
-          content: 'Link Products',
-          onAction: () => linkProductsMutation.mutate({
-            shopifyProductId: linkModalData.shopifyId,
-            ebayItemId: linkModalData.ebayId,
-          }),
-          loading: linkProductsMutation.isPending,
-        }}
-        secondaryActions={[{
-          content: 'Cancel',
-          onAction: () => setShowLinkModal(false),
-        }]}
-      >
-        <Modal.Section>
-          <BlockStack gap="400">
-            <TextField
-              label="Shopify Product ID"
-              value={linkModalData.shopifyId}
-              onChange={(value) => setLinkModalData(prev => ({ ...prev, shopifyId: value }))}
-              autoComplete="off"
-            />
-            <TextField
-              label="eBay Item ID"
-              value={linkModalData.ebayId}
-              onChange={(value) => setLinkModalData(prev => ({ ...prev, ebayId: value }))}
-              autoComplete="off"
-            />
-          </BlockStack>
-        </Modal.Section>
-      </Modal>
-
-      {/* Health Report Modal */}
-      <Modal
-        open={showHealthModal}
-        onClose={() => setShowHealthModal(false)}
-        title="Listing Health Report"
-      >
-        <Modal.Section>
-          {Array.isArray(healthData) && healthData.length > 0 ? (
-            <div className="space-y-4">
-              {healthData.slice(0, 10).map((health) => (
-                <Card key={health.listingId}>
-                  <div className="p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <Text variant="bodyMd" fontWeight="semibold" as="span">
-                        Listing: {health.listingId}
-                      </Text>
-                      <div className="flex items-center gap-2">
-                        <div 
-                          className={`w-3 h-3 rounded-full ${
-                            health.score >= 80 ? 'bg-green-500' :
-                            health.score >= 60 ? 'bg-yellow-500' : 'bg-red-500'
-                          }`} 
-                        />
-                        <Text variant="bodySm" as="span">
-                          Score: {health.score}/100
-                        </Text>
-                      </div>
-                    </div>
-                    
-                    {health.issues.length > 0 && (
-                      <div className="mb-2">
-                        <Text variant="bodySm" fontWeight="semibold" as="p">Issues:</Text>
-                        <ul className="list-disc list-inside text-sm text-red-600">
-                          {health.issues.map((issue, idx) => (
-                            <li key={idx}>{issue}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    
-                    {health.recommendations.length > 0 && (
-                      <div>
-                        <Text variant="bodySm" fontWeight="semibold" as="p">Recommendations:</Text>
-                        <ul className="list-disc list-inside text-sm text-blue-600">
-                          {health.recommendations.map((rec, idx) => (
-                            <li key={idx}>{rec}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                </Card>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <Text variant="bodyLg" tone="subdued" as="p">
-                No health data available
-              </Text>
-            </div>
-          )}
-        </Modal.Section>
-      </Modal>
-
-      {/* Toast */}
-      {toastMessage && (
-        <Toast
-          content={toastMessage}
-          onDismiss={() => setToastMessage(null)}
-        />
-      )}
     </Page>
   );
 };
 
+export { ListingDetail };
 export default Listings;

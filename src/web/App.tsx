@@ -13,7 +13,7 @@ import {
   Menu
 } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
-import Listings from './pages/Listings';
+import Listings, { ListingDetail } from './pages/Listings';
 import Orders from './pages/Orders';
 import Settings from './pages/Settings';
 import Analytics from './pages/Analytics';
@@ -165,6 +165,7 @@ const AppFrame: React.FC = () => {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/listings" element={<Listings />} />
+        <Route path="/listings/:id" element={<ListingDetail />} />
         <Route path="/orders" element={<Orders />} />
         <Route path="/mappings" element={<Mappings />} />
         <Route path="/settings" element={<Settings />} />
