@@ -1,12 +1,26 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 
+// Chat message interface
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+  commandResult?: any;
+  error?: string;
+}
+
 // Global app state
 interface AppStore {
   // UI State
   sidebarOpen: boolean;
   chatOpen: boolean;
   syncStatus: 'idle' | 'syncing' | 'error';
+  
+  // Chat State
+  chatMessages: ChatMessage[];
+  chatLoading: boolean;
   
   // Sync State  
   activeSyncOperations: string[];
@@ -29,6 +43,11 @@ interface AppStore {
   addNotification: (notification: Omit<Notification, 'id' | 'timestamp'>) => void;
   removeNotification: (id: string) => void;
   clearNotifications: () => void;
+  
+  // Chat Actions
+  addChatMessage: (message: Omit<ChatMessage, 'id'>) => void;
+  setChatLoading: (loading: boolean) => void;
+  clearChatHistory: () => void;
 }
 
 interface Notification {
@@ -40,12 +59,20 @@ interface Notification {
   autoClose?: number; // milliseconds
 }
 
-export const useAppStore = create<AppStore>()(
-  subscribeWithSelector((set, get) => ({
+export const useAppStore = create<AppStore>()(subscribeWithSelector((set) => ({
     // Initial state
     sidebarOpen: true,
     chatOpen: false,
     syncStatus: 'idle',
+    chatMessages: [
+      {
+        id: 'welcome',
+        role: 'assistant',
+        content: 'Hi! I\'m your eBay Sync assistant. I can help you sync products, check status, manage orders, and much more. Try commands like:\n\n• "sync all products"\n• "show status"\n• "check stale listings"\n• "sync orders"\n• "apply price drops"',
+        timestamp: new Date(),
+      }
+    ],
+    chatLoading: false,
     activeSyncOperations: [],
     lastSyncTime: null,
     shopifyConnected: false,
@@ -102,19 +129,29 @@ export const useAppStore = create<AppStore>()(
       })),
     
     clearNotifications: () => set({ notifications: [] }),
-  }))
-);
-
-// Auto-remove notifications with autoClose
-useAppStore.subscribe(
-  (state) => state.notifications,
-  (notifications) => {
-    notifications.forEach((notification) => {
-      if (notification.autoClose) {
-        setTimeout(() => {
-          useAppStore.getState().removeNotification(notification.id);
-        }, notification.autoClose);
-      }
-    });
-  }
-);
+    
+    // Chat Actions
+    addChatMessage: (message) =>
+      set((state) => ({
+        chatMessages: [
+          ...state.chatMessages,
+          {
+            ...message,
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+          },
+        ],
+      })),
+    
+    setChatLoading: (loading) => set({ chatLoading: loading }),
+    
+    clearChatHistory: () => set({ 
+      chatMessages: [
+        {
+          id: 'welcome',
+          role: 'assistant',
+          content: 'Chat history cleared. How can I help you?',
+          timestamp: new Date(),
+        }
+      ]
+    }),
+  })));

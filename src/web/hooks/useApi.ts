@@ -315,3 +315,12 @@ export const useAuthStatus = () => {
     staleTime: 10000,
   });
 };
+
+// Generic useApi hook for compatibility with existing pages
+export const useApi = <T = any>(endpoint: string) => {
+  return useQuery({
+    queryKey: ['api', endpoint],
+    queryFn: () => api.get<T>(endpoint),
+    staleTime: 30000,
+  });
+};

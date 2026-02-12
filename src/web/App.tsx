@@ -16,7 +16,7 @@ import Dashboard from './pages/Dashboard';
 import Listings from './pages/Listings';
 import Orders from './pages/Orders';
 import Settings from './pages/Settings';
-import Logs from './pages/Logs';
+import Analytics from './pages/Analytics';
 import Mappings from './pages/Mappings';
 import ChatWidget from './components/ChatWidget';
 import { useAppStore } from './store';
@@ -168,7 +168,7 @@ const AppFrame: React.FC = () => {
         <Route path="/orders" element={<Orders />} />
         <Route path="/mappings" element={<Mappings />} />
         <Route path="/settings" element={<Settings />} />
-        <Route path="/logs" element={<Logs />} />
+        <Route path="/logs" element={<Analytics />} />
       </Routes>
       
       <ChatWidget />
