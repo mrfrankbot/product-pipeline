@@ -12,6 +12,7 @@ import ebayNotificationRoutes from './routes/ebay-notifications.js';
 import shopifyWebhookRoutes from './routes/shopify-webhooks.js';
 import shopifyAuthRoutes from './routes/shopify-auth.js';
 import ebayAuthRoutes from './routes/ebay-auth.js';
+import chatRoutes from './routes/chat.js';
 import { apiKeyAuth, rateLimit } from './middleware/auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -76,6 +77,7 @@ app.use(ebayNotificationRoutes);
 app.use(shopifyWebhookRoutes);
 app.use(shopifyAuthRoutes);
 app.use(ebayAuthRoutes);
+app.use(chatRoutes);
 
 // Serve static frontend (built Vite app)
 const webDistPath = path.join(__dirname, '..', '..', 'dist', 'web');

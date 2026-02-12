@@ -368,6 +368,21 @@ async function handleProductCreate(body: any, topic: string): Promise<void> {
     info(`[Webhook] Auto-list disabled — product ${productId} logged only`);
     markProcessed(db, topic);
   }
+
+  // Fire auto-listing pipeline in background (AI description + category)
+  // This runs regardless of auto_list setting — it just pre-populates overrides
+  import('../../sync/auto-listing-pipeline.js')
+    .then(({ autoListProduct }) => autoListProduct(productId))
+    .then((result) => {
+      if (result.success) {
+        info(`[Webhook] Auto-listing pipeline completed for ${productId}: category=${result.categoryId}`);
+      } else {
+        warn(`[Webhook] Auto-listing pipeline failed for ${productId}: ${result.error}`);
+      }
+    })
+    .catch((err) => {
+      logError(`[Webhook] Auto-listing pipeline error for ${productId}: ${err}`);
+    });
 }
 
 // ---------------------------------------------------------------------------

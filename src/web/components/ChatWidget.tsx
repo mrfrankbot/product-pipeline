@@ -192,7 +192,7 @@ const ChatWidget: React.FC = () => {
 
     try {
       if (command) {
-        // Execute API command
+        // Fast-path: execute recognized API command directly
         const result = await executeApiCall(command.endpoint, command.method, command.data);
         const formattedResponse = formatApiResponse(command.action, result);
         
@@ -203,13 +203,32 @@ const ChatWidget: React.FC = () => {
           commandResult: result,
         });
       } else {
-        // Handle non-command messages with helpful suggestions
-        const response = generateHelpfulResponse(inputValue);
-        addChatMessage({
-          role: 'assistant',
-          content: response,
-          timestamp: new Date(),
-        });
+        // Send to AI chat backend for natural language processing
+        try {
+          const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: inputValue }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            let content = data.response || 'No response';
+            if (data.actions?.length) {
+              content += '\n\n' + data.actions.map((a: any) =>
+                `${a.success !== false ? '✅' : '❌'} ${a.type}: ${a.detail || ''}`
+              ).join('\n');
+            }
+            addChatMessage({ role: 'assistant', content, timestamp: new Date() });
+          } else {
+            // AI not available, fall back to local help
+            const response = generateHelpfulResponse(inputValue);
+            addChatMessage({ role: 'assistant', content: response, timestamp: new Date() });
+          }
+        } catch {
+          // AI endpoint unreachable, fall back to local help
+          const response = generateHelpfulResponse(inputValue);
+          addChatMessage({ role: 'assistant', content: response, timestamp: new Date() });
+        }
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';

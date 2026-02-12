@@ -1065,4 +1065,125 @@ router.post('/api/listings/promote', async (req: Request, res: Response) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Image Processing (PhotoRoom) Endpoints
+// ---------------------------------------------------------------------------
+
+/** GET /api/images/status — Check if PhotoRoom integration is configured */
+router.get('/api/images/status', (_req: Request, res: Response) => {
+  const apiKey = process.env.PHOTOROOM_API_KEY;
+  res.json({
+    configured: Boolean(apiKey),
+    apiKey: Boolean(apiKey),
+  });
+});
+
+/** POST /api/images/process/:shopifyProductId — Process product images through PhotoRoom */
+router.post('/api/images/process/:shopifyProductId', async (req: Request, res: Response) => {
+  try {
+    const shopifyProductId = Array.isArray(req.params.shopifyProductId)
+      ? req.params.shopifyProductId[0]
+      : req.params.shopifyProductId;
+
+    // Get Shopify token
+    const db = await getRawDb();
+    const tokenRow = db.prepare(
+      `SELECT access_token FROM auth_tokens WHERE platform = 'shopify'`,
+    ).get() as any;
+
+    if (!tokenRow?.access_token) {
+      res.status(400).json({ error: 'No Shopify token. Complete OAuth first.' });
+      return;
+    }
+
+    // Fetch the product from Shopify
+    const productRes = await fetch(
+      `https://usedcameragear.myshopify.com/admin/api/2024-01/products/${shopifyProductId}.json`,
+      { headers: { 'X-Shopify-Access-Token': tokenRow.access_token } },
+    );
+
+    if (!productRes.ok) {
+      const errText = await productRes.text();
+      res.status(500).json({ error: 'Failed to fetch product from Shopify', detail: errText });
+      return;
+    }
+
+    const productData = (await productRes.json()) as any;
+    const product = productData.product;
+
+    if (!product?.images || product.images.length === 0) {
+      res.status(400).json({ error: 'Product has no images to process' });
+      return;
+    }
+
+    info(`[API] Image processing triggered for product ${shopifyProductId} (${product.images.length} images)`);
+
+    // Process images through PhotoRoom
+    const { processProductImages } = await import('../../services/image-processor.js');
+    const processedUrls = await processProductImages(product);
+
+    res.json({
+      ok: true,
+      productId: shopifyProductId,
+      originalCount: product.images.length,
+      processedCount: processedUrls.length,
+      images: processedUrls,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Image processing failed', detail: String(err) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Auto-Listing Pipeline Endpoints
+// ---------------------------------------------------------------------------
+
+/** POST /api/auto-list/batch — AI-generate descriptions + categories for multiple products */
+router.post('/api/auto-list/batch', async (req: Request, res: Response) => {
+  try {
+    const { productIds } = req.body;
+
+    if (!Array.isArray(productIds) || productIds.length === 0) {
+      res.status(400).json({ error: 'productIds array required in request body' });
+      return;
+    }
+
+    info(`[API] Auto-list batch triggered for ${productIds.length} products`);
+
+    const { autoListProduct } = await import('../../sync/auto-listing-pipeline.js');
+    const results: Array<{ productId: string; success: boolean; description?: string; categoryId?: string; error?: string }> = [];
+
+    for (const productId of productIds) {
+      const result = await autoListProduct(String(productId));
+      results.push({ productId: String(productId), ...result });
+    }
+
+    const succeeded = results.filter(r => r.success).length;
+    const failed = results.filter(r => !r.success).length;
+    info(`[API] Auto-list batch complete: ${succeeded} succeeded, ${failed} failed`);
+
+    res.json({ ok: true, total: results.length, succeeded, failed, results });
+  } catch (err) {
+    res.status(500).json({ error: 'Auto-list batch failed', detail: String(err) });
+  }
+});
+
+/** POST /api/auto-list/:shopifyProductId — AI-generate description + category for a product */
+router.post('/api/auto-list/:shopifyProductId', async (req: Request, res: Response) => {
+  try {
+    const shopifyProductId = Array.isArray(req.params.shopifyProductId)
+      ? req.params.shopifyProductId[0]
+      : req.params.shopifyProductId;
+
+    info(`[API] Auto-list triggered for product ${shopifyProductId}`);
+
+    const { autoListProduct } = await import('../../sync/auto-listing-pipeline.js');
+    const result = await autoListProduct(shopifyProductId);
+
+    res.json({ ok: result.success, ...result });
+  } catch (err) {
+    res.status(500).json({ error: 'Auto-list failed', detail: String(err) });
+  }
+});
+
 export default router;
