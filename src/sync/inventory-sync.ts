@@ -33,18 +33,22 @@ export const updateEbayInventory = async (
     
     const currentQuantity = existing.availability.shipToLocationAvailability.quantity;
     
-    if (currentQuantity === quantity) {
+    // Get offers for this SKU to check listing status
+    const offersResult = await getOffersBySku(ebayToken, sku);
+    const offer = offersResult.offers?.[0];
+    const offerStatus = (offer as any)?.status as string | undefined;
+    
+    // If quantity is 0 and offer is still published, we MUST withdraw — don't skip!
+    const needsWithdraw = quantity === 0 && offerStatus === 'PUBLISHED';
+    
+    if (currentQuantity === quantity && !needsWithdraw) {
       return { success: false, error: `Quantity unchanged (${quantity})` };
     }
     
     if (options.dryRun) {
-      info(`[DRY RUN] Would update ${sku}: ${currentQuantity} → ${quantity}`);
+      info(`[DRY RUN] Would update ${sku}: ${currentQuantity} → ${quantity}${needsWithdraw ? ' (+ withdraw offer)' : ''}`);
       return { success: true };
     }
-    
-    // Get offers for this SKU to check listing status
-    const offersResult = await getOffersBySku(ebayToken, sku);
-    const offer = offersResult.offers?.[0];
     
     // *** CRITICAL RULE: Quantity 0 → END the listing ***
     if (quantity === 0) {
