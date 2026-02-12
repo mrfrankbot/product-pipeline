@@ -6,6 +6,8 @@ import {
   getInventoryItem,
   getLocation,
   createOrUpdateLocation,
+  getOffersBySku,
+  deleteOffer,
   type EbayInventoryItem,
   type EbayOffer,
 } from '../ebay/inventory.js';
@@ -267,6 +269,15 @@ const syncProductToEbay = async (
     // Create/update inventory item
     await createOrReplaceInventoryItem(ebayToken, variant.sku, inventoryItem);
     info(`Created eBay inventory item: ${variant.sku}`);
+    
+    // Clean up any orphaned offers from previous failed attempts
+    const existingOffers = await getOffersBySku(ebayToken, variant.sku);
+    if (existingOffers.offers && existingOffers.offers.length > 0) {
+      for (const oldOffer of existingOffers.offers) {
+        info(`Deleting orphaned eBay offer: ${oldOffer.offerId}`);
+        await deleteOffer(ebayToken, oldOffer.offerId!);
+      }
+    }
     
     // Create offer
     const offerResponse = await createOffer(ebayToken, {

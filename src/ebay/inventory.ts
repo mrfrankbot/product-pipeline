@@ -174,6 +174,42 @@ export const updateOffer = async (
 };
 
 /**
+ * Get existing offers for a SKU.
+ * GET /sell/inventory/v1/offer?sku={sku}
+ */
+export const getOffersBySku = async (
+  accessToken: string,
+  sku: string,
+): Promise<{ offers: EbayOffer[]; total: number }> => {
+  try {
+    return await ebayRequest<{ offers: EbayOffer[]; total: number }>({
+      path: `/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}`,
+      accessToken,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('404')) {
+      return { offers: [], total: 0 };
+    }
+    throw err;
+  }
+};
+
+/**
+ * Delete an offer.
+ * DELETE /sell/inventory/v1/offer/{offerId}
+ */
+export const deleteOffer = async (
+  accessToken: string,
+  offerId: string,
+): Promise<void> => {
+  await ebayRequest({
+    method: 'DELETE',
+    path: `/sell/inventory/v1/offer/${offerId}`,
+    accessToken,
+  });
+};
+
+/**
  * Create or update an inventory location on eBay.
  * PUT /sell/inventory/v1/location/{merchantLocationKey}
  */
