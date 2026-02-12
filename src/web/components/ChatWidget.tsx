@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageCircle, Send, X, Bot, User, Zap, Clock } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { MessageCircle, Send, X, Bot, User, Zap, Clock, Navigation } from 'lucide-react';
 import { useAppStore, ChatMessage } from '../store';
 
 // Command parsing patterns
@@ -24,7 +25,7 @@ const commandPatterns = [
   { pattern: /cleanup\s+duplicate\s+orders?/i, action: 'cleanup_orders', method: 'POST', endpoint: '/api/orders/cleanup' },
 ];
 
-// Command suggestions
+// Command suggestions (for autocomplete)
 const suggestions = [
   'sync all products',
   'sync orders',
@@ -38,6 +39,37 @@ const suggestions = [
   'show settings',
 ];
 
+// Quick action pills for the welcome screen
+const welcomeQuickActions = [
+  { label: '📊 Show status', message: 'show status' },
+  { label: '📦 List products', message: 'list products' },
+  { label: '🔄 Sync all products', message: 'sync all products' },
+  { label: '📋 Show orders', message: 'show orders' },
+  { label: '⚙️ Check mappings', message: 'show mappings' },
+  { label: '🏥 Listing health check', message: 'show listing health' },
+];
+
+// Page-specific contextual quick actions
+const pageQuickActions: Record<string, Array<{ label: string; message: string }>> = {
+  '/': [
+    { label: '📊 Full status check', message: 'show status' },
+    { label: '🏥 Listing health', message: 'show listing health' },
+  ],
+  '/listings': [
+    { label: '🔄 Sync all', message: 'sync all products' },
+    { label: '📋 Show stale listings', message: 'show stale listings' },
+    { label: '💰 Apply price drops', message: 'apply price drops' },
+  ],
+  '/orders': [
+    { label: '🔄 Sync recent orders', message: 'sync orders' },
+    { label: '📋 Show orders', message: 'show orders' },
+  ],
+  '/mappings': [
+    { label: '⚙️ Show current mappings', message: 'show mappings' },
+    { label: '🔧 Check mappings', message: 'check mappings' },
+  ],
+};
+
 const ChatWidget: React.FC = () => {
   const { 
     chatOpen, 
@@ -48,9 +80,13 @@ const ChatWidget: React.FC = () => {
     setChatLoading 
   } = useAppStore();
   
+  const location = useLocation();
+  const navigate = useNavigate();
+  
   const [inputValue, setInputValue] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [filteredSuggestions, setFilteredSuggestions] = useState<string[]>([]);
+  const [navToast, setNavToast] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -68,6 +104,17 @@ const ChatWidget: React.FC = () => {
     }
   }, [chatOpen]);
 
+  // Auto-dismiss navigation toast
+  useEffect(() => {
+    if (navToast) {
+      const timer = setTimeout(() => setNavToast(null), 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [navToast]);
+
+  // Get contextual quick actions for the current page
+  const currentPageActions = pageQuickActions[location.pathname] || pageQuickActions['/'] || [];
+
   const parseCommand = (message: string) => {
     for (const pattern of commandPatterns) {
       if (pattern.pattern.test(message)) {
@@ -77,34 +124,33 @@ const ChatWidget: React.FC = () => {
     return null;
   };
 
-  const executeApiCall = async (endpoint: string, method: string, data?: any) => {
-    try {
-      const options: RequestInit = {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      };
+  const executeApiCall = async (endpoint: string, method: string, data?: unknown) => {
+    const options: RequestInit = {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    };
 
-      if (data && method !== 'GET') {
-        options.body = JSON.stringify(data);
-      }
-
-      const response = await fetch(endpoint, options);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      throw error;
+    if (data && method !== 'GET') {
+      options.body = JSON.stringify(data);
     }
+
+    const response = await fetch(endpoint, options);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    return await response.json();
   };
 
-  const formatApiResponse = (action: string, data: any, error?: string) => {
+  const formatApiResponse = (action: string, data: unknown, error?: string) => {
     if (error) {
       return `❌ **Error**: ${error}`;
     }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const d = data as any;
 
     switch (action) {
       case 'sync_products':
@@ -117,8 +163,8 @@ const ChatWidget: React.FC = () => {
         return `✅ **Inventory sync completed!**\n\nUpdated stock levels between Shopify and eBay.`;
         
       case 'show_status':
-        if (data.status) {
-          const { products, orders, shopifyConnected, ebayConnected, revenue } = data;
+        if (d?.status) {
+          const { products, orders, shopifyConnected, ebayConnected, revenue } = d;
           return `📊 **System Status**\n\n` +
             `**Connections:**\n` +
             `• Shopify: ${shopifyConnected ? '✅ Connected' : '❌ Disconnected'}\n` +
@@ -130,11 +176,11 @@ const ChatWidget: React.FC = () => {
         break;
         
       case 'show_stale_listings':
-        if (data.data && Array.isArray(data.data)) {
-          const staleCount = data.data.length;
+        if (d?.data && Array.isArray(d.data)) {
+          const staleCount = d.data.length;
           return `📋 **Stale Listings Found: ${staleCount}**\n\n` +
             (staleCount > 0 
-              ? data.data.slice(0, 5).map((item: any) => 
+              ? d.data.slice(0, 5).map((item: { title: string; lastSynced: string }) => 
                   `• ${item.title} (Last updated: ${new Date(item.lastSynced).toLocaleDateString()})`
                 ).join('\n') +
                 (staleCount > 5 ? `\n\n...and ${staleCount - 5} more` : '')
@@ -143,28 +189,22 @@ const ChatWidget: React.FC = () => {
         break;
         
       case 'show_listing_health':
-        return `🏥 **Listing Health Report**\n\n` +
-          `Analyzing your listings for optimization opportunities...`;
+        return `🏥 **Listing Health Report**\n\nAnalyzing your listings for optimization opportunities...`;
           
       case 'check_inventory':
-        return `📦 **Inventory Status**\n\n` +
-          `Checking stock levels across platforms...`;
+        return `📦 **Inventory Status**\n\nChecking stock levels across platforms...`;
           
       case 'republish_stale':
-        return `🔄 **Republishing stale listings...**\n\n` +
-          `This will refresh outdated listings and improve visibility.`;
+        return `🔄 **Republishing stale listings...**\n\nThis will refresh outdated listings and improve visibility.`;
           
       case 'apply_price_drops':
-        return `💰 **Applying price drops...**\n\n` +
-          `Updating pricing strategy based on current market conditions.`;
+        return `💰 **Applying price drops...**\n\nUpdating pricing strategy based on current market conditions.`;
           
       case 'cleanup_orders':
-        return `🧹 **Cleaning up duplicate orders...**\n\n` +
-          `Removing duplicate entries and consolidating order data.`;
+        return `🧹 **Cleaning up duplicate orders...**\n\nRemoving duplicate entries and consolidating order data.`;
           
       case 'show_settings':
-        return `⚙️ **Settings Overview**\n\n` +
-          `Current configuration and sync preferences are displayed in the Settings page.`;
+        return `⚙️ **Settings Overview**\n\nCurrent configuration and sync preferences are displayed in the Settings page.`;
           
       default:
         return `✅ **Command executed successfully!**\n\n` +
@@ -174,18 +214,32 @@ const ChatWidget: React.FC = () => {
     return `✅ **Command completed**`;
   };
 
-  const handleSendMessage = async () => {
-    if (!inputValue.trim()) return;
+  const handleNavigate = (path: string) => {
+    const pageNames: Record<string, string> = {
+      '/': 'Dashboard',
+      '/listings': 'Products',
+      '/orders': 'Orders',
+      '/mappings': 'Mappings',
+      '/logs': 'Analytics',
+      '/settings': 'Settings',
+      '/images': 'Image Processor',
+    };
+    const pageName = pageNames[path] || path;
+    setNavToast(`Navigating to ${pageName}...`);
+    navigate(path);
+  };
 
-    // Add user message
+  const sendMessage = async (messageText: string) => {
+    if (!messageText.trim()) return;
+
     const userMessage: Omit<ChatMessage, 'id'> = {
       role: 'user',
-      content: inputValue,
+      content: messageText,
       timestamp: new Date(),
     };
 
     addChatMessage(userMessage);
-    const command = parseCommand(inputValue);
+    const command = parseCommand(messageText);
     setInputValue('');
     setShowSuggestions(false);
     setChatLoading(true);
@@ -208,25 +262,30 @@ const ChatWidget: React.FC = () => {
           const res = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: inputValue }),
+            body: JSON.stringify({ message: messageText, currentPage: location.pathname }),
           });
           if (res.ok) {
             const data = await res.json();
             let content = data.response || 'No response';
             if (data.actions?.length) {
-              content += '\n\n' + data.actions.map((a: any) =>
+              content += '\n\n' + data.actions.map((a: { success?: boolean; type: string; detail?: string }) =>
                 `${a.success !== false ? '✅' : '❌'} ${a.type}: ${a.detail || ''}`
               ).join('\n');
             }
             addChatMessage({ role: 'assistant', content, timestamp: new Date() });
+
+            // Handle navigation if the AI requested it
+            if (data.navigate && typeof data.navigate === 'string') {
+              handleNavigate(data.navigate);
+            }
           } else {
             // AI not available, fall back to local help
-            const response = generateHelpfulResponse(inputValue);
+            const response = generateHelpfulResponse(messageText);
             addChatMessage({ role: 'assistant', content: response, timestamp: new Date() });
           }
         } catch {
           // AI endpoint unreachable, fall back to local help
-          const response = generateHelpfulResponse(inputValue);
+          const response = generateHelpfulResponse(messageText);
           addChatMessage({ role: 'assistant', content: response, timestamp: new Date() });
         }
       }
@@ -243,6 +302,14 @@ const ChatWidget: React.FC = () => {
     } finally {
       setChatLoading(false);
     }
+  };
+
+  const handleSendMessage = async () => {
+    await sendMessage(inputValue);
+  };
+
+  const handleQuickAction = async (message: string) => {
+    await sendMessage(message);
   };
 
   const generateHelpfulResponse = (input: string) => {
@@ -305,6 +372,8 @@ const ChatWidget: React.FC = () => {
     }
   };
 
+  // ─── Styles ───────────────────────────────────────────────────────
+
   const bubbleStyle: React.CSSProperties = {
     position: 'fixed',
     bottom: '20px',
@@ -366,7 +435,7 @@ const ChatWidget: React.FC = () => {
   };
 
   const inputContainerStyle: React.CSSProperties = {
-    padding: '16px',
+    padding: '12px 16px 16px',
     borderTop: '1px solid #333',
     backgroundColor: '#2a2a2a',
     borderRadius: '0 0 16px 16px',
@@ -418,6 +487,50 @@ const ChatWidget: React.FC = () => {
     zIndex: 10,
   };
 
+  const pillStyle: React.CSSProperties = {
+    padding: '6px 14px',
+    backgroundColor: '#2a2a2a',
+    color: '#ccc',
+    border: '1px solid #444',
+    borderRadius: '20px',
+    cursor: 'pointer',
+    fontSize: '13px',
+    whiteSpace: 'nowrap',
+    transition: 'all 0.15s ease',
+  };
+
+  const chipStyle: React.CSSProperties = {
+    padding: '4px 10px',
+    backgroundColor: 'transparent',
+    color: '#aaa',
+    border: '1px solid #444',
+    borderRadius: '14px',
+    cursor: 'pointer',
+    fontSize: '12px',
+    whiteSpace: 'nowrap',
+    transition: 'all 0.15s ease',
+  };
+
+  const navToastStyle: React.CSSProperties = {
+    position: 'absolute',
+    top: '60px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    backgroundColor: '#0066cc',
+    color: 'white',
+    padding: '8px 16px',
+    borderRadius: '8px',
+    fontSize: '13px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    zIndex: 20,
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+    animation: 'fadeInOut 2.5s ease',
+  };
+
+  const showWelcome = chatMessages.length === 0;
+
   return (
     <div>
       {/* Chat Panel */}
@@ -444,8 +557,88 @@ const ChatWidget: React.FC = () => {
           </button>
         </div>
 
+        {/* Navigation toast */}
+        {navToast && (
+          <div style={navToastStyle}>
+            <Navigation size={14} />
+            {navToast}
+          </div>
+        )}
+
         {/* Messages */}
         <div style={messagesStyle}>
+          {/* Welcome screen */}
+          {showWelcome && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '8px 0' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '8px',
+                }}
+              >
+                <div
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '50%',
+                    backgroundColor: '#00b341',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    marginTop: '2px',
+                  }}
+                >
+                  <Bot size={14} color="white" />
+                </div>
+                <div
+                  style={{
+                    padding: '12px 16px',
+                    borderRadius: '16px 16px 16px 4px',
+                    backgroundColor: '#333',
+                    color: 'white',
+                    fontSize: '14px',
+                    lineHeight: '1.5',
+                  }}
+                >
+                  <span style={{ fontWeight: '600' }}>Hey! I'm your listing assistant.</span>
+                  <br />
+                  <span style={{ opacity: 0.85 }}>Here's what I can do:</span>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '8px',
+                  paddingLeft: '36px',
+                }}
+              >
+                {welcomeQuickActions.map((qa) => (
+                  <button
+                    key={qa.message}
+                    onClick={() => handleQuickAction(qa.message)}
+                    style={pillStyle}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#00b341';
+                      e.currentTarget.style.borderColor = '#00b341';
+                      e.currentTarget.style.color = 'white';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = '#2a2a2a';
+                      e.currentTarget.style.borderColor = '#444';
+                      e.currentTarget.style.color = '#ccc';
+                    }}
+                  >
+                    {qa.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {chatMessages.map((message) => (
             <div
               key={message.id}
@@ -563,8 +756,38 @@ const ChatWidget: React.FC = () => {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input */}
+        {/* Input area */}
         <div style={inputContainerStyle}>
+          {/* Contextual quick action chips */}
+          {currentPageActions.length > 0 && !chatLoading && (
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '6px',
+                marginBottom: '10px',
+              }}
+            >
+              {currentPageActions.map((qa) => (
+                <button
+                  key={qa.message}
+                  onClick={() => handleQuickAction(qa.message)}
+                  style={chipStyle}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#444';
+                    e.currentTarget.style.color = 'white';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.color = '#aaa';
+                  }}
+                >
+                  {qa.label}
+                </button>
+              ))}
+            </div>
+          )}
+
           {showSuggestions && (
             <div style={suggestionsStyle}>
               {filteredSuggestions.slice(0, 5).map((suggestion, index) => (
@@ -602,7 +825,7 @@ const ChatWidget: React.FC = () => {
               value={inputValue}
               onChange={handleInputChange}
               onKeyPress={handleKeyPress}
-              placeholder="Type a command like 'sync all products' or 'show status'..."
+              placeholder="Type a command or ask a question..."
               style={inputStyle}
             />
             <button
@@ -640,13 +863,19 @@ const ChatWidget: React.FC = () => {
         )}
       </button>
 
-      {/* Add pulse animation styles */}
+      {/* Animations */}
       <style>
         {`
           @keyframes pulse {
             0% { opacity: 1; transform: scale(1); }
             50% { opacity: 0.7; transform: scale(1.1); }
             100% { opacity: 1; transform: scale(1); }
+          }
+          @keyframes fadeInOut {
+            0% { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+            15% { opacity: 1; transform: translateX(-50%) translateY(0); }
+            85% { opacity: 1; transform: translateX(-50%) translateY(0); }
+            100% { opacity: 0; transform: translateX(-50%) translateY(-8px); }
           }
         `}
       </style>

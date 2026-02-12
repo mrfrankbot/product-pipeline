@@ -12,12 +12,36 @@ let containerId: string | null = null;
 let previousResponseId: string | null = null;
 
 // ---------------------------------------------------------------------------
+// Page context helper
+// ---------------------------------------------------------------------------
+const PAGE_CONTEXT = `Available pages: / (Dashboard), /listings (Products), /listings/:id (Product Detail), /orders (Orders), /mappings (Mappings), /logs (Analytics), /settings (Settings), /images (Image Processor)`;
+
+function buildPageAwareBlock(currentPage?: string): string {
+  if (!currentPage) return '';
+  return `\nThe user is currently viewing: ${currentPage}\n${PAGE_CONTEXT}\n`;
+}
+
+// ---------------------------------------------------------------------------
+// Navigation instruction block (shared across both prompts)
+// ---------------------------------------------------------------------------
+const NAVIGATION_INSTRUCTIONS = `
+## Navigation
+You can navigate the user to a different page by including a "navigate" field in your response.
+When the user asks to see a specific page (e.g. "show me the orders", "go to settings", "take me to products"),
+respond with helpful text AND include a navigate field with the target path.
+Valid paths: /, /listings, /orders, /mappings, /logs, /settings, /images
+Example: if the user says "show me the orders", respond with navigate: "/orders"
+You can also proactively suggest navigation when it makes sense based on the user's current page.
+`;
+
+// ---------------------------------------------------------------------------
 // System prompt for the Responses API + shell tool agent
 // ---------------------------------------------------------------------------
-const SHELL_SYSTEM_PROMPT = `You are an eBay Sync Assistant for a Shopify ↔ eBay integration app used by a camera store (UsedCameraGear.com / Pictureline).
+function buildShellSystemPrompt(currentPage?: string): string {
+  return `You are an eBay Sync Assistant for a Shopify ↔ eBay integration app used by a camera store (UsedCameraGear.com / Pictureline).
 
 You have access to a shell environment. You can run commands to help the user manage their product listings, orders, and sync operations.
-
+${buildPageAwareBlock(currentPage)}
 ## Internal API (running at http://localhost:${PORT})
 You can use curl to hit these endpoints:
 - GET  /api/status              — app sync status
@@ -31,13 +55,18 @@ You can use curl to hit these endpoints:
 - POST /api/sync/products       — sync products (body: { "productIds": ["id1","id2"] })
 - GET  /api/orders              — list orders
 - GET  /api/settings            — show app settings
-
+${NAVIGATION_INSTRUCTIONS}
 ## Rules
 - NEVER sync orders without a date filter. Do not call POST /api/sync/trigger without an explicit date range.
 - NEVER delete production data.
 - Be concise and friendly in your responses.
 - When you run commands, summarize the results in plain language for the user.
 - If something fails, explain the error clearly and suggest next steps.
+- Reference what page the user is currently on when relevant — e.g. "I see you're on the Products page."
+
+## Response format
+When you want the frontend to navigate the user, include the text "NAVIGATE:/path" on its own line at the end of your response.
+For example: NAVIGATE:/orders
 
 ## Available tools in the shell
 - curl for API calls
@@ -45,14 +74,16 @@ You can use curl to hit these endpoints:
 - sqlite3 for direct database queries (the app uses SQLite via better-sqlite3)
 - Standard Unix tools (jq, grep, awk, etc.)
 `;
+}
 
 // ---------------------------------------------------------------------------
 // Fallback system prompt for Chat Completions (gpt-4o-mini)
 // ---------------------------------------------------------------------------
-const FALLBACK_SYSTEM_PROMPT = `You are an eBay Sync Assistant for a Shopify ↔ eBay integration app used by a camera store. You help users manage their product listings, orders, and sync operations.
+function buildFallbackSystemPrompt(currentPage?: string): string {
+  return `You are an eBay Sync Assistant for a Shopify ↔ eBay integration app used by a camera store. You help users manage their product listings, orders, and sync operations.
 
 You have access to internal API endpoints. When the user asks you to do something, determine which API to call, call it, and report the results in a friendly way.
-
+${buildPageAwareBlock(currentPage)}
 Available capabilities:
 - "sync products" → POST /api/sync/products (requires { productIds: string[] } body — if user doesn't specify, explain this)
 - "show status" / "check status" → GET /api/status
@@ -66,18 +97,22 @@ Available capabilities:
 - "show listing health" → GET /api/listings/health
 - "republish stale listings" → POST /api/listings/republish-stale
 - "apply price drops" → POST /api/listings/apply-price-drops
-
+${NAVIGATION_INSTRUCTIONS}
 Respond with a JSON object (and ONLY a JSON object, no markdown fences):
 {
   "intent": "the_action_name or chat",
   "api_calls": [
     { "method": "GET|POST|PUT", "path": "/api/...", "body": null }
   ],
-  "message": "A friendly message to show the user (you'll fill in results after I provide them)"
+  "message": "A friendly message to show the user (you'll fill in results after I provide them)",
+  "navigate": "/optional-path-to-navigate-user-to"
 }
 
 If the user is just chatting or asking for help, set intent to "chat" and api_calls to an empty array.
-If you need to call an API, include it in api_calls. I will execute the calls and send the results back for you to format.`;
+If you need to call an API, include it in api_calls. I will execute the calls and send the results back for you to format.
+If the user wants to go to a page or see something that maps to a page, include "navigate" with the path.
+Reference the user's current page when it's relevant.`;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -124,6 +159,7 @@ interface AiParsedResponse {
   intent: string;
   api_calls: ApiCall[];
   message: string;
+  navigate?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -158,19 +194,34 @@ async function getOrCreateContainer(apiKey: string): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
+// Extract NAVIGATE:/path from AI text
+// ---------------------------------------------------------------------------
+function extractNavigate(text: string): { cleanText: string; navigate?: string } {
+  const match = text.match(/\nNAVIGATE:(\/[a-z/:-]*)\s*$/i);
+  if (match) {
+    return {
+      cleanText: text.replace(match[0], '').trimEnd(),
+      navigate: match[1],
+    };
+  }
+  return { cleanText: text };
+}
+
+// ---------------------------------------------------------------------------
 // Responses API call (GPT-5.2 + shell tool)
 // ---------------------------------------------------------------------------
 async function callResponsesApi(
   userMessage: string,
   apiKey: string,
-): Promise<{ text: string; actions: Array<{ type: string; detail: string }> }> {
+  currentPage?: string,
+): Promise<{ text: string; actions: Array<{ type: string; detail: string }>; navigate?: string }> {
   const cId = await getOrCreateContainer(apiKey);
 
   // Build input — use previous_response_id for conversational continuity
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const body: Record<string, any> = {
     model: 'gpt-5.2',
-    instructions: SHELL_SYSTEM_PROMPT,
+    instructions: buildShellSystemPrompt(currentPage),
     tools: [
       {
         type: 'shell',
@@ -243,7 +294,10 @@ async function callResponsesApi(
     throw new Error(`Responses API returned error: ${data.error.message}`);
   }
 
-  return { text: finalText, actions };
+  // Extract navigation directive from text
+  const { cleanText, navigate } = extractNavigate(finalText);
+
+  return { text: cleanText, actions, navigate };
 }
 
 // ---------------------------------------------------------------------------
@@ -296,11 +350,12 @@ async function callInternalApi(apiCall: ApiCall): Promise<{ status: number; data
 async function handleFallbackChat(
   message: string,
   apiKey: string,
-): Promise<{ response: string; actions: Array<{ type: string; detail: string }> }> {
+  currentPage?: string,
+): Promise<{ response: string; actions: Array<{ type: string; detail: string }>; navigate?: string }> {
   info('[Chat] Using fallback Chat Completions (gpt-4o-mini)');
 
   const parseMessages = [
-    { role: 'system', content: FALLBACK_SYSTEM_PROMPT },
+    { role: 'system', content: buildFallbackSystemPrompt(currentPage) },
     { role: 'user', content: message },
   ];
 
@@ -317,6 +372,7 @@ async function handleFallbackChat(
 
   const actions: Array<{ type: string; detail: string }> = [];
   const apiResults: Array<{ path: string; status: number; data: unknown }> = [];
+  const navigatePath = parsed.navigate || undefined;
 
   if (parsed.api_calls && parsed.api_calls.length > 0) {
     for (const call of parsed.api_calls) {
@@ -336,7 +392,7 @@ async function handleFallbackChat(
     }
 
     const followUpMessages = [
-      { role: 'system', content: FALLBACK_SYSTEM_PROMPT },
+      { role: 'system', content: buildFallbackSystemPrompt(currentPage) },
       { role: 'user', content: message },
       { role: 'assistant', content: aiRaw },
       {
@@ -347,10 +403,10 @@ async function handleFallbackChat(
 
     const summary = await callChatCompletions(followUpMessages, apiKey);
     info(`[Chat] AI summary: ${summary.substring(0, 200)}`);
-    return { response: summary, actions };
+    return { response: summary, actions, navigate: navigatePath };
   }
 
-  return { response: parsed.message || aiRaw, actions };
+  return { response: parsed.message || aiRaw, actions, navigate: navigatePath };
 }
 
 // ---------------------------------------------------------------------------
@@ -358,14 +414,14 @@ async function handleFallbackChat(
 // ---------------------------------------------------------------------------
 router.post('/api/chat', async (req: Request, res: Response) => {
   try {
-    const { message } = req.body as { message?: string };
+    const { message, currentPage } = req.body as { message?: string; currentPage?: string };
 
     if (!message || typeof message !== 'string' || !message.trim()) {
       res.status(400).json({ error: 'message is required' });
       return;
     }
 
-    info(`[Chat] User message: ${message}`);
+    info(`[Chat] User message: ${message} (page: ${currentPage || 'unknown'})`);
 
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
@@ -379,9 +435,9 @@ router.post('/api/chat', async (req: Request, res: Response) => {
 
     // --- Primary path: Responses API + Shell tool (GPT-5.2) ---
     try {
-      const result = await callResponsesApi(message, apiKey);
+      const result = await callResponsesApi(message, apiKey, currentPage || undefined);
       info(`[Chat] Responses API success — text length: ${result.text.length}, actions: ${result.actions.length}`);
-      res.json({ response: result.text, actions: result.actions });
+      res.json({ response: result.text, actions: result.actions, navigate: result.navigate });
       return;
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -393,7 +449,7 @@ router.post('/api/chat', async (req: Request, res: Response) => {
     }
 
     // --- Fallback: Chat Completions (gpt-4o-mini) ---
-    const fallbackResult = await handleFallbackChat(message, apiKey);
+    const fallbackResult = await handleFallbackChat(message, apiKey, currentPage || undefined);
     res.json(fallbackResult);
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
