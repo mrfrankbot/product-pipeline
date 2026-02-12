@@ -249,3 +249,246 @@
 .Polaris-Frame {
   font-family: var(--p-font-family-sans);
 }
+
+/* ================================================================== */
+/* Pipeline Visualization                                              */
+/* ================================================================== */
+
+/* Stats bar */
+.pipeline-stats-bar {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.pipeline-stat {
+  flex: 1;
+  min-width: 120px;
+  background: white;
+  border-radius: 12px;
+  padding: 20px 24px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.pipeline-stat:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04);
+}
+
+.pipeline-stat-value {
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.pipeline-stat-completed { color: #22c55e; }
+.pipeline-stat-processing { color: #f59e0b; }
+.pipeline-stat-queued { color: #6366f1; }
+.pipeline-stat-failed { color: #ef4444; }
+
+.pipeline-stat-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+}
+
+/* Flow container */
+.pipeline-flow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 24px 0;
+  overflow-x: auto;
+}
+
+/* Stage card */
+.pipeline-stage-card {
+  flex-shrink: 0;
+  animation: fadeInUp 0.5s ease-out both;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.pipeline-glass-card {
+  width: 170px;
+  padding: 24px 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.04),
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  text-align: center;
+  transition: transform 0.25s, box-shadow 0.25s;
+}
+
+.pipeline-glass-card:hover {
+  transform: translateY(-4px);
+  box-shadow:
+    0 12px 36px rgba(0, 0, 0, 0.08),
+    0 2px 4px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.pipeline-stage-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 12px;
+  color: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.pipeline-stage-label {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 4px;
+}
+
+.pipeline-stage-desc {
+  font-size: 0.72rem;
+  color: #6b7280;
+  line-height: 1.3;
+  margin-bottom: 8px;
+}
+
+.pipeline-stage-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(34, 197, 94, 0.1);
+  color: #16a34a;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.pipeline-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+  animation: pulseDot 1.5s ease-in-out infinite;
+}
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.4); }
+}
+
+/* Connector (arrow between stages) */
+.pipeline-connector {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  width: 60px;
+  justify-content: center;
+}
+
+.pipeline-connector-line {
+  position: relative;
+  width: 36px;
+  height: 3px;
+  overflow: visible;
+}
+
+.pipeline-connector-track {
+  position: absolute;
+  inset: 0;
+  background: #e5e7eb;
+  border-radius: 2px;
+}
+
+.pipeline-connector-active .pipeline-connector-track {
+  background: linear-gradient(90deg, #a5b4fc, #818cf8, #a5b4fc);
+  background-size: 200% 100%;
+  animation: shimmerTrack 2s linear infinite;
+}
+
+@keyframes shimmerTrack {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.pipeline-connector-arrow {
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+.pipeline-connector-active ~ .pipeline-connector-arrow {
+  color: #818cf8;
+}
+
+/* Animated dots flowing along connector */
+.pipeline-dot {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #6366f1;
+  top: -1px;
+  animation: flowDot 1.8s ease-in-out infinite;
+  box-shadow: 0 0 6px rgba(99, 102, 241, 0.6);
+}
+
+.pipeline-dot-1 { animation-delay: 0s; }
+.pipeline-dot-2 { animation-delay: 0.6s; }
+.pipeline-dot-3 { animation-delay: 1.2s; }
+
+@keyframes flowDot {
+  0% { left: -4px; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { left: 36px; opacity: 0; }
+}
+
+/* Spinner for processing status */
+.pipeline-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Responsive: stack vertically on small screens */
+@media (max-width: 768px) {
+  .pipeline-flow {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .pipeline-connector {
+    transform: rotate(90deg);
+    width: 40px;
+  }
+
+  .pipeline-stats-bar {
+    flex-direction: column;
+  }
+}
