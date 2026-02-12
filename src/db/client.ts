@@ -105,66 +105,73 @@ const initExtraTables = (sqlite: InstanceType<typeof Database>) => {
 
 const seedDefaultMappings = async (sqlite: InstanceType<typeof Database>) => {
   const insert = sqlite.prepare(`
-    INSERT OR IGNORE INTO attribute_mappings 
+    INSERT INTO attribute_mappings 
     (category, field_name, mapping_type, source_value, target_value, variation_mapping, display_order)
     VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(category, field_name) DO UPDATE SET
+      mapping_type = excluded.mapping_type,
+      source_value = excluded.source_value,
+      target_value = excluded.target_value,
+      variation_mapping = excluded.variation_mapping,
+      display_order = excluded.display_order,
+      updated_at = datetime('now')
   `);
 
-  // Sales attributes
+  // Sales attributes — auto-fill from Shopify where possible
   const salesMappings = [
-    ['sales', 'status', 'edit_in_grid', null, null, null, 1],
-    ['sales', 'sku', 'edit_in_grid', null, null, 'edit_in_grid', 2],
-    ['sales', 'quantity', 'edit_in_grid', null, null, 'edit_in_grid', 3],
-    ['sales', 'price', 'edit_in_grid', null, null, 'edit_in_grid', 4],
-    ['sales', 'recommended_retail_price', 'edit_in_grid', null, null, 'edit_in_grid', 5],
+    ['sales', 'status', 'constant', null, 'active', null, 1],
+    ['sales', 'sku', 'shopify_field', 'variants[0].sku', null, 'sku', 2],
+    ['sales', 'quantity', 'shopify_field', 'variants[0].inventory_quantity', null, 'edit_in_grid', 3],
+    ['sales', 'price', 'shopify_field', 'variants[0].price', null, 'edit_in_grid', 4],
+    ['sales', 'recommended_retail_price', 'shopify_field', 'variants[0].compare_at_price', null, null, 5],
     ['sales', 'inventory_location', 'constant', null, 'all', null, 6],
     ['sales', 'sync_quantity', 'constant', null, 'true', null, 7],
     ['sales', 'sync_price', 'constant', null, 'true', null, 8],
   ];
 
-  // Listing attributes
+  // Listing attributes — auto-fill title, description, UPC from Shopify
   const listingMappings = [
-    ['listing', 'title', 'edit_in_grid', null, null, null, 1],
+    ['listing', 'title', 'shopify_field', 'title', null, null, 1],
     ['listing', 'subtitle', 'edit_in_grid', null, null, null, 2],
-    ['listing', 'description', 'edit_in_grid', null, null, null, 3],
-    ['listing', 'mobile_description', 'edit_in_grid', null, null, null, 4],
+    ['listing', 'description', 'shopify_field', 'body_html', null, null, 3],
+    ['listing', 'mobile_description', 'shopify_field', 'body_html', null, null, 4],
     ['listing', 'primary_category', 'edit_in_grid', null, null, null, 5],
     ['listing', 'secondary_category', 'edit_in_grid', null, null, null, 6],
     ['listing', 'store_primary_category', 'edit_in_grid', null, null, null, 7],
     ['listing', 'store_secondary_category', 'edit_in_grid', null, null, null, 8],
-    ['listing', 'best_offer', 'edit_in_grid', null, null, null, 9],
+    ['listing', 'best_offer', 'constant', null, 'true', null, 9],
     ['listing', 'best_offer_auto_accept', 'edit_in_grid', null, null, null, 10],
     ['listing', 'best_offer_auto_decline', 'edit_in_grid', null, null, null, 11],
     ['listing', 'epid', 'edit_in_grid', null, null, null, 12],
-    ['listing', 'private_listing', 'edit_in_grid', null, null, null, 13],
+    ['listing', 'private_listing', 'constant', null, 'false', null, 13],
     ['listing', 'condition', 'constant', null, 'Used', null, 14],
-    ['listing', 'condition_description', 'formula', '', null, null, 15],
-    ['listing', 'upc', 'shopify_field', 'barcode', null, null, 16],
+    ['listing', 'condition_description', 'edit_in_grid', null, null, null, 15],
+    ['listing', 'upc', 'shopify_field', 'variants[0].barcode', null, null, 16],
     ['listing', 'ean', 'edit_in_grid', null, null, null, 17],
     ['listing', 'isbn', 'edit_in_grid', null, null, null, 18],
-    ['listing', 'vat_percent', 'edit_in_grid', null, null, null, 19],
+    ['listing', 'vat_percent', 'constant', null, '0', null, 19],
   ];
 
-  // Shipping attributes
+  // Shipping attributes — sensible defaults for Pictureline
   const shippingMappings = [
-    ['shipping', 'handling_time', 'edit_in_grid', null, null, null, 1],
-    ['shipping', 'weight', 'edit_in_grid', null, null, null, 2],
+    ['shipping', 'handling_time', 'constant', null, '1', null, 1],
+    ['shipping', 'weight', 'shopify_field', 'variants[0].weight', null, null, 2],
     ['shipping', 'width', 'edit_in_grid', null, null, null, 3],
     ['shipping', 'height', 'edit_in_grid', null, null, null, 4],
     ['shipping', 'length', 'edit_in_grid', null, null, null, 5],
-    ['shipping', 'item_location', 'edit_in_grid', null, null, null, 6],
-    ['shipping', 'item_location_postal_code', 'edit_in_grid', null, null, null, 7],
-    ['shipping', 'item_location_country_code', 'edit_in_grid', null, null, null, 8],
-    ['shipping', 'domestic_cost_type', 'edit_in_grid', null, null, null, 9],
-    ['shipping', 'domestic_shipping_free', 'edit_in_grid', null, null, null, 10],
-    ['shipping', 'global_shipping_program', 'edit_in_grid', null, null, null, 11],
+    ['shipping', 'item_location', 'constant', null, 'Salt Lake City, UT', null, 6],
+    ['shipping', 'item_location_postal_code', 'constant', null, '84101', null, 7],
+    ['shipping', 'item_location_country_code', 'constant', null, 'US', null, 8],
+    ['shipping', 'domestic_cost_type', 'constant', null, 'Flat', null, 9],
+    ['shipping', 'domestic_shipping_free', 'constant', null, 'true', null, 10],
+    ['shipping', 'global_shipping_program', 'constant', null, 'false', null, 11],
   ];
 
-  // Payment attributes
+  // Payment attributes — eBay managed payments (modern default)
   const paymentMappings = [
-    ['payment', 'paypal_accepted', 'edit_in_grid', null, null, null, 1],
-    ['payment', 'immediate_payment', 'edit_in_grid', null, null, null, 2],
-    ['payment', 'paypal_email', 'edit_in_grid', null, null, null, 3],
+    ['payment', 'paypal_accepted', 'constant', null, 'false', null, 1],
+    ['payment', 'immediate_payment', 'constant', null, 'true', null, 2],
+    ['payment', 'paypal_email', 'constant', null, '', null, 3],
   ];
 
   const allMappings = [...salesMappings, ...listingMappings, ...shippingMappings, ...paymentMappings];
