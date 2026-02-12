@@ -493,4 +493,44 @@ router.post('/api/test/create-product', async (req: Request, res: Response) => {
   }
 });
 
+/** POST /api/test/add-image — Add an image to an existing Shopify product */
+router.post('/api/test/add-image', async (req: Request, res: Response) => {
+  try {
+    const db = await getRawDb();
+    const tokenRow = db.prepare(`SELECT access_token FROM auth_tokens WHERE platform = 'shopify'`).get() as any;
+    if (!tokenRow?.access_token) {
+      res.status(400).json({ error: 'No Shopify token' });
+      return;
+    }
+
+    const productId = req.body.productId as string;
+    const imageUrl = req.body.imageUrl as string;
+    if (!productId || !imageUrl) {
+      res.status(400).json({ error: 'productId and imageUrl required' });
+      return;
+    }
+
+    const response = await fetch(`https://usedcameragear.myshopify.com/admin/api/2024-01/products/${productId}/images.json`, {
+      method: 'POST',
+      headers: {
+        'X-Shopify-Access-Token': tokenRow.access_token,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ image: { src: imageUrl } }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      res.status(500).json({ error: 'Failed to add image', detail: errText });
+      return;
+    }
+
+    const data = await response.json() as any;
+    info(`[API] Image added to product ${productId}: ${data.image?.id}`);
+    res.json({ ok: true, image: data.image });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed', detail: String(err) });
+  }
+});
+
 export default router;

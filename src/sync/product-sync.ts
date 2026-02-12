@@ -76,9 +76,11 @@ const mapShopifyProductToEbay = async (
   }
   
   // Build image URLs (eBay wants HTTPS)
-  const imageUrls = shopifyProduct.images
+  // Shopify REST API uses 'src', GraphQL uses 'url'
+  const imageUrls = (shopifyProduct.images || [])
     .slice(0, 12)  // eBay max 12 images
-    .map((img: any) => img.url.replace(/^http:/, 'https:'));
+    .map((img: any) => (img.url || img.src || '').replace(/^http:/, 'https:'))
+    .filter((url: string) => url.length > 0);
 
   // Get condition description
   const conditionDesc = await getConditionDescription(conditionId, shopifyProduct);
@@ -219,6 +221,11 @@ const syncProductToEbay = async (
     
     if (variant.inventoryQuantity <= 0) {
       return { success: false, error: 'No inventory available' };
+    }
+    
+    // eBay requires at least one image
+    if (!product.images || product.images.length === 0) {
+      return { success: false, error: 'Product has no images — eBay requires at least one image' };
     }
     
     if (options.dryRun) {
