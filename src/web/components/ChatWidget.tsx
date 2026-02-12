@@ -301,7 +301,7 @@ const ChatWidget: React.FC = () => {
     alignItems: 'center',
     justifyContent: 'center',
     boxShadow: '0 4px 12px rgba(0, 179, 65, 0.3)',
-    zIndex: 1000,
+    zIndex: 9999,
     transition: 'all 0.3s ease',
     transform: chatOpen ? 'scale(0.9)' : 'scale(1)',
   };
@@ -315,7 +315,7 @@ const ChatWidget: React.FC = () => {
     backgroundColor: '#1a1a1a',
     borderRadius: '16px',
     boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)',
-    zIndex: 999,
+    zIndex: 9998,
     display: 'flex',
     flexDirection: 'column',
     transform: chatOpen ? 'scale(1) translateY(0)' : 'scale(0.8) translateY(20px)',

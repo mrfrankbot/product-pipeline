@@ -247,7 +247,18 @@ const Orders: React.FC = () => {
       if (!response.ok) throw new Error('Failed to fetch orders');
       
       const data = (await response.json()) as OrdersResponse;
-      setOrders(data.data ?? []);
+      // API returns snake_case from SQLite — normalize to camelCase
+      const rawOrders = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+      const normalized = rawOrders.map((o: any) => ({
+        ...o,
+        ebayOrderId: o.ebayOrderId || o.ebay_order_id,
+        shopifyOrderId: o.shopifyOrderId || o.shopify_order_id,
+        shopifyOrderName: o.shopifyOrderName || o.shopify_order_name,
+        syncedAt: o.syncedAt || o.synced_at,
+        createdAt: o.createdAt || o.created_at,
+        updatedAt: o.updatedAt || o.updated_at,
+      }));
+      setOrders(normalized);
       setTotal(data.total ?? 0);
       setStats(data.stats);
     } catch (err) {
@@ -313,7 +324,7 @@ const Orders: React.FC = () => {
         <div style={{ minWidth: '180px' }}>
           <BlockStack gap="100">
             <Text variant="bodyMd" fontWeight="semibold" as="span">
-              {order.shopifyOrderName || `#${order.ebayOrderId}`}
+              {order.shopifyOrderName || (order as any).shopify_order_name || `#${order.ebayOrderId || (order as any).ebay_order_id || 'unknown'}`}
             </Text>
             <Text variant="bodySm" tone="subdued" as="span">
               eBay: {order.ebayOrderId}

@@ -279,10 +279,13 @@ const Listings: React.FC = () => {
       
       const data = (await response.json()) as ListingsResponse;
       
-      // Enhance listings with health data
-      const enhancedListings = data.data.map(listing => {
-        const health = healthData?.find(h => h.listingId === listing.ebayListingId);
-        const stale = staleData?.find(s => s.listingId === listing.ebayListingId);
+      // Enhance listings with health data (defensive — API may return object or array)
+      const healthArr = Array.isArray(healthData) ? healthData : [];
+      const staleArr = Array.isArray(staleData) ? staleData : [];
+      const listingsArr = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+      const enhancedListings = listingsArr.map((listing: any) => {
+        const health = healthArr.find(h => h.listingId === listing.ebayListingId);
+        const stale = staleArr.find(s => s.listingId === listing.ebayListingId);
         
         return {
           ...listing,
@@ -560,7 +563,7 @@ const Listings: React.FC = () => {
                   <AlertTriangle className="w-6 h-6 text-yellow-500" />
                 </div>
                 <Text variant="headingLg" as="h3">
-                  {staleData?.length || listings.filter(l => l.status === 'stale').length || 0}
+                  {(Array.isArray(staleData) ? staleData.length : 0) || listings.filter(l => l.status === 'stale').length || 0}
                 </Text>
                 <Text variant="bodyMd" tone="subdued" as="p">Stale Listings</Text>
               </div>
@@ -750,7 +753,7 @@ const Listings: React.FC = () => {
         title="Listing Health Report"
       >
         <Modal.Section>
-          {healthData && healthData.length > 0 ? (
+          {Array.isArray(healthData) && healthData.length > 0 ? (
             <div className="space-y-4">
               {healthData.slice(0, 10).map((health) => (
                 <Card key={health.listingId}>
