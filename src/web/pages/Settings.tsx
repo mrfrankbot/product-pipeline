@@ -15,11 +15,12 @@ import {
   TextField,
 } from '@shopify/polaris';
 import { LinkIcon, RefreshIcon } from '@shopify/polaris-icons';
-import { apiClient, useEbayAuthStatus, useSettings, useUpdateSettings } from '../hooks/useApi';
+import { apiClient, useEbayAuthStatus, useSettings, useStatus, useUpdateSettings } from '../hooks/useApi';
 import { useAppStore } from '../store';
 
 const Settings: React.FC = () => {
   const { data: settings, isLoading, error } = useSettings();
+  useStatus(); // Populates connection status in the store
   const { data: ebayAuth, isLoading: ebayLoading, refetch: refetchEbay } = useEbayAuthStatus();
   const updateSettings = useUpdateSettings();
   const { connections } = useAppStore();
