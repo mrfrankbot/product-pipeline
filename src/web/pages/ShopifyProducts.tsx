@@ -408,7 +408,7 @@ const ShopifyProducts: React.FC = () => {
 
   const [searchValue, setSearchValue] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [sortKey, setSortKey] = useState('title');
+  const [sortKey, setSortKey] = useState('shopifyStatus');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [page, setPage] = useState(1);
   const pageSize = 25;
@@ -435,6 +435,9 @@ const ShopifyProducts: React.FC = () => {
     const query = searchValue.trim().toLowerCase();
 
     return products.filter((product) => {
+      // Hide archived products entirely
+      if ((product.shopifyStatus ?? '').toLowerCase() === 'archived') return false;
+
       const matchesQuery =
         !query ||
         product.title.toLowerCase().includes(query) ||
@@ -461,7 +464,7 @@ const ShopifyProducts: React.FC = () => {
 
   const sorted = useMemo(() => {
     const direction = sortDirection === 'asc' ? 1 : -1;
-    const rank = { active: 1, draft: 2, archived: 3 } as Record<string, number>;
+    const rank = { draft: 1, active: 2, archived: 3 } as Record<string, number>;
     const ebayRank = { listed: 1, draft: 2, not_listed: 3 } as Record<string, number>;
 
     return [...filtered].sort((a, b) => {
