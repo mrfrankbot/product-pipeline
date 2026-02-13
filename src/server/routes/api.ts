@@ -120,7 +120,11 @@ router.get('/api/settings', async (_req: Request, res: Response) => {
   try {
     const db = await getRawDb();
     const settings = db.prepare(`SELECT * FROM settings`).all() as any[];
-    res.json(Object.fromEntries(settings.map((s) => [s.key, s.value])));
+    const result = Object.fromEntries(settings.map((s: any) => [s.key, s.value]));
+    // Expose env-var-based config as read-only settings flags
+    result.photoroom_api_key_configured = process.env.PHOTOROOM_API_KEY ? 'true' : 'false';
+    result.openai_api_key_configured = process.env.OPENAI_API_KEY ? 'true' : 'false';
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch settings', detail: String(err) });
   }

@@ -246,7 +246,7 @@ const Settings: React.FC = () => {
                 <Spinner size="small" />
               ) : (
                 <Text tone="subdued" as="p">
-                  {ebayAuth?.user ? `Signed in as ${ebayAuth.user}` : 'Authorize your eBay account.'}
+                  {ebayAuth?.connected ? 'eBay account authorized.' : 'Authorize your eBay account.'}
                 </Text>
               )}
               <InlineStack gap="200">

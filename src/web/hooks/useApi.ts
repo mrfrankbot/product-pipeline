@@ -459,7 +459,22 @@ export const useUpdateSettings = () => {
 export const useEbayAuthStatus = () => {
   return useQuery({
     queryKey: ['ebay-auth-status'],
-    queryFn: () => apiClient.get<{ connected: boolean; user?: string; tokenExpires?: string }>('/ebay/auth/status'),
+    queryFn: async () => {
+      // eBay auth status is outside /api prefix
+      const response = await fetch('/ebay/auth/status');
+      const data = await response.json() as {
+        authenticated?: boolean;
+        expired?: boolean;
+        hasRefreshToken?: boolean;
+        expiresAt?: string;
+        scope?: string;
+      };
+      return {
+        connected: data.authenticated === true && !data.expired,
+        tokenExpires: data.expiresAt,
+        hasRefreshToken: data.hasRefreshToken,
+      };
+    },
     refetchInterval: 30000,
   });
 };

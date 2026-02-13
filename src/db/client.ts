@@ -542,7 +542,7 @@ const seedDefaultSettings = (sqlite: InstanceType<typeof Database>) => {
 
 Format: **Title line** with catchy tagline, intro paragraph (2-3 sentences with real-world use cases), **Key Features** (4-6 bullets with ✔ emoji, include mount type, specs, compatible bodies), **Condition** section mapped to grade (Mint/Like New/Excellent/Good scale), **Who Is It For?** targeting specific photographer types, and **Includes** list.
 
-Rules: Professional but not stiff. Write like a knowledgeable camera store employee. No invented specs. Under 250 words. No superlatives without substance.`,
+Rules: Professional but not stiff. Write like a knowledgeable camera store employee. No invented specs. No superlatives without substance.`,
     ],
     ['photoroom_template_id', ''],
     ['pipeline_auto_descriptions', '0'],

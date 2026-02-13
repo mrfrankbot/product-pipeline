@@ -82,7 +82,7 @@ Rules:
 - Write like a knowledgeable camera store employee
 - Use bold text and ✔ bullets for scannability
 - No HTML unless requested. No invented specs.
-- Keep total under 250 words.`;
+- No superlatives without substance.`;
 
 async function getDescriptionPrompt(): Promise<string> {
   try {
