@@ -43,6 +43,22 @@ export type ShopifyDetailedProduct = {
   updatedAt: string;
 };
 
+export type ShopifyOverviewProduct = {
+  id: string;
+  title: string;
+  status: string;
+  images: Array<{
+    id: string;
+    src: string;
+    alt?: string;
+  }>;
+  variants: Array<{
+    id: string;
+    sku: string;
+    price: string;
+  }>;
+};
+
 export const fetchShopifyProducts = async (accessToken: string, first = 20): Promise<ShopifyProduct[]> => {
   const client = await createShopifyGraphqlClient(accessToken);
   const query = `#graphql
@@ -69,6 +85,75 @@ export const fetchShopifyProducts = async (accessToken: string, first = 20): Pro
   }
 
   return response.data.products.edges.map((edge) => edge.node);
+};
+
+/**
+ * Fetch all Shopify products with enough detail for overview tables.
+ */
+export const fetchAllShopifyProductsOverview = async (
+  accessToken: string,
+): Promise<ShopifyOverviewProduct[]> => {
+  const creds = await loadShopifyCredentials();
+  const products: ShopifyOverviewProduct[] = [];
+  let sinceId: string | undefined = undefined;
+
+  while (true) {
+    const params = new URLSearchParams();
+    params.set('limit', '250');
+    if (sinceId) params.set('since_id', sinceId);
+    params.set('fields', 'id,title,status,images,variants');
+
+    const url = `https://${creds.storeDomain}/admin/api/2024-01/products.json?${params.toString()}`;
+    const response = await fetch(url, {
+      headers: { 'X-Shopify-Access-Token': accessToken },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch products: ${response.status} ${response.statusText}`);
+    }
+
+    const data = (await response.json()) as {
+      products: Array<{
+        id: number;
+        title: string;
+        status: string;
+        images: Array<{
+          id: number;
+          src: string;
+          alt?: string;
+        }>;
+        variants: Array<{
+          id: number;
+          sku: string;
+          price: string;
+        }>;
+      }>;
+    };
+
+    const page = data.products ?? [];
+    products.push(
+      ...page.map((product) => ({
+        id: String(product.id),
+        title: product.title,
+        status: product.status,
+        images: (product.images ?? []).map((img) => ({
+          id: String(img.id),
+          src: img.src,
+          alt: img.alt,
+        })),
+        variants: (product.variants ?? []).map((variant) => ({
+          id: String(variant.id),
+          sku: variant.sku || '',
+          price: variant.price,
+        })),
+      })),
+    );
+
+    if (page.length < 250) break;
+    sinceId = String(page[page.length - 1].id);
+  }
+
+  return products;
 };
 
 /**

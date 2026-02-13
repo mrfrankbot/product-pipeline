@@ -11,6 +11,7 @@ import {
   createPipelineJob,
   startPipelineJob,
   updatePipelineStep,
+  setPipelineJobTitle,
 } from './pipeline-status.js';
 
 // ---------------------------------------------------------------------------
@@ -219,14 +220,69 @@ export async function autoListProduct(
   images?: string[];
   error?: string;
 }> {
-  const jobId = createPipelineJob(shopifyProductId);
+  const jobId = await createPipelineJob(shopifyProductId);
+
+  const upsertPipelineStatus = async (updates: {
+    aiDescriptionGenerated?: boolean;
+    aiDescription?: string;
+    aiCategoryId?: string;
+    imagesProcessed?: boolean;
+    imagesProcessedCount?: number;
+  }) => {
+    const db = await getRawDb();
+    const now = Math.floor(Date.now() / 1000);
+    const existing = db
+      .prepare(`SELECT * FROM product_pipeline_status WHERE shopify_product_id = ?`)
+      .get(shopifyProductId) as any | undefined;
+
+    const next = {
+      ai_description_generated: updates.aiDescriptionGenerated ?? (existing?.ai_description_generated ?? 0),
+      ai_description: updates.aiDescription ?? existing?.ai_description ?? null,
+      ai_category_id: updates.aiCategoryId ?? existing?.ai_category_id ?? null,
+      images_processed: updates.imagesProcessed ?? (existing?.images_processed ?? 0),
+      images_processed_count: updates.imagesProcessedCount ?? existing?.images_processed_count ?? 0,
+    };
+
+    if (existing) {
+      db.prepare(
+        `UPDATE product_pipeline_status
+         SET ai_description_generated = ?, ai_description = ?, ai_category_id = ?,
+             images_processed = ?, images_processed_count = ?, updated_at = ?
+         WHERE shopify_product_id = ?`,
+      ).run(
+        next.ai_description_generated ? 1 : 0,
+        next.ai_description,
+        next.ai_category_id,
+        next.images_processed ? 1 : 0,
+        next.images_processed_count ?? 0,
+        now,
+        shopifyProductId,
+      );
+    } else {
+      db.prepare(
+        `INSERT INTO product_pipeline_status
+         (shopify_product_id, ai_description_generated, ai_description, ai_category_id,
+          images_processed, images_processed_count, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        shopifyProductId,
+        next.ai_description_generated ? 1 : 0,
+        next.ai_description,
+        next.ai_category_id,
+        next.images_processed ? 1 : 0,
+        next.images_processed_count ?? 0,
+        now,
+        now,
+      );
+    }
+  };
 
   try {
     info(`[AutoList] Processing product ${shopifyProductId} (job ${jobId})...`);
-    startPipelineJob(jobId);
+    await startPipelineJob(jobId);
 
     // ── Step 1: Fetch product ──────────────────────────────────────────
-    updatePipelineStep(jobId, 'fetch_product', 'running');
+    await updatePipelineStep(jobId, 'fetch_product', 'running');
 
     const db = await getRawDb();
     const tokenRow = db
@@ -234,26 +290,27 @@ export async function autoListProduct(
       .get() as any;
 
     if (!tokenRow?.access_token) {
-      updatePipelineStep(jobId, 'fetch_product', 'error', 'Shopify token not found');
+      await updatePipelineStep(jobId, 'fetch_product', 'error', 'Shopify token not found');
       return { success: false, jobId, error: 'Shopify token not found' };
     }
 
     const product = await fetchDetailedShopifyProduct(tokenRow.access_token, shopifyProductId);
     if (!product) {
-      updatePipelineStep(jobId, 'fetch_product', 'error', 'Product not found in Shopify');
+      await updatePipelineStep(jobId, 'fetch_product', 'error', 'Product not found in Shopify');
       return { success: false, jobId, error: `Product ${shopifyProductId} not found in Shopify` };
     }
 
-    updatePipelineStep(jobId, 'fetch_product', 'done', `Fetched: ${product.title || shopifyProductId}`);
+    await setPipelineJobTitle(jobId, product.title || shopifyProductId);
+    await updatePipelineStep(jobId, 'fetch_product', 'done', `Fetched: ${product.title || shopifyProductId}`);
 
     // ── Step 2: Generate description + category ────────────────────────
-    updatePipelineStep(jobId, 'generate_description', 'running');
+    await updatePipelineStep(jobId, 'generate_description', 'running');
 
     const result = await processNewProduct(product);
 
     if (!result.ready) {
       warn(`[AutoList] AI processing incomplete for product ${shopifyProductId}`);
-      updatePipelineStep(jobId, 'generate_description', 'error', 'Incomplete AI results');
+      await updatePipelineStep(jobId, 'generate_description', 'error', 'Incomplete AI results');
       return {
         success: false,
         jobId,
@@ -263,38 +320,47 @@ export async function autoListProduct(
       };
     }
 
-    updatePipelineStep(
+    await updatePipelineStep(
       jobId,
       'generate_description',
       'done',
       `Description: ${result.description.length} chars, Category: ${result.ebayCategory}`,
     );
+    await upsertPipelineStatus({
+      aiDescriptionGenerated: true,
+      aiDescription: result.description,
+      aiCategoryId: result.ebayCategory,
+    });
 
     // ── Step 3: Process images via PhotoRoom ───────────────────────────
-    updatePipelineStep(jobId, 'process_images', 'running');
+    await updatePipelineStep(jobId, 'process_images', 'running');
 
     let processedImages: string[] = [];
     try {
       processedImages = await processProductImages(product);
-      updatePipelineStep(
+      await updatePipelineStep(
         jobId,
         'process_images',
         'done',
         `${processedImages.length} images processed`,
       );
+      await upsertPipelineStatus({
+        imagesProcessed: Boolean(process.env.PHOTOROOM_API_KEY),
+        imagesProcessedCount: Boolean(process.env.PHOTOROOM_API_KEY) ? processedImages.length : 0,
+      });
     } catch (imgErr) {
       warn(`[AutoList] Image processing error (non-fatal): ${imgErr}`);
-      updatePipelineStep(jobId, 'process_images', 'error', String(imgErr));
+      await updatePipelineStep(jobId, 'process_images', 'error', String(imgErr));
       // Non-fatal — continue without processed images
     }
 
     // ── Step 4: Save overrides (create_ebay_listing placeholder) ──────
-    updatePipelineStep(jobId, 'create_ebay_listing', 'running');
+    await updatePipelineStep(jobId, 'create_ebay_listing', 'running');
 
     await saveProductOverride(shopifyProductId, 'listing', 'description', result.description);
     await saveProductOverride(shopifyProductId, 'listing', 'primary_category', result.ebayCategory);
 
-    updatePipelineStep(jobId, 'create_ebay_listing', 'done', 'Overrides saved');
+    await updatePipelineStep(jobId, 'create_ebay_listing', 'done', 'Overrides saved');
 
     info(
       `[AutoList] ✅ Product ${shopifyProductId} processed (job ${jobId}) — category=${result.ebayCategory}, description=${result.description.length} chars, images=${processedImages.length}`,

@@ -103,6 +103,30 @@ const initExtraTables = (sqlite: InstanceType<typeof Database>) => {
       updated_at TEXT DEFAULT (datetime('now')),
       UNIQUE(shopify_product_id, category, field_name)
     );
+    CREATE TABLE IF NOT EXISTS product_pipeline_status (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      shopify_product_id TEXT NOT NULL UNIQUE,
+      ai_description_generated INTEGER DEFAULT 0,
+      ai_description TEXT,
+      ai_category_id TEXT,
+      images_processed INTEGER DEFAULT 0,
+      images_processed_count INTEGER DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS pipeline_jobs (
+      id TEXT PRIMARY KEY,
+      shopify_product_id TEXT NOT NULL,
+      shopify_title TEXT,
+      status TEXT NOT NULL DEFAULT 'queued',
+      current_step TEXT,
+      steps_json TEXT,
+      started_at INTEGER,
+      completed_at INTEGER,
+      error TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS help_questions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       question TEXT NOT NULL,

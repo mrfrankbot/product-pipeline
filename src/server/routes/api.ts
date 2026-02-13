@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { getRawDb } from '../../db/client.js';
 import { getValidEbayToken } from '../../ebay/token-manager.js';
 import { info } from '../../utils/logger.js';
+import { fetchAllShopifyProductsOverview, fetchDetailedShopifyProduct } from '../../shopify/products.js';
 
 const router = Router();
 
@@ -76,6 +77,131 @@ router.get('/api/listings', async (req: Request, res: Response) => {
     res.json({ data: listings, total: countRow?.count ?? 0, limit, offset });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch listings', detail: String(err) });
+  }
+});
+
+/** GET /api/products/overview — Unified Shopify + pipeline + eBay status */
+router.get('/api/products/overview', async (req: Request, res: Response) => {
+  try {
+    const db = await getRawDb();
+    const tokenRow = db.prepare(`SELECT access_token FROM auth_tokens WHERE platform = 'shopify'`).get() as any;
+    if (!tokenRow?.access_token) {
+      res.status(400).json({ error: 'Shopify token not found. Complete OAuth first.' });
+      return;
+    }
+
+    const productId = (req.query.productId as string | undefined)?.trim();
+    let shopifyProducts: Array<{
+      id: string;
+      title: string;
+      status: string;
+      images: Array<{ id: string; src: string; alt?: string }>;
+      variants: Array<{ id: string; sku: string; price: string }>;
+    }> = [];
+
+    if (productId) {
+      const detailed = await fetchDetailedShopifyProduct(tokenRow.access_token, productId);
+      if (!detailed) {
+        res.status(404).json({ error: 'Product not found in Shopify' });
+        return;
+      }
+      shopifyProducts = [
+        {
+          id: detailed.id,
+          title: detailed.title,
+          status: detailed.status,
+          images: detailed.images.map((img) => ({ id: img.id, src: img.url, alt: img.altText })),
+          variants: detailed.variants.map((variant) => ({
+            id: variant.id,
+            sku: variant.sku,
+            price: variant.price,
+          })),
+        },
+      ];
+    } else {
+      shopifyProducts = await fetchAllShopifyProductsOverview(tokenRow.access_token);
+    }
+
+    const mappingRows = productId
+      ? db.prepare(`SELECT shopify_product_id, ebay_listing_id, status FROM product_mappings WHERE shopify_product_id = ?`).all(productId)
+      : db.prepare(`SELECT shopify_product_id, ebay_listing_id, status FROM product_mappings`).all();
+    const pipelineRows = productId
+      ? db.prepare(`SELECT * FROM product_pipeline_status WHERE shopify_product_id = ?`).all(productId)
+      : db.prepare(`SELECT * FROM product_pipeline_status`).all();
+    const pipelineJobRows = productId
+      ? db.prepare(`SELECT id, shopify_product_id, updated_at FROM pipeline_jobs WHERE shopify_product_id = ?`).all(productId)
+      : db.prepare(`SELECT id, shopify_product_id, updated_at FROM pipeline_jobs`).all();
+
+    const mappingById = new Map<string, any>();
+    for (const row of mappingRows as any[]) {
+      mappingById.set(String(row.shopify_product_id), row);
+    }
+    const pipelineById = new Map<string, any>();
+    for (const row of pipelineRows as any[]) {
+      pipelineById.set(String(row.shopify_product_id), row);
+    }
+    const latestJobById = new Map<string, { id: string; updated_at: number }>();
+    for (const row of pipelineJobRows as any[]) {
+      const key = String(row.shopify_product_id);
+      const prev = latestJobById.get(key);
+      if (!prev || (row.updated_at ?? 0) > prev.updated_at) {
+        latestJobById.set(key, { id: row.id, updated_at: row.updated_at ?? 0 });
+      }
+    }
+
+    const products = shopifyProducts.map((product) => {
+      const variant = product.variants?.[0];
+      const mapping = mappingById.get(product.id);
+      const pipeline = pipelineById.get(product.id);
+      const ebayListingId = mapping?.ebay_listing_id ?? null;
+      const ebayStatus = ebayListingId
+        ? ebayListingId.startsWith('draft-')
+          ? 'draft'
+          : 'listed'
+        : 'not_listed';
+
+      return {
+        shopifyProductId: product.id,
+        title: product.title,
+        sku: variant?.sku ?? '',
+        price: variant?.price ?? '',
+        shopifyStatus: product.status,
+        imageUrl: product.images?.[0]?.src ?? null,
+        imageCount: product.images?.length ?? 0,
+        hasAiDescription: Boolean(pipeline?.ai_description_generated),
+        hasProcessedImages: Boolean(pipeline?.images_processed),
+        ebayStatus,
+        ebayListingId,
+        pipelineJobId: latestJobById.get(product.id)?.id ?? null,
+      };
+    });
+
+    const summary = {
+      total: products.length,
+      withDescriptions: products.filter((p) => p.hasAiDescription).length,
+      withProcessedImages: products.filter((p) => p.hasProcessedImages).length,
+      listedOnEbay: products.filter((p) => p.ebayStatus === 'listed').length,
+      draftOnEbay: products.filter((p) => p.ebayStatus === 'draft').length,
+    };
+
+    res.json({ products, summary });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch product overview', detail: String(err) });
+  }
+});
+
+/** GET /api/products/:productId/pipeline-status — Single product pipeline status */
+router.get('/api/products/:productId/pipeline-status', async (req: Request, res: Response) => {
+  try {
+    const db = await getRawDb();
+    const productId = Array.isArray(req.params.productId) ? req.params.productId[0] : req.params.productId;
+    const row = db
+      .prepare(`SELECT * FROM product_pipeline_status WHERE shopify_product_id = ?`)
+      .get(productId) as any;
+
+    res.json({ ok: true, status: row ?? null });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch pipeline status', detail: String(err) });
   }
 });
 
@@ -418,50 +544,50 @@ router.get('/api/test/product-info/:productId', async (req: Request, res: Respon
     }
 
     const productId = Array.isArray(req.params.productId) ? req.params.productId[0] : req.params.productId;
-    const response = await fetch(`https://usedcameragear.myshopify.com/admin/api/2024-01/products/${productId}.json`, {
-      headers: { 'X-Shopify-Access-Token': tokenRow.access_token },
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      res.status(500).json({ error: 'Failed to fetch product', detail: errText });
+    const product = await fetchDetailedShopifyProduct(tokenRow.access_token, productId);
+    if (!product) {
+      res.status(404).json({ error: 'Product not found in Shopify' });
       return;
     }
 
-    const data = await response.json() as any;
-    const product = data.product;
     const variant = product.variants?.[0];
-    
-    // Also get inventory levels to find location_id
-    let locationId = null;
-    if (variant?.inventory_item_id) {
-      try {
-        const invResponse = await fetch(
-          `https://usedcameragear.myshopify.com/admin/api/2024-01/inventory_levels.json?inventory_item_ids=${variant.inventory_item_id}`,
-          { headers: { 'X-Shopify-Access-Token': tokenRow.access_token } }
-        );
-        if (invResponse.ok) {
-          const invData = await invResponse.json() as any;
-          locationId = invData.inventory_levels?.[0]?.location_id;
-        }
-      } catch { /* ignore */ }
-    }
-    
-    res.json({ 
-      ok: true, 
+    const images = product.images.map((img) => ({ id: Number(img.id), src: img.url, alt: img.altText }));
+
+    res.json({
+      ok: true,
       product: {
         id: product.id,
         title: product.title,
         status: product.status,
-        variant: variant ? {
-          id: variant.id,
-          sku: variant.sku,
-          price: variant.price,
-          inventory_item_id: variant.inventory_item_id,
-          inventory_quantity: variant.inventory_quantity,
-          location_id: locationId,
-        } : null,
-      }
+        body_html: product.descriptionHtml,
+        product_type: product.productType,
+        vendor: product.vendor,
+        tags: product.tags.join(', '),
+        images,
+        image: images[0] ?? null,
+        variants: product.variants.map((v) => ({
+          id: Number(v.id),
+          sku: v.sku,
+          price: v.price,
+          compare_at_price: v.compareAtPrice ?? null,
+          inventory_quantity: v.inventoryQuantity,
+          weight: v.weight,
+          weight_unit: v.weightUnit,
+          requires_shipping: v.requiresShipping,
+        })),
+        variant: variant
+          ? {
+              id: Number(variant.id),
+              sku: variant.sku,
+              price: variant.price,
+              compare_at_price: variant.compareAtPrice ?? null,
+              inventory_quantity: variant.inventoryQuantity,
+              weight: variant.weight,
+              weight_unit: variant.weightUnit,
+              requires_shipping: variant.requiresShipping,
+            }
+          : null,
+      },
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed', detail: String(err) });

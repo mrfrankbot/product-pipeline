@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Badge,
   Banner,
   Button,
+  ButtonGroup,
   Card,
   Divider,
   IndexTable,
@@ -11,13 +12,14 @@ import {
   Layout,
   Page,
   Pagination,
+  Select,
   Spinner,
   Text,
   TextField,
   Thumbnail,
 } from '@shopify/polaris';
-import { ExternalLink, Image, Search, Sparkles } from 'lucide-react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ExternalLink, Filter, Play, Search, SortAsc, SortDesc } from 'lucide-react';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { apiClient, useListings } from '../hooks/useApi';
 import { useAppStore } from '../store';
@@ -27,56 +29,99 @@ import { useAppStore } from '../store';
 const PLACEHOLDER_IMG =
   'https://cdn.shopify.com/s/files/1/0533/2089/files/placeholder-images-image_large.png';
 
-const formatMoney = (value?: number | null) => {
-  if (value === null || value === undefined) return '—';
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+const formatMoney = (value?: number | string | null) => {
+  if (value === null || value === undefined || value === '') return '—';
+  const numberValue = typeof value === 'string' ? Number(value) : value;
+  if (Number.isNaN(numberValue)) return '—';
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(numberValue);
 };
 
-interface NormalizedListing {
-  id: string;
+const formatTimestamp = (value?: number | string | null) => {
+  if (!value) return '—';
+  const ms = typeof value === 'number' ? (value > 1_000_000_000_000 ? value : value * 1000) : Date.parse(value);
+  if (Number.isNaN(ms)) return '—';
+  return new Date(ms).toLocaleString();
+};
+
+const getShopifyStatusBadge = (status?: string | null) => {
+  const normalized = (status || '').toLowerCase();
+  if (normalized === 'active') return <Badge tone="success">active</Badge>;
+  if (normalized === 'draft') return <Badge tone="info">draft</Badge>;
+  if (normalized === 'archived') return <Badge tone="warning">archived</Badge>;
+  return <Badge>{status || 'unknown'}</Badge>;
+};
+
+const getEbayBadge = (status: string) => {
+  if (status === 'listed') return <Badge tone="success">Listed</Badge>;
+  if (status === 'draft') return <Badge tone="info">Draft</Badge>;
+  return <Badge>Not listed</Badge>;
+};
+
+const getBinaryBadge = (value: boolean) =>
+  value ? <Badge tone="success">✅ Done</Badge> : <Badge>❌ Not yet</Badge>;
+
+interface ProductOverview {
   shopifyProductId: string;
+  title: string;
+  sku: string;
+  price: string;
+  shopifyStatus: string;
+  imageUrl?: string | null;
+  imageCount: number;
+  hasAiDescription: boolean;
+  hasProcessedImages: boolean;
+  ebayStatus: 'listed' | 'draft' | 'not_listed';
   ebayListingId?: string | null;
-  status: string;
-  originalPrice?: number | null;
-  shopifyTitle?: string;
-  shopifySku?: string;
+  pipelineJobId?: string | null;
 }
 
-const normalizeListing = (listing: any): NormalizedListing => {
-  const shopifyProductId =
-    listing.shopifyProductId ?? listing.shopify_product_id ?? String(listing.shopifyProductID ?? listing.id ?? '');
-  return {
-    id: String(listing.id ?? shopifyProductId),
-    shopifyProductId: String(shopifyProductId),
-    ebayListingId: listing.ebayListingId ?? listing.ebay_listing_id ?? listing.ebayItemId ?? null,
-    status: listing.status ?? 'inactive',
-    originalPrice:
-      listing.originalPrice ?? listing.original_price ?? listing.shopifyPrice ?? listing.shopify_price ?? listing.price ?? null,
-    shopifyTitle: listing.shopifyTitle ?? listing.shopify_title,
-    shopifySku: listing.shopifySku ?? listing.shopify_sku,
+interface ProductsOverviewResponse {
+  products: ProductOverview[];
+  summary: {
+    total: number;
+    withDescriptions: number;
+    withProcessedImages: number;
+    listedOnEbay: number;
+    draftOnEbay: number;
   };
-};
+}
 
 /* ──────────────────── ShopifyProductDetail ──────────────────── */
 
 export const ShopifyProductDetail: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { addNotification } = useAppStore();
+  const [processedImages, setProcessedImages] = useState<string[]>([]);
 
-  /* Fetch Shopify product data */
   const { data: productInfo, isLoading: productLoading } = useQuery({
     queryKey: ['product-info', id],
     queryFn: () => apiClient.get<{ ok: boolean; product?: any }>(`/test/product-info/${id}`),
     enabled: Boolean(id),
   });
 
-  /* Fetch listing record to check eBay link */
+  const { data: pipelineStatus } = useQuery({
+    queryKey: ['product-pipeline-status', id],
+    queryFn: () => apiClient.get<{ ok: boolean; status?: any }>(`/products/${id}/pipeline-status`),
+    enabled: Boolean(id),
+    retry: 1,
+  });
+
+  const { data: pipelineJobs } = useQuery({
+    queryKey: ['pipeline-jobs', id],
+    queryFn: () => apiClient.get<{ jobs: any[] }>(`/pipeline/jobs?productId=${id}&limit=1`),
+    enabled: Boolean(id),
+    refetchInterval: 10000,
+  });
+
   const { data: listingResponse } = useListings({ limit: 50, offset: 0, search: id });
   const listing = useMemo(() => {
-    const normalized = (listingResponse?.data ?? []).map(normalizeListing);
-    return normalized.find((item) => item.shopifyProductId === id || item.id === id) ?? normalized[0] ?? null;
+    const normalized = (listingResponse?.data ?? []).map((item: any) => ({
+      shopifyProductId: String(item.shopifyProductId ?? item.shopify_product_id ?? item.shopifyProductID ?? item.id ?? ''),
+      ebayListingId: item.ebayListingId ?? item.ebay_listing_id ?? item.ebayItemId ?? null,
+      status: item.status ?? 'inactive',
+    }));
+    return normalized.find((item) => item.shopifyProductId === id) ?? normalized[0] ?? null;
   }, [listingResponse, id]);
 
   const product = productInfo?.product;
@@ -84,19 +129,27 @@ export const ShopifyProductDetail: React.FC = () => {
   const images: Array<{ id: number; src: string }> = product?.images ?? [];
   const mainImage = product?.image?.src ?? images[0]?.src ?? PLACEHOLDER_IMG;
 
-  /* Fetch AI-generated description if available */
-  const { data: aiDescription } = useQuery({
-    queryKey: ['ai-description', id],
-    queryFn: () => apiClient.get<{ ok: boolean; description?: string }>(`/auto-list/${id}/description`),
-    enabled: Boolean(id),
-    retry: 1,
+  const pipelineJob = pipelineJobs?.jobs?.[0];
+  const pipelineSteps = pipelineJob?.steps ?? [];
+  const aiDescription = pipelineStatus?.status?.ai_description ?? null;
+
+  const runPipelineMutation = useMutation({
+    mutationFn: () => apiClient.post(`/auto-list/${id}`),
+    onSuccess: (result: any) => {
+      addNotification({ type: 'success', title: 'Pipeline started', message: result?.message ?? undefined, autoClose: 4000 });
+    },
+    onError: (error) => {
+      addNotification({
+        type: 'error',
+        title: 'Pipeline failed to start',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    },
   });
 
-  /* ── AI regeneration ── */
   const aiMutation = useMutation({
     mutationFn: () => apiClient.post(`/auto-list/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['product-info', id] });
       addNotification({ type: 'success', title: 'AI description generated', autoClose: 4000 });
     },
     onError: (error) => {
@@ -108,11 +161,10 @@ export const ShopifyProductDetail: React.FC = () => {
     },
   });
 
-  /* ── PhotoRoom image processing ── */
   const photoRoomMutation = useMutation({
-    mutationFn: () => apiClient.post(`/images/process/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['product-info', id] });
+    mutationFn: () => apiClient.post<{ images?: string[] }>(`/images/process/${id}`),
+    onSuccess: (data) => {
+      setProcessedImages(data?.images ?? []);
       addNotification({ type: 'success', title: 'Images processed with PhotoRoom', autoClose: 4000 });
     },
     onError: (error) => {
@@ -124,11 +176,7 @@ export const ShopifyProductDetail: React.FC = () => {
     },
   });
 
-  const statusBadge = product?.status ? (
-    <Badge tone={product.status === 'active' ? 'success' : product.status === 'draft' ? 'info' : 'warning'}>
-      {product.status}
-    </Badge>
-  ) : null;
+  const statusBadge = product?.status ? getShopifyStatusBadge(product.status) : null;
 
   return (
     <Page
@@ -136,11 +184,16 @@ export const ShopifyProductDetail: React.FC = () => {
       subtitle={id ? `Shopify ID ${id}` : undefined}
       backAction={{ content: 'Products', onAction: () => navigate('/listings') }}
       primaryAction={{
-        content: 'Regenerate AI Description',
-        onAction: () => aiMutation.mutate(),
-        loading: aiMutation.isPending,
+        content: 'Run Pipeline',
+        onAction: () => runPipelineMutation.mutate(),
+        loading: runPipelineMutation.isPending,
       }}
       secondaryActions={[
+        {
+          content: 'Regenerate AI Description',
+          onAction: () => aiMutation.mutate(),
+          loading: aiMutation.isPending,
+        },
         {
           content: 'Process images (PhotoRoom)',
           onAction: () => photoRoomMutation.mutate(),
@@ -156,14 +209,39 @@ export const ShopifyProductDetail: React.FC = () => {
 
       {product && (
         <Layout>
-          {/* ── Images ── */}
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="400">
+                <InlineStack align="space-between">
+                  <Text variant="headingMd" as="h2">Pipeline progress</Text>
+                  {pipelineJob?.status && <Badge>{pipelineJob.status}</Badge>}
+                </InlineStack>
+                {pipelineSteps.length === 0 ? (
+                  <Text tone="subdued" as="p">No pipeline runs yet for this product.</Text>
+                ) : (
+                  <BlockStack gap="200">
+                    {pipelineSteps.map((step: any) => (
+                      <InlineStack key={step.name} align="space-between" blockAlign="center">
+                        <Text as="span">{step.name.replace(/_/g, ' ')}</Text>
+                        <Badge tone={step.status === 'done' ? 'success' : step.status === 'error' ? 'critical' : step.status === 'running' ? 'attention' : 'info'}>
+                          {step.status}
+                        </Badge>
+                      </InlineStack>
+                    ))}
+                  </BlockStack>
+                )}
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+
+          {/* ── Images with before/after ── */}
           <Layout.Section>
             <Card>
               <BlockStack gap="400">
                 <InlineStack align="space-between">
                   <Text variant="headingMd" as="h2">Images</Text>
                   <Button
-                    icon={<Image className="w-4 h-4" />}
+                    icon={<Play className="w-4 h-4" />}
                     onClick={() => photoRoomMutation.mutate()}
                     loading={photoRoomMutation.isPending}
                   >
@@ -171,19 +249,28 @@ export const ShopifyProductDetail: React.FC = () => {
                   </Button>
                 </InlineStack>
                 <InlineStack gap="400" align="start" wrap>
-                  {images.length > 0 ? (
-                    images.map((img) => (
-                      <div key={img.id} style={{ border: '1px solid #e1e3e5', borderRadius: '8px', overflow: 'hidden' }}>
+                  {(images.length > 0 ? images : [{ id: 0, src: mainImage }]).map((img, idx) => (
+                    <Card key={img.id ?? idx} padding="200">
+                      <BlockStack gap="200">
+                        <Text variant="bodySm" tone="subdued" as="p">Original</Text>
                         <img
                           src={img.src}
                           alt={product.title}
-                          style={{ width: '160px', height: '160px', objectFit: 'cover', display: 'block' }}
+                          style={{ width: '180px', height: '180px', objectFit: 'cover', borderRadius: '8px' }}
                         />
-                      </div>
-                    ))
-                  ) : (
-                    <Thumbnail size="large" source={PLACEHOLDER_IMG} alt="No images" />
-                  )}
+                        <Text variant="bodySm" tone="subdued" as="p">PhotoRoom</Text>
+                        {processedImages[idx] ? (
+                          <img
+                            src={processedImages[idx]}
+                            alt="Processed"
+                            style={{ width: '180px', height: '180px', objectFit: 'cover', borderRadius: '8px' }}
+                          />
+                        ) : (
+                          <Text tone="subdued" as="p">Not processed yet</Text>
+                        )}
+                      </BlockStack>
+                    </Card>
+                  ))}
                 </InlineStack>
               </BlockStack>
             </Card>
@@ -194,22 +281,23 @@ export const ShopifyProductDetail: React.FC = () => {
             <Card>
               <BlockStack gap="400">
                 <InlineStack align="space-between">
-                  <Text variant="headingMd" as="h2">Description</Text>
+                  <Text variant="headingMd" as="h2">AI Description</Text>
                   <Button
-                    icon={<Sparkles className="w-4 h-4" />}
+                    icon={<Play className="w-4 h-4" />}
                     onClick={() => aiMutation.mutate()}
                     loading={aiMutation.isPending}
                   >
                     Regenerate with AI
                   </Button>
                 </InlineStack>
-                {aiDescription?.description ? (
+                {aiDescription ? (
                   <BlockStack gap="200">
                     <Badge tone="success">AI-generated</Badge>
                     <div
-                      style={{ maxHeight: '300px', overflow: 'auto', padding: '8px', background: '#fafafa', borderRadius: '6px' }}
-                      dangerouslySetInnerHTML={{ __html: aiDescription.description }}
-                    />
+                      style={{ maxHeight: '300px', overflow: 'auto', padding: '8px', background: '#fafafa', borderRadius: '6px', whiteSpace: 'pre-wrap' }}
+                    >
+                      {aiDescription}
+                    </div>
                   </BlockStack>
                 ) : product.body_html ? (
                   <div
@@ -217,7 +305,7 @@ export const ShopifyProductDetail: React.FC = () => {
                     dangerouslySetInnerHTML={{ __html: product.body_html }}
                   />
                 ) : (
-                  <Text tone="subdued" as="p">No description available. Click &ldquo;Regenerate with AI&rdquo; to generate one.</Text>
+                  <Text tone="subdued" as="p">No AI description yet. Click “Regenerate with AI” to generate one.</Text>
                 )}
               </BlockStack>
             </Card>
@@ -238,11 +326,11 @@ export const ShopifyProductDetail: React.FC = () => {
                 </InlineStack>
                 <InlineStack align="space-between">
                   <Text variant="bodyMd" tone="subdued" as="span">Price</Text>
-                  <Text variant="bodyMd" as="span">{formatMoney(Number(variant?.price) || null)}</Text>
+                  <Text variant="bodyMd" as="span">{formatMoney(variant?.price ?? null)}</Text>
                 </InlineStack>
                 <InlineStack align="space-between">
                   <Text variant="bodyMd" tone="subdued" as="span">Compare-at price</Text>
-                  <Text variant="bodyMd" as="span">{formatMoney(Number(variant?.compare_at_price) || null)}</Text>
+                  <Text variant="bodyMd" as="span">{formatMoney(variant?.compare_at_price ?? null)}</Text>
                 </InlineStack>
                 <InlineStack align="space-between">
                   <Text variant="bodyMd" tone="subdued" as="span">Inventory</Text>
@@ -316,55 +404,166 @@ export const ShopifyProductDetail: React.FC = () => {
 
 const ShopifyProducts: React.FC = () => {
   const navigate = useNavigate();
+  const { addNotification } = useAppStore();
 
   const [searchValue, setSearchValue] = useState('');
-  const [offset, setOffset] = useState(0);
-  const limit = 50;
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [sortKey, setSortKey] = useState('title');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
 
-  useEffect(() => {
-    setOffset(0);
-  }, [searchValue]);
-
-  const { data, isLoading, error } = useListings({
-    limit,
-    offset,
-    search: searchValue || undefined,
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['products-overview'],
+    queryFn: () => apiClient.get<ProductsOverviewResponse>('/products/overview'),
+    refetchInterval: 30000,
   });
 
-  const listings = useMemo(() => (data?.data ?? []).map(normalizeListing), [data]);
-  const total = data?.total ?? 0;
+  const runPipelineMutation = useMutation({
+    mutationFn: (productId: string) => apiClient.post(`/auto-list/${productId}`),
+    onSuccess: (_result, productId) => {
+      addNotification({ type: 'success', title: 'Pipeline started', message: `Product ${productId}` });
+    },
+    onError: (error) => {
+      addNotification({ type: 'error', title: 'Pipeline failed to start', message: error instanceof Error ? error.message : 'Unknown error' });
+    },
+  });
 
-  const rowMarkup = listings.map((listing, index) => {
-    const hasEbay = Boolean(listing.ebayListingId);
+  const products = data?.products ?? [];
+
+  const filtered = useMemo(() => {
+    const query = searchValue.trim().toLowerCase();
+
+    return products.filter((product) => {
+      const matchesQuery =
+        !query ||
+        product.title.toLowerCase().includes(query) ||
+        product.sku.toLowerCase().includes(query);
+
+      if (!matchesQuery) return false;
+
+      switch (statusFilter) {
+        case 'ready':
+          return product.hasAiDescription && product.hasProcessedImages && product.ebayStatus === 'not_listed';
+        case 'needs_description':
+          return !product.hasAiDescription;
+        case 'needs_images':
+          return !product.hasProcessedImages;
+        case 'listed':
+          return product.ebayStatus === 'listed' || product.ebayStatus === 'draft';
+        case 'not_listed':
+          return product.ebayStatus === 'not_listed';
+        default:
+          return true;
+      }
+    });
+  }, [products, searchValue, statusFilter]);
+
+  const sorted = useMemo(() => {
+    const direction = sortDirection === 'asc' ? 1 : -1;
+    const rank = { active: 1, draft: 2, archived: 3 } as Record<string, number>;
+    const ebayRank = { listed: 1, draft: 2, not_listed: 3 } as Record<string, number>;
+
+    return [...filtered].sort((a, b) => {
+      let left: string | number = '';
+      let right: string | number = '';
+
+      switch (sortKey) {
+        case 'sku':
+          left = a.sku || '';
+          right = b.sku || '';
+          break;
+        case 'price':
+          left = Number(a.price || 0);
+          right = Number(b.price || 0);
+          break;
+        case 'shopifyStatus':
+          left = rank[a.shopifyStatus] ?? 99;
+          right = rank[b.shopifyStatus] ?? 99;
+          break;
+        case 'ai':
+          left = a.hasAiDescription ? 1 : 0;
+          right = b.hasAiDescription ? 1 : 0;
+          break;
+        case 'images':
+          left = a.hasProcessedImages ? 1 : 0;
+          right = b.hasProcessedImages ? 1 : 0;
+          break;
+        case 'ebayStatus':
+          left = ebayRank[a.ebayStatus] ?? 99;
+          right = ebayRank[b.ebayStatus] ?? 99;
+          break;
+        default:
+          left = a.title.toLowerCase();
+          right = b.title.toLowerCase();
+      }
+
+      if (left < right) return -1 * direction;
+      if (left > right) return 1 * direction;
+      return 0;
+    });
+  }, [filtered, sortKey, sortDirection]);
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageItems = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  const summary = data?.summary ?? {
+    total: 0,
+    withDescriptions: 0,
+    withProcessedImages: 0,
+    listedOnEbay: 0,
+    draftOnEbay: 0,
+  };
+
+  const rowMarkup = pageItems.map((product, index) => {
+    const canViewEbay = Boolean(product.ebayListingId && !product.ebayListingId.startsWith('draft-'));
     return (
       <IndexTable.Row
-        id={listing.shopifyProductId}
-        key={listing.id}
+        id={product.shopifyProductId}
+        key={product.shopifyProductId}
         position={index}
-        onClick={() => navigate(`/listings/${listing.shopifyProductId}`)}
+        onClick={() => navigate(`/listings/${product.shopifyProductId}`)}
       >
         <IndexTable.Cell>
-          <BlockStack gap="100">
-            <Text variant="bodyMd" fontWeight="semibold" as="p">
-              {listing.shopifyTitle ?? `Product ${listing.shopifyProductId}`}
-            </Text>
-            {listing.shopifySku && (
-              <Text variant="bodySm" tone="subdued" as="p">SKU: {listing.shopifySku}</Text>
-            )}
-          </BlockStack>
+          <Thumbnail
+            size="small"
+            source={product.imageUrl || PLACEHOLDER_IMG}
+            alt={product.title}
+          />
         </IndexTable.Cell>
         <IndexTable.Cell>
-          <Text variant="bodyMd" as="p">{formatMoney(listing.originalPrice ?? null)}</Text>
+          <Button variant="plain" onClick={() => navigate(`/listings/${product.shopifyProductId}`)}>
+            {product.title}
+          </Button>
         </IndexTable.Cell>
+        <IndexTable.Cell>{product.sku || '—'}</IndexTable.Cell>
+        <IndexTable.Cell>{formatMoney(product.price)}</IndexTable.Cell>
+        <IndexTable.Cell>{getShopifyStatusBadge(product.shopifyStatus)}</IndexTable.Cell>
+        <IndexTable.Cell>{getBinaryBadge(product.hasAiDescription)}</IndexTable.Cell>
+        <IndexTable.Cell>{getBinaryBadge(product.hasProcessedImages)}</IndexTable.Cell>
+        <IndexTable.Cell>{getEbayBadge(product.ebayStatus)}</IndexTable.Cell>
         <IndexTable.Cell>
-          {hasEbay ? (
-            <Badge tone="success">Listed</Badge>
-          ) : (
-            <Badge tone="info">Not listed</Badge>
-          )}
-        </IndexTable.Cell>
-        <IndexTable.Cell>
-          <Text variant="bodySm" tone="subdued" as="p">{listing.shopifyProductId}</Text>
+          <div onClick={(event) => event.stopPropagation()}>
+            <ButtonGroup>
+              <Button
+                size="slim"
+                icon={<Play className="w-3 h-3" />}
+                onClick={() => runPipelineMutation.mutate(product.shopifyProductId)}
+                loading={runPipelineMutation.isPending && runPipelineMutation.variables === product.shopifyProductId}
+              >
+                Run Pipeline
+              </Button>
+              <Button
+                size="slim"
+                icon={<ExternalLink className="w-3 h-3" />}
+                onClick={() => product.ebayListingId && window.open(`https://www.ebay.com/itm/${product.ebayListingId}`, '_blank')}
+                disabled={!canViewEbay}
+              >
+                View on eBay
+              </Button>
+            </ButtonGroup>
+          </div>
         </IndexTable.Cell>
       </IndexTable.Row>
     );
@@ -372,29 +571,109 @@ const ShopifyProducts: React.FC = () => {
 
   const pagination = (
     <Pagination
-      hasPrevious={offset > 0}
-      onPrevious={() => setOffset(Math.max(0, offset - limit))}
-      hasNext={offset + limit < total}
-      onNext={() => setOffset(offset + limit)}
+      hasPrevious={currentPage > 1}
+      onPrevious={() => setPage((prev) => Math.max(1, prev - 1))}
+      hasNext={currentPage < totalPages}
+      onNext={() => setPage((prev) => Math.min(totalPages, prev + 1))}
     />
   );
 
   return (
-    <Page title="Shopify Products" subtitle="Manage product descriptions, images, and AI generation">
+    <Page title="Product Management Hub" subtitle="Unified Shopify + pipeline + eBay status">
       <Layout>
         <Layout.Section>
           <Card>
             <BlockStack gap="300">
-              <TextField
-                label=""
-                placeholder="Search products by title or SKU…"
-                value={searchValue}
-                onChange={setSearchValue}
-                prefix={<Search className="w-4 h-4" />}
-                clearButton
-                onClearButtonClick={() => setSearchValue('')}
-                autoComplete="off"
-              />
+              <InlineStack align="space-between" gap="300" wrap>
+                <BlockStack gap="100">
+                  <Text variant="headingMd" as="h2">Catalog Summary</Text>
+                  <Text tone="subdued" as="p">All Shopify products with pipeline and eBay status.</Text>
+                </BlockStack>
+                <InlineStack gap="400" wrap>
+                  <BlockStack gap="100" inlineAlign="center">
+                    <Text variant="headingMd" as="p">{summary.total}</Text>
+                    <Text variant="bodySm" tone="subdued" as="p">Total products</Text>
+                  </BlockStack>
+                  <BlockStack gap="100" inlineAlign="center">
+                    <Text variant="headingMd" as="p">{summary.withDescriptions}</Text>
+                    <Text variant="bodySm" tone="subdued" as="p">AI descriptions</Text>
+                  </BlockStack>
+                  <BlockStack gap="100" inlineAlign="center">
+                    <Text variant="headingMd" as="p">{summary.withProcessedImages}</Text>
+                    <Text variant="bodySm" tone="subdued" as="p">Images processed</Text>
+                  </BlockStack>
+                  <BlockStack gap="100" inlineAlign="center">
+                    <Text variant="headingMd" as="p">{summary.listedOnEbay}</Text>
+                    <Text variant="bodySm" tone="subdued" as="p">Listed on eBay</Text>
+                  </BlockStack>
+                  <BlockStack gap="100" inlineAlign="center">
+                    <Text variant="headingMd" as="p">{summary.draftOnEbay}</Text>
+                    <Text variant="bodySm" tone="subdued" as="p">Draft on eBay</Text>
+                  </BlockStack>
+                </InlineStack>
+              </InlineStack>
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+
+        <Layout.Section>
+          <Card>
+            <BlockStack gap="300">
+              <InlineStack gap="300" align="space-between" wrap>
+                <TextField
+                  label=""
+                  placeholder="Search by product name or SKU"
+                  value={searchValue}
+                  onChange={(value) => {
+                    setSearchValue(value);
+                    setPage(1);
+                  }}
+                  prefix={<Search className="w-4 h-4" />}
+                  clearButton
+                  onClearButtonClick={() => setSearchValue('')}
+                  autoComplete="off"
+                />
+                <InlineStack gap="200" wrap>
+                  <Select
+                    label="Status"
+                    labelHidden
+                    value={statusFilter}
+                    onChange={(value) => {
+                      setStatusFilter(value);
+                      setPage(1);
+                    }}
+                    options={[
+                      { label: 'All', value: 'all' },
+                      { label: 'Ready to List', value: 'ready' },
+                      { label: 'Needs Description', value: 'needs_description' },
+                      { label: 'Needs Images', value: 'needs_images' },
+                      { label: 'Listed', value: 'listed' },
+                      { label: 'Not Listed', value: 'not_listed' },
+                    ]}
+                  />
+                  <Select
+                    label="Sort by"
+                    labelHidden
+                    value={sortKey}
+                    onChange={(value) => setSortKey(value)}
+                    options={[
+                      { label: 'Product Name', value: 'title' },
+                      { label: 'SKU', value: 'sku' },
+                      { label: 'Price', value: 'price' },
+                      { label: 'Shopify Status', value: 'shopifyStatus' },
+                      { label: 'AI Description', value: 'ai' },
+                      { label: 'Images Processed', value: 'images' },
+                      { label: 'eBay Status', value: 'ebayStatus' },
+                    ]}
+                  />
+                  <Button
+                    icon={sortDirection === 'asc' ? <SortAsc className="w-4 h-4" /> : <SortDesc className="w-4 h-4" />}
+                    onClick={() => setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                  >
+                    {sortDirection === 'asc' ? 'Asc' : 'Desc'}
+                  </Button>
+                </InlineStack>
+              </InlineStack>
 
               <Divider />
 
@@ -411,12 +690,17 @@ const ShopifyProducts: React.FC = () => {
               ) : (
                 <IndexTable
                   resourceName={{ singular: 'product', plural: 'products' }}
-                  itemCount={listings.length}
+                  itemCount={pageItems.length}
                   headings={[
-                    { title: 'Product' },
+                    { title: 'Thumbnail' },
+                    { title: 'Product Name' },
+                    { title: 'SKU' },
                     { title: 'Price' },
-                    { title: 'eBay status' },
-                    { title: 'Shopify ID' },
+                    { title: 'Shopify Status' },
+                    { title: 'AI Description' },
+                    { title: 'Images Processed' },
+                    { title: 'eBay Status' },
+                    { title: 'Actions' },
                   ]}
                 >
                   {rowMarkup}
@@ -427,7 +711,12 @@ const ShopifyProducts: React.FC = () => {
         </Layout.Section>
 
         <Layout.Section>
-          <InlineStack align="center">{pagination}</InlineStack>
+          <InlineStack align="center" gap="400">
+            <Text tone="subdued" as="p">
+              Showing {pageItems.length} of {sorted.length} products
+            </Text>
+            {pagination}
+          </InlineStack>
         </Layout.Section>
       </Layout>
     </Page>

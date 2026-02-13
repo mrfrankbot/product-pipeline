@@ -17,6 +17,32 @@ export const productMappings = sqliteTable('product_mappings', {
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
 });
 
+export const productPipelineStatus = sqliteTable('product_pipeline_status', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  shopifyProductId: text('shopify_product_id').notNull().unique(),
+  aiDescriptionGenerated: integer('ai_description_generated', { mode: 'boolean' }).default(false),
+  aiDescription: text('ai_description'),
+  aiCategoryId: text('ai_category_id'),
+  imagesProcessed: integer('images_processed', { mode: 'boolean' }).default(false),
+  imagesProcessedCount: integer('images_processed_count').default(0),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
+export const pipelineJobs = sqliteTable('pipeline_jobs', {
+  id: text('id').primaryKey(),
+  shopifyProductId: text('shopify_product_id').notNull(),
+  shopifyTitle: text('shopify_title'),
+  status: text('status').default('queued'),
+  currentStep: text('current_step'),
+  stepsJson: text('steps_json'),
+  startedAt: integer('started_at', { mode: 'timestamp' }),
+  completedAt: integer('completed_at', { mode: 'timestamp' }),
+  error: text('error'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
 export const orderMappings = sqliteTable('order_mappings', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   ebayOrderId: text('ebay_order_id').notNull().unique(),
