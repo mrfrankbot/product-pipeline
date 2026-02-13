@@ -1013,13 +1013,14 @@ router.delete('/api/test/delete-product', async (req: Request, res: Response) =>
     const productId = (req.query.productId || req.body?.productId) as string;
     if (!productId) { res.status(400).json({ error: 'productId required' }); return; }
 
-    // Delete from Shopify
+    // Delete from Shopify (ignore 404 — may already be gone)
     const response = await fetch(
       `https://usedcameragear.myshopify.com/admin/api/2024-01/products/${productId}.json`,
       { method: 'DELETE', headers: { 'X-Shopify-Access-Token': tokenRow.access_token } },
     );
 
-    if (!response.ok) {
+    const shopifyDeleted = response.ok || response.status === 404;
+    if (!shopifyDeleted) {
       const errText = await response.text();
       res.status(500).json({ error: 'Failed to delete from Shopify', detail: errText });
       return;
