@@ -277,6 +277,13 @@
   margin: 0;
 }
 
+.help-category-card-desc {
+  font-size: 13px;
+  color: #6d7175;
+  margin: 0;
+  line-height: 1.4;
+}
+
 .help-category-card-count {
   font-size: 13px;
   color: #8c9196;

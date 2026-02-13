@@ -29,49 +29,49 @@ const CATEGORY_META: Record<string, { icon: string; color: string; description: 
   'Getting Started': {
     icon: '🚀',
     color: '#e8f5e9',
-    description: 'New to ProductBridge? Start here with setup guides and first steps.',
+    description: 'New here? Start with the basics',
     order: 0,
   },
-  products: {
+  Products: {
     icon: '📦',
     color: '#e3f2fd',
-    description: 'Managing products, syncing to eBay, per-product overrides, and filtering.',
+    description: 'Managing your Shopify product catalog',
     order: 1,
   },
-  mappings: {
+  Mappings: {
     icon: '🔗',
     color: '#f3e5f5',
-    description: 'Configuring field mappings between Shopify and eBay listing fields.',
+    description: 'Configure how Shopify fields map to eBay',
     order: 2,
   },
-  pipeline: {
-    icon: '⚙️',
+  Pipeline: {
+    icon: '⚡',
     color: '#fff3e0',
-    description: 'Auto-listing pipeline stages, image processing, and AI enrichment.',
+    description: 'Automated listing workflow and stages',
     order: 3,
   },
-  orders: {
+  Orders: {
     icon: '🛒',
     color: '#e8eaf6',
-    description: 'Order syncing, fulfillment, and order management between platforms.',
+    description: 'Order sync and fulfillment',
     order: 4,
   },
-  analytics: {
+  Analytics: {
     icon: '📊',
     color: '#fce4ec',
-    description: 'Listing health reports, sync analytics, and performance tracking.',
+    description: 'Reports, logs, and insights',
     order: 5,
   },
-  chat: {
+  Chat: {
     icon: '💬',
     color: '#e0f7fa',
-    description: 'Using the AI chat assistant for help and running commands.',
+    description: 'Using the AI assistant',
     order: 6,
   },
-  general: {
+  General: {
     icon: '📖',
     color: '#f1f8e9',
-    description: 'General information, safety guards, feature requests, and support.',
+    description: 'General usage and tips',
     order: 7,
   },
 };
@@ -398,6 +398,9 @@ const HelpLanding: React.FC<HelpLandingProps> = ({ articles, categories, goToArt
                     {meta.icon}
                   </div>
                   <p className="help-category-card-title">{cat.name}</p>
+                  {meta.description && (
+                    <p className="help-category-card-desc">{meta.description}</p>
+                  )}
                   <p className="help-category-card-count">
                     {cat.items.length} article{cat.items.length !== 1 ? 's' : ''}
                   </p>

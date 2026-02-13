@@ -1,12 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   Badge,
   BlockStack,
+  Button,
   Card,
   IndexTable,
   InlineStack,
   Page,
   Text,
+  TextField,
 } from '@shopify/polaris';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../hooks/useApi';
@@ -237,7 +239,40 @@ function timeAgo(iso: string): string {
 /* ------------------------------------------------------------------ */
 
 const Pipeline: React.FC = () => {
-  const { data, isError } = useQuery({
+  const [productId, setProductId] = useState('');
+  const [triggerStatus, setTriggerStatus] = useState<{
+    loading: boolean;
+    result: null | { success: boolean; message: string; jobId?: string };
+  }>({ loading: false, result: null });
+
+  const handleRunPipeline = useCallback(async () => {
+    const id = productId.trim();
+    if (!id) return;
+    setTriggerStatus({ loading: true, result: null });
+    try {
+      const res = await apiClient.post<{ jobId?: string; message?: string; error?: string }>(
+        `/auto-list/${encodeURIComponent(id)}`,
+      );
+      setTriggerStatus({
+        loading: false,
+        result: {
+          success: true,
+          message: res.message || 'Pipeline job started',
+          jobId: res.jobId,
+        },
+      });
+    } catch (err: any) {
+      setTriggerStatus({
+        loading: false,
+        result: {
+          success: false,
+          message: err?.message || 'Failed to start pipeline job',
+        },
+      });
+    }
+  }, [productId]);
+
+  const { data } = useQuery({
     queryKey: ['pipeline-jobs'],
     queryFn: () => apiClient.get<PipelineJobsResponse>('/pipeline/jobs'),
     refetchInterval: 10000,
@@ -259,6 +294,59 @@ const Pipeline: React.FC = () => {
   return (
     <Page title="Pipeline Overview" subtitle="Real-time product automation flow">
       <BlockStack gap="600">
+        {/* Process Product trigger */}
+        <Card>
+          <div style={{ padding: '16px' }}>
+            <BlockStack gap="400">
+              <Text as="h2" variant="headingMd">
+                Process Product
+              </Text>
+              <Text as="p" tone="subdued" variant="bodySm">
+                Enter a Shopify product ID to run it through the auto-listing pipeline.
+              </Text>
+              <InlineStack gap="300" blockAlign="end">
+                <div style={{ flexGrow: 1, maxWidth: '360px' }}>
+                  <TextField
+                    label="Shopify Product ID"
+                    labelHidden
+                    value={productId}
+                    onChange={setProductId}
+                    placeholder="e.g. 8012345678901"
+                    autoComplete="off"
+                    connectedRight={
+                      <Button
+                        variant="primary"
+                        onClick={handleRunPipeline}
+                        loading={triggerStatus.loading}
+                        disabled={!productId.trim()}
+                      >
+                        Run Pipeline
+                      </Button>
+                    }
+                  />
+                </div>
+              </InlineStack>
+              {triggerStatus.result && (
+                <div
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    background: triggerStatus.result.success ? '#e8f5e9' : '#fce4ec',
+                    color: triggerStatus.result.success ? '#2e7d32' : '#c62828',
+                    fontSize: '14px',
+                  }}
+                >
+                  {triggerStatus.result.success ? '✅' : '❌'} {triggerStatus.result.message}
+                  {triggerStatus.result.jobId && (
+                    <span style={{ marginLeft: '8px', opacity: 0.7 }}>
+                      Job ID: {triggerStatus.result.jobId}
+                    </span>
+                  )}
+                </div>
+              )}
+            </BlockStack>
+          </div>
+        </Card>
         {/* Stats bar */}
         <div className="pipeline-stats-bar">
           <div className="pipeline-stat">

@@ -231,7 +231,7 @@ const seedHelpContent = (sqlite: InstanceType<typeof Database>) => {
 Before syncing, make sure your field mappings are configured correctly on the **Mappings** page. The mappings control how Shopify fields translate to eBay listing fields across four categories: Sales, Listing, Shipping, and Payment. If you need to customize settings for individual products, use Per-Product Overrides on the product detail page.
 
 You can also use the **Auto-Listing Pipeline** for hands-free listing. New Shopify products automatically flow through enrichment stages (AI-generated titles, image processing) before being listed on eBay. Check the Pipeline page to monitor progress.`,
-      'products',
+      'Products',
     ],
     [
       'How do I manage field mappings?',
@@ -246,7 +246,7 @@ You can also use the **Auto-Listing Pipeline** for hands-free listing. New Shopi
 **Payment Mappings**: Set up payment preferences. Since eBay uses managed payments, most settings here are pre-configured (immediate payment required, no PayPal needed).
 
 To manage mappings, go to **Mappings** in the left sidebar. Each field shows its mapping type (Shopify field, constant value, formula, or edit-in-grid). Click on any field to change its mapping type or value. You can also use the **Export/Import** feature to back up your mappings or transfer them between environments.`,
-      'mappings',
+      'Mappings',
     ],
     [
       'What is the auto-listing pipeline?',
@@ -263,7 +263,7 @@ To manage mappings, go to **Mappings** in the left sidebar. Each field shows its
 **Stage 5 — Listed**: The product is automatically listed on eBay using your configured field mappings, shipping settings, and payment preferences.
 
 You can monitor the pipeline on the **Pipeline** page, which shows all jobs and their current stages. If any step fails, the pipeline provides clear error messages so you can fix issues and retry. You can also manually trigger the pipeline for specific products using the auto-list button on the product detail page.`,
-      'pipeline',
+      'Pipeline',
     ],
     [
       'How does image processing work?',
@@ -276,7 +276,7 @@ You can configure image templates that control the output style — white backgr
 To check the status of image processing, visit the **Images** page from the Pipeline section in the left sidebar. You'll see a queue of pending images, processing status, and completed results. If an image fails processing, you can retry it individually or in bulk.
 
 Image processing requires a valid PhotoRoom API key configured in your environment settings. The system processes images asynchronously so it doesn't block the listing pipeline — products can continue through other stages while images are being processed.`,
-      'pipeline',
+      'Pipeline',
     ],
     [
       'How do I manage orders?',
@@ -289,7 +289,7 @@ Navigate to the **Orders** page from the eBay section in the left sidebar. You'l
 When an order is synced, ProductBridge creates a corresponding order in Shopify with all the line items, customer information, and shipping details from the eBay sale. The Shopify order is then used for fulfillment, shipping label generation, and tracking updates.
 
 Auto-sync can be enabled in **Settings** to automatically check for new eBay orders at your configured interval (default: every 5 minutes). You can also manually trigger an order sync from the Orders page. The sync log on the Analytics page shows the history of all sync operations including any errors encountered.`,
-      'orders',
+      'Orders',
     ],
     [
       'What are per-product overrides?',
@@ -302,7 +302,7 @@ Common use cases for overrides include: setting a custom eBay title that's diffe
 Overrides are stored per-product and persist across sync operations. When you sync a product with overrides, the system uses the override value instead of the global mapping for that specific field. All other fields still use the global mappings. You can remove an override at any time to revert to the global mapping for that field.
 
 The overrides system works across all four mapping categories (Sales, Listing, Shipping, Payment), so you have complete flexibility to customize any aspect of how a product appears on eBay.`,
-      'products',
+      'Products',
     ],
     [
       'How do I use the chat assistant?',
@@ -317,7 +317,7 @@ The overrides system works across all four mapping categories (Sales, Listing, S
 **Get Status Updates**: Ask "what's the status" or "are there any errors" to get a quick overview of your sync operations, listing health, and system status.
 
 The chat assistant uses the capabilities registry to stay up-to-date with all available features. When new features are added to ProductBridge, the assistant automatically learns about them and can help you use them. You can access the chat from any page in the app — it maintains context across your conversation so you can have multi-step interactions.`,
-      'chat',
+      'Chat',
     ],
     [
       'How do I submit a feature request?',
@@ -330,7 +330,7 @@ You can optionally set a priority level (low, medium, high, critical) and provid
 After submission, your request will appear in the feature request list with a "New" status. The admin team reviews requests regularly and updates their status as they progress: New → Planned → In Progress → Completed. You can check back on the Feature Requests page anytime to see the current status of your requests and any admin notes.
 
 The feature request system helps prioritize development work based on actual user needs. Even if a feature isn't implemented immediately, it's tracked and considered for future releases.`,
-      'general',
+      'General',
     ],
     [
       'What do the pipeline stages mean?',
@@ -351,7 +351,7 @@ The feature request system helps prioritize development work based on actual use
 **Failed**: Something went wrong during processing. Check the error details on the Pipeline page to diagnose and fix the issue. Common failures include missing images, API rate limits, or invalid product data. You can retry failed jobs individually or in bulk.
 
 Monitor all stages on the **Pipeline** page (Pipeline > Overview in the sidebar).`,
-      'pipeline',
+      'Pipeline',
     ],
     [
       'How do I check listing health?',
@@ -366,7 +366,7 @@ Navigate to the **Dashboard** or check the **Analytics** page for the listing he
 **Price Drops**: If items haven't sold after a configurable period (default 14 days), ProductBridge can automatically apply a price drop (default 10%). This makes items more competitive and can increase sell-through rates. The original price is preserved so you can restore it later.
 
 For a detailed health check, use the chat assistant and ask "how healthy are my listings" to get a comprehensive analysis with specific recommendations.`,
-      'analytics',
+      'Analytics',
     ],
     [
       'How do price drops work?',
@@ -379,7 +379,7 @@ For a detailed health check, use the chat assistant and ask "how healthy are my 
 **Safety Guards**: Price drops never go below a minimum threshold to protect your margins. The system tracks which listings have already had price drops applied to avoid double-dropping. You can see which listings have been price-dropped in the listing health report.
 
 **Manual Control**: You can also apply price drops manually from the Listings page or through the chat assistant. Ask "apply price drops" to trigger a manual run, or "drop prices on stale items" to target only items that meet the staleness criteria. All price drop actions are logged in the Analytics page so you have a full audit trail.`,
-      'products',
+      'Products',
     ],
     [
       'How do I export/import mappings?',
@@ -392,7 +392,7 @@ For a detailed health check, use the chat assistant and ask "how healthy are my 
 **Bulk Updates**: For advanced users, the bulk mapping API endpoint (POST /api/mappings/bulk) accepts an array of mapping objects and applies them all at once. This is useful for programmatic configuration or when migrating settings.
 
 **Best Practices**: Export your mappings before making major changes so you have a backup. If you're setting up a new environment, export from your working environment and import into the new one. The export file is human-readable JSON, so you can also edit it manually if needed before importing.`,
-      'mappings',
+      'Mappings',
     ],
     [
       'What is the capabilities registry?',
@@ -405,7 +405,7 @@ For a detailed health check, use the chat assistant and ask "how healthy are my 
 Each capability includes: a unique ID, display name, description, category (Shopify, eBay, Pipeline, Images, Analytics, Settings), example prompts for the chat assistant, and the API endpoints it uses. You can view all capabilities at the /api/capabilities endpoint.
 
 The registry is designed to be self-documenting — as the app grows, the registry grows with it, ensuring that documentation, chat capabilities, and feature discovery all stay in sync automatically.`,
-      'general',
+      'General',
     ],
     [
       'How do I filter and search products?',
@@ -420,7 +420,7 @@ The registry is designed to be self-documenting — as the app grows, the regist
 **Sorting**: Products can be sorted by various fields including title, price, status, and last updated date. Click on column headers to toggle sort direction.
 
 **Combining Filters**: You can combine search with status filters to narrow down results. For example, search for "lens" with status "active" to see all currently listed lens products. The URL updates with your filter parameters so you can bookmark specific views or share them.`,
-      'products',
+      'Products',
     ],
     [
       'What safety guards are in place?',
@@ -437,7 +437,7 @@ The registry is designed to be self-documenting — as the app grows, the regist
 **Data Preservation**: ProductBridge never deletes data from Shopify or eBay. All operations are additive — creating new listings, updating existing ones, or importing orders. The system maintains a complete sync log so you can audit every action taken.
 
 **Error Handling**: All sync operations include comprehensive error handling. If something fails, the error is logged with details, and the system continues processing remaining items rather than stopping entirely. Failed operations can be retried individually.`,
-      'general',
+      'General',
     ],
     [
       'How do I get started with ProductBridge?',
@@ -454,7 +454,7 @@ The registry is designed to be self-documenting — as the app grows, the regist
 **Step 5 — Enable Auto Features**: Once you're comfortable with the basic workflow, consider enabling the auto-listing pipeline (for new products) and auto-sync (for regular inventory and price updates). Configure these in Settings under their respective sections.
 
 The Dashboard provides a quick overview of your connections, product counts, and recent sync activity. Check it regularly to ensure everything is running smoothly. If you need help at any point, use the chat assistant or browse this FAQ.`,
-      'general',
+      'General',
     ],
     [
       'How do I troubleshoot sync errors?',
@@ -471,7 +471,7 @@ The Dashboard provides a quick overview of your connections, product counts, and
 **Retry Failed Operations**: Most sync operations can be retried individually. On the Pipeline page, failed jobs have a "Retry" button. For product sync failures, you can re-select the product and sync again. The system is idempotent — re-syncing an already-listed product updates it rather than creating a duplicate.
 
 If errors persist, use the chat assistant to describe the problem. It can check logs, identify patterns, and suggest specific fixes based on the error details.`,
-      'general',
+      'General',
     ],
     [
       'What eBay listing formats are supported?',
@@ -484,7 +484,7 @@ If errors persist, use the chat assistant to describe the problem. It can check 
 **Condition Settings**: For used camera gear, condition is important. ProductBridge supports all eBay condition values: New, Like New, Very Good, Good, Acceptable, and For Parts/Not Working. The default is "Used" but you can customize per-product. You can also add a condition description to provide specific details about wear, functionality, or included accessories.
 
 **Item Specifics**: eBay requires category-specific item specifics (Brand, Model, Type, etc.). ProductBridge maps these from your Shopify product data where possible and allows manual entry for fields that don't have a Shopify equivalent. The category mapper automatically selects the best eBay category based on your product type.`,
-      'products',
+      'Products',
     ],
     [
       'How does inventory sync work?',
@@ -499,7 +499,7 @@ If errors persist, use the chat assistant to describe the problem. It can check 
 **Per-Product Control**: In your field mappings, the "sync_quantity" setting controls whether inventory sync is active. You can override this per-product if you want to manage certain items manually. The "inventory_location" setting determines which Shopify location's inventory is used.
 
 **Safety**: Inventory sync will never increase eBay quantity above the Shopify quantity. If there's a discrepancy, the system defaults to the lower number to prevent overselling. All inventory updates are logged in the sync history for auditability.`,
-      'products',
+      'Products',
     ],
     [
       'How do I contact support?',
@@ -516,7 +516,7 @@ If errors persist, use the chat assistant to describe the problem. It can check 
 **Analytics & Logs**: If you're experiencing technical issues, check the Analytics page for error logs. Having specific error messages ready when seeking help makes troubleshooting much faster.
 
 ProductBridge is actively maintained and improved based on user feedback. Don't hesitate to reach out — whether it's a bug report, feature idea, or just a question about how something works.`,
-      'general',
+      'General',
     ],
   ];
 
@@ -662,7 +662,7 @@ The Dashboard auto-refreshes every 15 seconds, so you're always seeing current d
 
   // Assign sort_order to existing seed content where not set
   const sortOrders: Record<string, [string, number][]> = {
-    products: [
+    Products: [
       ['How do I sync products from Shopify to eBay?', 1],
       ['What are per-product overrides?', 2],
       ['How do I filter and search products?', 3],
@@ -670,25 +670,25 @@ The Dashboard auto-refreshes every 15 seconds, so you're always seeing current d
       ['What eBay listing formats are supported?', 5],
       ['How does inventory sync work?', 6],
     ],
-    mappings: [
+    Mappings: [
       ['How do I manage field mappings?', 1],
       ['How do I export/import mappings?', 2],
     ],
-    pipeline: [
+    Pipeline: [
       ['What is the auto-listing pipeline?', 1],
       ['What do the pipeline stages mean?', 2],
       ['How does image processing work?', 3],
     ],
-    orders: [
+    Orders: [
       ['How do I manage orders?', 1],
     ],
-    analytics: [
+    Analytics: [
       ['How do I check listing health?', 1],
     ],
-    chat: [
+    Chat: [
       ['How do I use the chat assistant?', 1],
     ],
-    general: [
+    General: [
       ['How do I get started with ProductBridge?', 1],
       ['What safety guards are in place?', 2],
       ['How do I troubleshoot sync errors?', 3],
@@ -709,6 +709,25 @@ The Dashboard auto-refreshes every 15 seconds, so you're always seeing current d
   }
 };
 
+/**
+ * Normalize help_questions categories to Title Case.
+ */
+const migrateHelpCategoryCase = (sqlite: InstanceType<typeof Database>) => {
+  sqlite.exec(`
+    UPDATE help_questions SET category =
+      CASE
+        WHEN category = 'products' THEN 'Products'
+        WHEN category = 'orders' THEN 'Orders'
+        WHEN category = 'pipeline' THEN 'Pipeline'
+        WHEN category = 'mappings' THEN 'Mappings'
+        WHEN category = 'general' THEN 'General'
+        WHEN category = 'chat' THEN 'Chat'
+        WHEN category = 'analytics' THEN 'Analytics'
+        ELSE category
+      END
+  `);
+};
+
 export const getDb = async () => {
   if (!dbInstance) {
     const filePath = await ensureDbPath();
@@ -716,6 +735,7 @@ export const getDb = async () => {
     initTables(rawSqlite);
     migrateProductMappings(rawSqlite);
     migrateHelpQuestions(rawSqlite);
+    migrateHelpCategoryCase(rawSqlite);
     initExtraTables(rawSqlite);
     await seedDefaultMappings(rawSqlite);
     seedHelpContent(rawSqlite);
