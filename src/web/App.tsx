@@ -1,10 +1,11 @@
 import React from 'react';
 import { AppProvider, Frame, TopBar } from '@shopify/polaris';
 import enTranslations from '@shopify/polaris/locales/en.json';
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Dashboard from './pages/Dashboard';
 import Listings, { ListingDetail } from './pages/Listings';
+import ShopifyProducts, { ShopifyProductDetail } from './pages/ShopifyProducts';
 import Orders from './pages/Orders';
 import Settings from './pages/Settings';
 import Analytics from './pages/Analytics';
@@ -53,9 +54,10 @@ const AppFrame: React.FC = () => {
     >
       <Routes>
         <Route path="/" element={<Dashboard />} />
-        <Route path="/listings" element={<Listings />} />
-        <Route path="/listings/:id" element={<ListingDetail />} />
-        <Route path="/ebay/listings" element={<Navigate to="/listings" replace />} />
+        <Route path="/listings" element={<ShopifyProducts />} />
+        <Route path="/listings/:id" element={<ShopifyProductDetail />} />
+        <Route path="/ebay/listings" element={<Listings />} />
+        <Route path="/ebay/listings/:id" element={<ListingDetail />} />
         <Route path="/orders" element={<Orders />} />
         <Route path="/mappings" element={<Mappings />} />
         <Route path="/pipeline" element={<Pipeline />} />

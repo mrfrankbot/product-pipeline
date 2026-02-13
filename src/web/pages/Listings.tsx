@@ -297,7 +297,7 @@ const ListingDetail: React.FC = () => {
     <Page
       title={product?.title ?? listing?.shopifyTitle ?? 'Product detail'}
       subtitle={listing?.shopifyProductId ? `Shopify ID ${listing.shopifyProductId}` : undefined}
-      backAction={{ content: 'Back to products', onAction: () => navigate('/listings') }}
+      backAction={{ content: 'Back to eBay listings', onAction: () => navigate('/ebay/listings') }}
       primaryAction={{
         content: 'Sync now',
         onAction: () => syncMutation.mutate(),
@@ -327,11 +327,28 @@ const ListingDetail: React.FC = () => {
                   {product?.status && <Badge tone="info">{product.status}</Badge>}
                 </InlineStack>
                 <InlineStack gap="400" align="start">
-                  <Thumbnail
-                    size="large"
-                    source="https://cdn.shopify.com/s/files/1/0533/2089/files/placeholder-images-image_large.png"
-                    alt={product?.title ?? 'Product image'}
-                  />
+                  <BlockStack gap="200">
+                    <Thumbnail
+                      size="large"
+                      source={product?.image?.src || product?.images?.[0]?.src || "https://cdn.shopify.com/s/files/1/0533/2089/files/placeholder-images-image_large.png"}
+                      alt={product?.title ?? 'Product image'}
+                    />
+                    {product?.images && product.images.length > 1 && (
+                      <InlineStack gap="100" wrap>
+                        {product.images.slice(0, 6).map((img: any, idx: number) => (
+                          <Thumbnail
+                            key={img.id ?? idx}
+                            size="small"
+                            source={img.src}
+                            alt={`${product?.title ?? 'Product'} image ${idx + 1}`}
+                          />
+                        ))}
+                        {product.images.length > 6 && (
+                          <Text variant="bodySm" tone="subdued" as="span">+{product.images.length - 6} more</Text>
+                        )}
+                      </InlineStack>
+                    )}
+                  </BlockStack>
                   <BlockStack gap="200">
                     <Text variant="headingLg" as="h3">{product?.title ?? listing.shopifyTitle ?? 'Untitled product'}</Text>
                     <Text variant="bodyMd" tone="subdued" as="p">SKU: {productVariant?.sku ?? listing.shopifySku ?? '—'}</Text>
@@ -563,7 +580,7 @@ const Listings: React.FC = () => {
         id={listing.shopifyProductId}
         key={listing.id}
         position={index}
-        onClick={() => navigate(`/listings/${listing.shopifyProductId}`)}
+        onClick={() => navigate(`/ebay/listings/${listing.shopifyProductId}`)}
       >
         <IndexTable.Cell>
           <div onClick={(event) => event.stopPropagation()}>

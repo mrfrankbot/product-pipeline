@@ -56,18 +56,39 @@ export async function processNewProduct(
   };
 }
 
+const DEFAULT_DESCRIPTION_PROMPT =
+  'You are a product description writer for Pictureline, a camera and photography store in Salt Lake City, Utah. Write a compelling, SEO-friendly product description for the following product. Include key features, condition details, and what makes this a good buy. Keep the tone professional but approachable. Format with short paragraphs, no bullet points unless listing specs.';
+
+async function getDescriptionPrompt(): Promise<string> {
+  try {
+    const db = await getRawDb();
+    const row = db
+      .prepare(`SELECT value FROM settings WHERE key = 'description_prompt'`)
+      .get() as { value: string } | undefined;
+    return row?.value || DEFAULT_DESCRIPTION_PROMPT;
+  } catch {
+    return DEFAULT_DESCRIPTION_PROMPT;
+  }
+}
+
 async function generateDescription(
   openai: OpenAI,
   title: string,
   vendor: string,
 ): Promise<string> {
   try {
+    const systemPrompt = await getDescriptionPrompt();
+
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         {
+          role: 'system',
+          content: systemPrompt,
+        },
+        {
           role: 'user',
-          content: `Write a professional eBay listing description for a used camera product. Product: ${title}. Brand: ${vendor}. Condition: Used. Include key features, what's included, and a brief note about condition. Keep it under 500 words. Format with HTML paragraphs. Professional but friendly tone. The seller is Pictureline, a camera store in Salt Lake City, UT.`,
+          content: `Product: ${title}. Brand: ${vendor}. Condition: Used. Keep it under 500 words. Format with HTML paragraphs.`,
         },
       ],
       max_tokens: 1000,

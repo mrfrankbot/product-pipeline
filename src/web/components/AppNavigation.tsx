@@ -57,7 +57,7 @@ const AppNavigation: React.FC = () => {
           {
             label: 'Listings',
             icon: undefined,
-            selected: isSelected('/ebay/listings'),
+            selected: isSelected('/ebay/listings') || location.pathname.startsWith('/ebay/listings/'),
             onClick: () => navigate('/ebay/listings'),
             url: '/ebay/listings',
           },

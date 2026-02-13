@@ -526,6 +526,31 @@ ProductBridge is actively maintained and improved based on user feedback. Don't 
 };
 
 /**
+ * Seed default settings if not already present.
+ */
+const seedDefaultSettings = (sqlite: InstanceType<typeof Database>) => {
+  const upsert = sqlite.prepare(`
+    INSERT INTO settings (key, value, updatedAt)
+    VALUES (?, ?, datetime('now'))
+    ON CONFLICT(key) DO NOTHING
+  `);
+
+  const defaults: [string, string][] = [
+    [
+      'description_prompt',
+      'You are a product description writer for Pictureline, a camera and photography store in Salt Lake City, Utah. Write a compelling, SEO-friendly product description for the following product. Include key features, condition details, and what makes this a good buy. Keep the tone professional but approachable. Format with short paragraphs, no bullet points unless listing specs.',
+    ],
+    ['photoroom_template_id', ''],
+    ['pipeline_auto_descriptions', '0'],
+    ['pipeline_auto_images', '0'],
+  ];
+
+  for (const [key, value] of defaults) {
+    upsert.run(key, value);
+  }
+};
+
+/**
  * Migrate existing product_mappings table — add new columns if missing.
  */
 const migrateProductMappings = (sqlite: InstanceType<typeof Database>) => {
@@ -558,6 +583,7 @@ export const getDb = async () => {
     initExtraTables(rawSqlite);
     await seedDefaultMappings(rawSqlite);
     seedHelpContent(rawSqlite);
+    seedDefaultSettings(rawSqlite);
     dbInstance = drizzle(rawSqlite, { schema });
   }
 
