@@ -204,8 +204,8 @@ const syncProductToEbay = async (
   shopifyToken: string,
   productId: string,
   settings: Record<string, string>,
-  options: { dryRun?: boolean } = {},
-): Promise<{ success: boolean; error?: string; listingId?: string }> => {
+  options: { dryRun?: boolean; draft?: boolean } = {},
+): Promise<{ success: boolean; error?: string; listingId?: string; offerId?: string }> => {
   
   try {
     const db = await getDb();
@@ -304,10 +304,16 @@ const syncProductToEbay = async (
     });
     info(`Created eBay offer: ${offerResponse.offerId}`);
     
-    // Publish the listing
-    const publishResponse = await publishOffer(ebayToken, offerResponse.offerId);
-    const listingId = publishResponse.listingId;
-    info(`Published eBay listing: ${listingId}`);
+    // Publish the listing (unless draft mode)
+    let listingId: string;
+    if (options.draft) {
+      listingId = `draft-${offerResponse.offerId}`;
+      info(`Created eBay DRAFT offer: ${offerResponse.offerId} (not published)`);
+    } else {
+      const publishResponse = await publishOffer(ebayToken, offerResponse.offerId);
+      listingId = publishResponse.listingId;
+      info(`Published eBay listing: ${listingId}`);
+    }
     
     // Save mapping (with cached Shopify metadata for list view)
     await db
@@ -316,7 +322,7 @@ const syncProductToEbay = async (
         shopifyProductId: productId,
         ebayListingId: listingId,
         ebayInventoryItemId: variant.sku,
-        status: 'active',
+        status: options.draft ? 'draft' : 'active',
         shopifyTitle: product.title || null,
         shopifyPrice: parseFloat(variant.price) || null,
         shopifySku: variant.sku || null,
@@ -338,7 +344,7 @@ const syncProductToEbay = async (
       })
       .run();
     
-    return { success: true, listingId };
+    return { success: true, listingId, offerId: offerResponse.offerId };
     
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
@@ -370,7 +376,7 @@ export const syncProducts = async (
   shopifyToken: string,
   productIds: string[],
   settings: Record<string, string> = {},
-  options: { dryRun?: boolean } = {},
+  options: { dryRun?: boolean; draft?: boolean } = {},
 ): Promise<ProductSyncResult> => {
   
   const result: ProductSyncResult = {

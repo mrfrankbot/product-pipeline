@@ -156,6 +156,7 @@ router.post('/api/sync/products', async (req: Request, res: Response) => {
   try {
     const db = await getRawDb();
     const dryRun = req.query.dry === 'true';
+    const draft = req.body.draft === true || req.query.draft === 'true';
     const productIds = req.body.productIds as string[];
     
     if (!Array.isArray(productIds) || productIds.length === 0) {
@@ -181,8 +182,8 @@ router.post('/api/sync/products', async (req: Request, res: Response) => {
     const settings = db.prepare(`SELECT * FROM settings`).all() as any[];
     const settingsObj = Object.fromEntries(settings.map((s) => [s.key, s.value]));
     
-    info(`[API] Product sync triggered: ${productIds.length} products${dryRun ? ' (DRY RUN)' : ''}`);
-    res.json({ ok: true, message: 'Product sync triggered', productIds, dryRun });
+    info(`[API] Product sync triggered: ${productIds.length} products${dryRun ? ' (DRY RUN)' : ''}${draft ? ' (DRAFT)' : ''}`);
+    res.json({ ok: true, message: 'Product sync triggered', productIds, dryRun, draft });
     
     // Run sync in background
     try {
@@ -192,7 +193,7 @@ router.post('/api/sync/products', async (req: Request, res: Response) => {
         shopifyRow.access_token,
         productIds,
         settingsObj,
-        { dryRun }
+        { dryRun, draft }
       );
       info(`[API] Product sync complete: ${result.created} created, ${result.skipped} skipped, ${result.failed} failed`);
     } catch (err) {
