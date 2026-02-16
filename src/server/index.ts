@@ -16,6 +16,7 @@ import chatRoutes from './routes/chat.js';
 import pipelineRoutes from './routes/pipeline.js';
 import helpRoutes from './routes/help.js';
 import featureRoutes from './routes/features.js';
+import watcherRoutes from './routes/watcher.js';
 import { apiKeyAuth, rateLimit } from './middleware/auth.js';
 import { getCapabilities, getNewCapabilities } from './capabilities.js';
 
@@ -85,6 +86,7 @@ app.use(chatRoutes);
 app.use(pipelineRoutes);
 app.use(helpRoutes);
 app.use(featureRoutes);
+app.use(watcherRoutes);
 
 // --- Capabilities discovery endpoint ---
 app.get('/api/capabilities', (_req, res) => {

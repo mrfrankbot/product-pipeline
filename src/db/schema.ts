@@ -74,6 +74,25 @@ export const authTokens = sqliteTable('auth_tokens', {
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
 });
 
+export const styleshootWatchLog = sqliteTable('styleshoot_watch_log', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  folderName: text('folder_name').notNull().unique(),
+  folderPath: text('folder_path').notNull(),
+  presetName: text('preset_name'),
+  parsedProductName: text('parsed_product_name'),
+  parsedSerialSuffix: text('parsed_serial_suffix'),
+  shopifyProductId: text('shopify_product_id'),
+  shopifyProductTitle: text('shopify_product_title'),
+  matchConfidence: text('match_confidence'),
+  imageCount: integer('image_count').default(0),
+  status: text('status').default('detected'),
+  error: text('error'),
+  detectedAt: integer('detected_at', { mode: 'timestamp' }).notNull(),
+  processedAt: integer('processed_at', { mode: 'timestamp' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
 export const fieldMappings = sqliteTable('field_mappings', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   mappingType: text('mapping_type').notNull(), // 'category', 'condition', 'field', 'inventory_location'

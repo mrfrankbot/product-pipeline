@@ -5,6 +5,7 @@ import { buildProductsCommand } from './products.js';
 import { buildOrdersCommand } from './orders.js';
 import { buildInventoryCommand } from './inventory.js';
 import { buildStatusCommand } from './status.js';
+import { buildWatcherCommand } from './watcher.js';
 import { setVerbose } from '../utils/logger.js';
 import { syncOrders } from '../sync/order-sync.js';
 import { syncAllInventory } from '../sync/inventory-sync.js';
@@ -119,6 +120,7 @@ program.addCommand(buildProductsCommand());
 program.addCommand(buildOrdersCommand());
 program.addCommand(buildInventoryCommand());
 program.addCommand(buildStatusCommand());
+program.addCommand(buildWatcherCommand());
 
 program.parseAsync().catch((error) => {
   console.error(error instanceof Error ? error.message : error);
