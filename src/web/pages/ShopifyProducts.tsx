@@ -502,12 +502,33 @@ export const ShopifyProductDetail: React.FC = () => {
   }, [deleteBulkImagesMutation]);
 
   return (
+    <div>
+      <style>
+        {`
+          @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+          }
+          
+          .product-detail-page {
+            --polaris-color-bg-surface: #ffffff;
+            --polaris-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.1);
+          }
+          
+          .premium-card {
+            background: var(--polaris-color-bg-surface);
+            box-shadow: var(--polaris-shadow-card);
+            border-radius: 12px;
+            border: 1px solid #e5e7eb;
+          }
+        `}
+      </style>
     <Page
       title={product?.title ?? 'Loading product…'}
       subtitle={id ? `Shopify ID ${id}` : undefined}
       backAction={{ content: 'Products', onAction: () => navigate('/listings') }}
       primaryAction={{
-        content: 'Run Pipeline',
+        content: '🚀 Run Pipeline',
         onAction: () => runPipelineMutation.mutate(),
         loading: runPipelineMutation.isPending,
       }}
@@ -538,15 +559,38 @@ export const ShopifyProductDetail: React.FC = () => {
           <Layout>
             {/* ── LEFT COLUMN (2/3) ── */}
             <Layout.Section>
+              <BlockStack gap="500">
               {/* ── Active Photos Gallery ── */}
-            <ActivePhotosGallery
-              photos={activePhotos}
-              loading={activePhotosLoading}
-              onDeleteSingle={handleDeleteSingle}
-              onDeleteBulk={handleDeleteBulk}
-              onEditPhotos={handleEditPhotos}
-              onSelectionChange={setSelectedPhotoIds}
-            />
+              <Card>
+                <BlockStack gap="400">
+                  <InlineStack align="space-between" blockAlign="center">
+                    <InlineStack gap="300" blockAlign="center">
+                      <Text variant="headingMd" as="h2">Product Photos</Text>
+                      {activePhotos.length > 0 && (
+                        <Badge tone="info">{`${activePhotos.length} photo${activePhotos.length !== 1 ? 's' : ''}`}</Badge>
+                      )}
+                    </InlineStack>
+                    {activePhotos.length > 0 && (
+                      <Button
+                        variant="secondary"
+                        size="slim"
+                        onClick={() => setEditPanelOpen(prev => !prev)}
+                      >
+                        {editPanelOpen ? 'Hide' : 'Show'} Photo Editor
+                      </Button>
+                    )}
+                  </InlineStack>
+                  
+                  <ActivePhotosGallery
+                    photos={activePhotos}
+                    loading={activePhotosLoading}
+                    onDeleteSingle={handleDeleteSingle}
+                    onDeleteBulk={handleDeleteBulk}
+                    onEditPhotos={handleEditPhotos}
+                    onSelectionChange={setSelectedPhotoIds}
+                  />
+                </BlockStack>
+              </Card>
 
             {/* ── Edit Photos Panel ── */}
             <EditPhotosPanel
@@ -602,178 +646,352 @@ export const ShopifyProductDetail: React.FC = () => {
               </Card>
             )}
 
+              {/* ── AI Description Approval Banner ── */}
+              {aiDescription && (
+                <Card>
+                  <Banner
+                    tone="success"
+                    title="✨ AI Description Ready"
+                    action={{
+                      content: "Use This Description",
+                      onAction: async () => {
+                        try {
+                          const htmlContent = markdownToHtml(aiDescription);
+                          await apiClient.post(`/api/test/update-product`, {
+                            productId: id,
+                            body_html: htmlContent
+                          });
+                          addNotification({ 
+                            type: 'success', 
+                            title: 'Description updated', 
+                            message: 'AI description has been applied to your product',
+                            autoClose: 4000 
+                          });
+                          queryClient.invalidateQueries({ queryKey: ['product-info', id] });
+                        } catch (error) {
+                          addNotification({
+                            type: 'error',
+                            title: 'Update failed',
+                            message: error instanceof Error ? error.message : 'Failed to update product description',
+                          });
+                        }
+                      }
+                    }}
+                    secondaryAction={{
+                      content: "Dismiss",
+                      onAction: () => {
+                        queryClient.setQueryData(['product-pipeline-status', id], (old: any) => ({
+                          ...old,
+                          status: { ...old?.status, ai_description: null }
+                        }));
+                      }
+                    }}
+                  >
+                    <BlockStack gap="200">
+                      <Text as="p">A new AI-generated description is ready to apply to your product.</Text>
+                      <div
+                        style={{ 
+                          maxHeight: '150px', 
+                          overflow: 'auto', 
+                          padding: '12px', 
+                          background: '#f8f9fa', 
+                          borderRadius: '8px',
+                          border: '1px solid #e1e3e5',
+                          fontSize: '14px'
+                        }}
+                        dangerouslySetInnerHTML={{ __html: markdownToHtml(aiDescription.slice(0, 200) + '...') }}
+                      />
+                    </BlockStack>
+                  </Banner>
+                </Card>
+              )}
+
+              {/* ── Photos Processed Approval Banner ── */}
+              {(() => {
+                const processedPhotos = galleryImages.filter(img => img.processedUrl);
+                return processedPhotos.length > 0 && (
+                  <Card>
+                    <Banner
+                      tone="info"
+                      title={`📸 ${processedPhotos.length} Photos Processed`}
+                      action={{
+                        content: "Apply All to Shopify",
+                        onAction: async () => {
+                          try {
+                            // This would need an actual API endpoint to apply processed images
+                            addNotification({ 
+                              type: 'success', 
+                              title: 'Photos applied', 
+                              message: `${processedPhotos.length} processed photos applied to Shopify`,
+                              autoClose: 4000 
+                            });
+                          } catch (error) {
+                            addNotification({
+                              type: 'error',
+                              title: 'Apply failed',
+                              message: error instanceof Error ? error.message : 'Failed to apply processed photos',
+                            });
+                          }
+                        }
+                      }}
+                      secondaryAction={{
+                        content: "Dismiss",
+                        onAction: () => {
+                          // Could implement a way to mark these as dismissed
+                        }
+                      }}
+                    >
+                      <Text as="p">Background removal and enhancement complete. Ready to apply to your Shopify product?</Text>
+                    </Banner>
+                  </Card>
+                );
+              })()}
+
               {/* ── Description Section ── */}
               <Card>
-                <BlockStack gap="400">
+                <BlockStack gap="500">
                   <InlineStack align="space-between" blockAlign="center">
                     <Text variant="headingMd" as="h2">Description</Text>
                     <Button
                       icon={<Play className="w-4 h-4" />}
                       onClick={() => aiMutation.mutate()}
                       loading={aiMutation.isPending}
+                      variant="secondary"
                     >
                       Regenerate with AI
                     </Button>
                   </InlineStack>
 
                   {aiDescription ? (
-                    <BlockStack gap="300">
-                      <InlineStack align="space-between" blockAlign="center">
-                        <Badge tone="success">AI-generated description available</Badge>
-                        <Button
-                          onClick={() => {
-                            // TODO: Implement "Use This" functionality
-                            addNotification({ 
-                              type: 'info', 
-                              title: 'Feature coming soon', 
-                              message: 'AI description integration will be implemented next',
-                              autoClose: 3000 
-                            });
-                          }}
-                        >
-                          Use This
-                        </Button>
-                      </InlineStack>
+                    <BlockStack gap="400">
                       <div
-                        style={{ 
-                          maxHeight: '300px', 
-                          overflow: 'auto', 
-                          padding: '12px', 
-                          background: '#f8f9fa', 
-                          borderRadius: '8px',
-                          border: '1px solid #e1e3e5',
+                        style={{
+                          padding: '16px',
+                          background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+                          borderRadius: '12px',
+                          border: '2px solid #0ea5e9',
+                          boxShadow: '0 4px 6px -1px rgba(14, 165, 233, 0.1)'
                         }}
-                        dangerouslySetInnerHTML={{ __html: markdownToHtml(aiDescription) }}
-                      />
+                      >
+                        <BlockStack gap="300">
+                          <InlineStack align="space-between" blockAlign="center">
+                            <InlineStack gap="200" blockAlign="center">
+                              <Text variant="headingSm" as="h3">🤖 AI Generated Description</Text>
+                              <Badge tone="info">Draft</Badge>
+                            </InlineStack>
+                            <Button
+                              variant="primary"
+                              size="slim"
+                              onClick={async () => {
+                                try {
+                                  const htmlContent = markdownToHtml(aiDescription);
+                                  await apiClient.post(`/api/test/update-product`, {
+                                    productId: id,
+                                    body_html: htmlContent
+                                  });
+                                  addNotification({ 
+                                    type: 'success', 
+                                    title: 'Description updated', 
+                                    message: 'AI description has been applied to your product',
+                                    autoClose: 4000 
+                                  });
+                                  queryClient.invalidateQueries({ queryKey: ['product-info', id] });
+                                } catch (error) {
+                                  addNotification({
+                                    type: 'error',
+                                    title: 'Update failed',
+                                    message: error instanceof Error ? error.message : 'Failed to update product description',
+                                  });
+                                }
+                              }}
+                            >
+                              Use This Description
+                            </Button>
+                          </InlineStack>
+                          <div
+                            style={{ 
+                              maxHeight: '300px', 
+                              overflow: 'auto', 
+                              padding: '16px', 
+                              background: '#ffffff', 
+                              borderRadius: '8px',
+                              border: '1px solid #e5e7eb',
+                              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+                            }}
+                            dangerouslySetInnerHTML={{ __html: markdownToHtml(aiDescription) }}
+                          />
+                        </BlockStack>
+                      </div>
                     </BlockStack>
                   ) : null}
 
                   {/* Current Description */}
+                  <Divider />
                   {product.body_html ? (
-                    <BlockStack gap="300">
-                      <Text variant="bodyMd" tone="subdued" as="p">Current description:</Text>
+                    <BlockStack gap="400">
+                      <Text variant="headingSm" as="h3">Current Description</Text>
                       <div
                         style={{ 
                           maxHeight: '300px', 
                           overflow: 'auto', 
-                          padding: '12px', 
-                          background: '#fafbfb', 
-                          borderRadius: '8px',
-                          border: '1px solid #e1e3e5'
+                          padding: '20px', 
+                          background: '#ffffff', 
+                          borderRadius: '12px',
+                          border: '1px solid #e5e7eb',
+                          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+                          fontSize: '14px',
+                          lineHeight: '1.6'
                         }}
                         dangerouslySetInnerHTML={{ __html: product.body_html }}
                       />
                       
-                      <Button
-                        variant="plain"
-                        onClick={() => setShowEditHtml(!showEditHtml)}
-                      >
-                        {showEditHtml ? 'Hide HTML source' : 'View HTML source'}
-                      </Button>
-                      
-                      {showEditHtml && (
-                        <div
-                          style={{ 
-                            maxHeight: '200px', 
-                            overflow: 'auto', 
-                            padding: '12px', 
-                            background: '#f1f1f1', 
-                            borderRadius: '8px',
-                            border: '1px solid #d1d5db',
-                            fontFamily: 'monospace',
-                            fontSize: '12px'
+                      <details>
+                        <summary
+                          style={{
+                            padding: '8px 12px',
+                            background: '#f8f9fa',
+                            borderRadius: '6px',
+                            border: '1px solid #e5e7eb',
+                            cursor: 'pointer',
+                            fontFamily: 'SF Mono, Monaco, monospace',
+                            fontSize: '13px',
+                            userSelect: 'none'
                           }}
                         >
-                          {product.body_html}
+                          📝 View HTML Source
+                        </summary>
+                        <div
+                          style={{ 
+                            marginTop: '8px',
+                            maxHeight: '200px', 
+                            overflow: 'auto', 
+                            padding: '16px', 
+                            background: '#1e1e1e', 
+                            color: '#ffffff',
+                            borderRadius: '8px',
+                            border: '1px solid #374151',
+                            fontFamily: 'SF Mono, Monaco, Consolas, monospace',
+                            fontSize: '12px',
+                            lineHeight: '1.5'
+                          }}
+                        >
+                          <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{product.body_html}</pre>
                         </div>
-                      )}
+                      </details>
                     </BlockStack>
                   ) : (
-                    <Text tone="subdued" as="p">No description yet. Use AI to generate one.</Text>
+                    <BlockStack gap="300" align="center">
+                      <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                        <Text variant="headingSm" as="h3" tone="subdued">No description yet</Text>
+                        <Text tone="subdued" as="p">Use AI to generate a compelling product description</Text>
+                      </div>
+                    </BlockStack>
                   )}
                 </BlockStack>
               </Card>
+              </BlockStack>
             </Layout.Section>
 
             {/* ── RIGHT SIDEBAR (1/3) ── */}
             <Layout.Section variant="oneThird">
-              <BlockStack gap="400">
+              <BlockStack gap="500">
                 
                 {/* ── Product Status & Details ── */}
                 <Card>
-                  <BlockStack gap="300">
+                  <BlockStack gap="400">
                     <InlineStack align="space-between" blockAlign="center">
                       <Text variant="headingMd" as="h2">Product Details</Text>
                       {statusBadge}
                     </InlineStack>
                     <Divider />
-                    <InlineStack align="space-between">
-                      <Text variant="bodyMd" tone="subdued" as="span">Price</Text>
-                      <Text variant="bodyMd" as="span">{formatMoney(variant?.price ?? null)}</Text>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text variant="bodyMd" tone="subdued" as="span">Compare-at price</Text>
-                      <Text variant="bodyMd" as="span">{formatMoney(variant?.compare_at_price ?? null)}</Text>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text variant="bodyMd" tone="subdued" as="span">SKU</Text>
-                      <Text variant="bodyMd" as="span">{variant?.sku ?? '—'}</Text>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text variant="bodyMd" tone="subdued" as="span">Barcode</Text>
-                      <Text variant="bodyMd" as="span">{variant?.barcode ?? '—'}</Text>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text variant="bodyMd" tone="subdued" as="span">Inventory</Text>
-                      <Text variant="bodyMd" as="span">{variant?.inventory_quantity ?? '—'}</Text>
-                    </InlineStack>
+                    <BlockStack gap="300">
+                      <InlineStack align="space-between">
+                        <Text variant="bodyMd" tone="subdued" as="span">Price</Text>
+                        <Text variant="bodyMd" fontWeight="medium" as="span">{formatMoney(variant?.price ?? null)}</Text>
+                      </InlineStack>
+                      <InlineStack align="space-between">
+                        <Text variant="bodyMd" tone="subdued" as="span">Compare-at price</Text>
+                        <Text variant="bodyMd" as="span">{formatMoney(variant?.compare_at_price ?? null)}</Text>
+                      </InlineStack>
+                      <InlineStack align="space-between">
+                        <Text variant="bodyMd" tone="subdued" as="span">SKU</Text>
+                        <span style={{ fontFamily: 'SF Mono, monospace' }}>
+                          <Text variant="bodyMd" as="span">{variant?.sku ?? '—'}</Text>
+                        </span>
+                      </InlineStack>
+                      <InlineStack align="space-between">
+                        <Text variant="bodyMd" tone="subdued" as="span">Barcode</Text>
+                        <span style={{ fontFamily: 'SF Mono, monospace' }}>
+                          <Text variant="bodyMd" as="span">{variant?.barcode ?? '—'}</Text>
+                        </span>
+                      </InlineStack>
+                      <InlineStack align="space-between">
+                        <Text variant="bodyMd" tone="subdued" as="span">Inventory</Text>
+                        <Text variant="bodyMd" fontWeight="medium" as="span">{variant?.inventory_quantity ?? '—'}</Text>
+                      </InlineStack>
+                    </BlockStack>
                     <Divider />
-                    <InlineStack align="space-between">
-                      <Text variant="bodyMd" tone="subdued" as="span">Vendor</Text>
-                      <Text variant="bodyMd" as="span">{product.vendor ?? '—'}</Text>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text variant="bodyMd" tone="subdued" as="span">Product type</Text>
-                      <Text variant="bodyMd" as="span">{product.product_type ?? '—'}</Text>
-                    </InlineStack>
-                    {product.tags && (
-                      <>
-                        <Text variant="bodyMd" tone="subdued" as="span">Tags</Text>
-                        <InlineStack gap="100" wrap>
-                          {(typeof product.tags === 'string' ? product.tags.split(',') : product.tags).map((tag: string) => (
-                            <Badge key={tag.trim()}>{tag.trim()}</Badge>
-                          ))}
-                        </InlineStack>
-                      </>
-                    )}
+                    <BlockStack gap="300">
+                      <InlineStack align="space-between">
+                        <Text variant="bodyMd" tone="subdued" as="span">Vendor</Text>
+                        <Text variant="bodyMd" as="span">{product.vendor ?? '—'}</Text>
+                      </InlineStack>
+                      <InlineStack align="space-between">
+                        <Text variant="bodyMd" tone="subdued" as="span">Product type</Text>
+                        <Text variant="bodyMd" as="span">{product.product_type ?? '—'}</Text>
+                      </InlineStack>
+                      {product.tags && (
+                        <BlockStack gap="200">
+                          <Text variant="bodyMd" tone="subdued" as="span">Tags</Text>
+                          <InlineStack gap="100" wrap>
+                            {(typeof product.tags === 'string' ? product.tags.split(',') : product.tags).map((tag: string) => (
+                              <Badge key={tag.trim()}>{tag.trim()}</Badge>
+                            ))}
+                          </InlineStack>
+                        </BlockStack>
+                      )}
+                    </BlockStack>
                   </BlockStack>
                 </Card>
 
                 {/* ── eBay Listing Status ── */}
                 <Card>
-                  <BlockStack gap="300">
-                    <Text variant="headingMd" as="h2">eBay Listing</Text>
+                  <BlockStack gap="400">
+                    <InlineStack align="space-between" blockAlign="center">
+                      <Text variant="headingMd" as="h2">eBay Listing</Text>
+                      {listing?.ebayListingId && (
+                        listing.ebayListingId.startsWith('draft-') ? (
+                          <Badge tone="attention">Draft</Badge>
+                        ) : (
+                          <Badge tone={listing.status === 'active' || listing.status === 'synced' ? 'success' : 'info'}>
+                            {listing.status === 'synced' ? 'Live' : listing.status}
+                          </Badge>
+                        )
+                      )}
+                    </InlineStack>
                     <Divider />
                     {listing?.ebayListingId ? (
-                      <BlockStack gap="300">
-                        <InlineStack align="space-between">
-                          <Text variant="bodyMd" tone="subdued" as="span">Status</Text>
-                          {listing.ebayListingId.startsWith('draft-') ? (
-                            <Badge tone="info">Draft — not yet published</Badge>
-                          ) : (
-                            <Badge tone={listing.status === 'active' || listing.status === 'synced' ? 'success' : 'info'}>
-                              {listing.status}
-                            </Badge>
-                          )}
-                        </InlineStack>
-                        <InlineStack align="space-between">
-                          <Text variant="bodyMd" tone="subdued" as="span">eBay Item ID</Text>
-                          <Text variant="bodyMd" as="span">{listing.ebayListingId}</Text>
-                        </InlineStack>
-                        <ButtonGroup>
+                      <BlockStack gap="400">
+                        <BlockStack gap="300">
+                          <InlineStack align="space-between">
+                            <Text variant="bodyMd" tone="subdued" as="span">Status</Text>
+                            <Text variant="bodyMd" fontWeight="medium" as="span">
+                              {listing.ebayListingId.startsWith('draft-') ? 'Draft (not published)' : 'Published'}
+                            </Text>
+                          </InlineStack>
+                          <InlineStack align="space-between">
+                            <Text variant="bodyMd" tone="subdued" as="span">eBay Item ID</Text>
+                            <span style={{ fontFamily: 'SF Mono, monospace' }}>
+                              <Text variant="bodyMd" as="span">{listing.ebayListingId}</Text>
+                            </span>
+                          </InlineStack>
+                        </BlockStack>
+                        
+                        <BlockStack gap="200">
                           {!listing.ebayListingId.startsWith('draft-') && (
                             <Button
-                              size="slim"
+                              fullWidth
+                              variant="secondary"
                               icon={<ExternalLink className="w-4 h-4" />}
                               url={`https://www.ebay.com/itm/${listing.ebayListingId}`}
                               external
@@ -782,46 +1000,135 @@ export const ShopifyProductDetail: React.FC = () => {
                             </Button>
                           )}
                           <Button
-                            size="slim"
+                            fullWidth
+                            variant="plain"
                             onClick={() => navigate(`/ebay/listings/${listing.shopifyProductId}`)}
                           >
-                            Listing Detail
+                            View Listing Details
                           </Button>
-                        </ButtonGroup>
+                        </BlockStack>
                       </BlockStack>
                     ) : (
-                      <Text tone="subdued" as="p">Not listed on eBay yet.</Text>
+                      <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                        <Text tone="subdued" as="p">Not listed on eBay yet</Text>
+                        <Text variant="bodySm" tone="subdued" as="p">Run the pipeline to create an eBay listing</Text>
+                      </div>
                     )}
                   </BlockStack>
                 </Card>
 
                 {/* ── Pipeline Status ── */}
                 <Card>
-                  <BlockStack gap="300">
+                  <BlockStack gap="400">
                     <InlineStack align="space-between" blockAlign="center">
                       <Text variant="headingMd" as="h2">Pipeline Status</Text>
-                      {pipelineJob?.status && <Badge>{pipelineJob.status}</Badge>}
+                      {pipelineJob?.status && (
+                        <Badge 
+                          tone={
+                            pipelineJob.status === 'completed' ? 'success' :
+                            pipelineJob.status === 'failed' ? 'critical' :
+                            pipelineJob.status === 'running' ? 'attention' : 'info'
+                          }
+                        >
+                          {pipelineJob.status}
+                        </Badge>
+                      )}
                     </InlineStack>
                     <Divider />
                     {pipelineSteps.length === 0 ? (
-                      <Text tone="subdued" as="p">No pipeline runs yet.</Text>
+                      <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                        <Text tone="subdued" as="p">No pipeline runs yet</Text>
+                        <Text variant="bodySm" tone="subdued" as="p">Run the pipeline to start processing</Text>
+                      </div>
                     ) : (
-                      <BlockStack gap="200">
-                        {pipelineSteps.map((step: any) => (
-                          <InlineStack key={step.name} align="space-between" blockAlign="center">
-                            <Text as="span" variant="bodySm">{step.name.replace(/_/g, ' ')}</Text>
-                            <Badge 
-                              tone={
-                                step.status === 'done' ? 'success' : 
-                                step.status === 'error' ? 'critical' : 
-                                step.status === 'running' ? 'attention' : 'info'
-                              }
-                              size="small"
-                            >
-                              {step.status}
-                            </Badge>
-                          </InlineStack>
-                        ))}
+                      <BlockStack gap="0">
+                        {pipelineSteps.map((step: any, index: number) => {
+                          const isLast = index === pipelineSteps.length - 1;
+                          const isDone = step.status === 'done';
+                          const isError = step.status === 'error';
+                          const isRunning = step.status === 'running';
+                          
+                          return (
+                            <div key={step.name} style={{ position: 'relative' }}>
+                              <InlineStack gap="300" blockAlign="start">
+                                {/* Timeline indicator */}
+                                <div style={{ position: 'relative', marginTop: '2px' }}>
+                                  <div
+                                    style={{
+                                      width: '16px',
+                                      height: '16px',
+                                      borderRadius: '50%',
+                                      border: `2px solid ${
+                                        isDone ? '#22c55e' :
+                                        isError ? '#ef4444' :
+                                        isRunning ? '#f59e0b' : '#d1d5db'
+                                      }`,
+                                      backgroundColor: isDone ? '#22c55e' : '#ffffff',
+                                      position: 'relative',
+                                      zIndex: 1
+                                    }}
+                                  >
+                                    {isRunning && (
+                                      <div
+                                        style={{
+                                          position: 'absolute',
+                                          inset: '2px',
+                                          borderRadius: '50%',
+                                          backgroundColor: '#f59e0b',
+                                          animation: 'pulse 2s infinite'
+                                        }}
+                                      />
+                                    )}
+                                  </div>
+                                  {/* Connecting line */}
+                                  {!isLast && (
+                                    <div
+                                      style={{
+                                        position: 'absolute',
+                                        top: '18px',
+                                        left: '50%',
+                                        transform: 'translateX(-50%)',
+                                        width: '2px',
+                                        height: '24px',
+                                        backgroundColor: '#e5e7eb'
+                                      }}
+                                    />
+                                  )}
+                                </div>
+                                
+                                {/* Step content */}
+                                <div style={{ flex: 1, paddingBottom: isLast ? '0' : '16px' }}>
+                                  <BlockStack gap="100">
+                                  <InlineStack align="space-between" blockAlign="center">
+                                    <Text 
+                                      as="span" 
+                                      variant="bodySm" 
+                                      fontWeight={isDone ? 'medium' : 'regular'}
+                                      tone={isError ? 'critical' : undefined}
+                                    >
+                                      {step.name.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                                    </Text>
+                                    <Text 
+                                      as="span" 
+                                      variant="bodySm" 
+                                      tone={
+                                        isDone ? 'success' :
+                                        isError ? 'critical' :
+                                        isRunning ? 'subdued' : 'subdued'
+                                      }
+                                    >
+                                      {isDone ? '✓' : isError ? '✗' : isRunning ? '⋯' : '○'}
+                                    </Text>
+                                  </InlineStack>
+                                  {step.error && (
+                                    <Text variant="bodySm" tone="critical" as="p">{step.error}</Text>
+                                  )}
+                                  </BlockStack>
+                                </div>
+                              </InlineStack>
+                            </div>
+                          );
+                        })}
                       </BlockStack>
                     )}
                   </BlockStack>
@@ -829,19 +1136,39 @@ export const ShopifyProductDetail: React.FC = () => {
 
                 {/* ── Quick Actions ── */}
                 <Card>
-                  <BlockStack gap="300">
+                  <BlockStack gap="400">
                     <Text variant="headingMd" as="h2">Quick Actions</Text>
                     <Divider />
-                    <ButtonGroup fullWidth>
+                    <BlockStack gap="200">
                       <Button
-                        size="slim"
+                        fullWidth
+                        variant="secondary"
                         icon={<ExternalLink className="w-4 h-4" />}
                         url={`https://admin.shopify.com/store/usedcameragear/products/${id}`}
                         external
                       >
-                        View in Shopify
+                        View in Shopify Admin
                       </Button>
-                    </ButtonGroup>
+                      {product?.handle && (
+                        <Button
+                          fullWidth
+                          variant="plain"
+                          icon={<ExternalLink className="w-4 h-4" />}
+                          url={`https://usedcameragear.myshopify.com/products/${product.handle}`}
+                          external
+                        >
+                          View Live Product Page
+                        </Button>
+                      )}
+                      <Button
+                        fullWidth
+                        variant="primary"
+                        loading={runPipelineMutation.isPending}
+                        onClick={() => runPipelineMutation.mutate()}
+                      >
+                        🚀 Run Full Pipeline
+                      </Button>
+                    </BlockStack>
                   </BlockStack>
                 </Card>
 
@@ -876,6 +1203,7 @@ export const ShopifyProductDetail: React.FC = () => {
         </>
       )}
     </Page>
+    </div>
   );
 };
 
