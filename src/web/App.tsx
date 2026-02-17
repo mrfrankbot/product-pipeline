@@ -13,6 +13,7 @@ import Analytics from './pages/Analytics';
 import Mappings from './pages/Mappings';
 import ImageProcessor from './pages/ImageProcessor';
 import Pipeline from './pages/Pipeline';
+import CategoryMapping from './pages/CategoryMapping';
 import Help from './pages/Help';
 import HelpCenter from './pages/HelpCenter';
 import HelpArticlePage from './pages/HelpArticle';
@@ -59,6 +60,7 @@ const ShopifyNavMenu: React.FC = () => (
     <Link to="/pipeline">Pipeline</Link>
     <Link to="/review">Review Queue</Link>
     <Link to="/images">Images</Link>
+    <Link to="/category-mapping">Category Mapping</Link>
     <Link to="/logs">Analytics</Link>
     <Link to="/settings">Settings</Link>
     <Link to="/help">Help</Link>
@@ -104,6 +106,7 @@ const AppFrame: React.FC = () => {
           <Route path="/pipeline" element={<Pipeline />} />
           <Route path="/review" element={<ReviewQueue />} />
           <Route path="/images" element={<ImageProcessor />} />
+          <Route path="/category-mapping" element={<CategoryMapping />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/logs" element={<Analytics />} />
           <Route path="/help" element={<HelpCenter />}>

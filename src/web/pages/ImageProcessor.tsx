@@ -16,7 +16,9 @@ import {
 } from '@shopify/polaris';
 import { ImageIcon, CheckCircleIcon, AlertCircleIcon } from '@shopify/polaris-icons';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { apiClient } from '../hooks/useApi';
+import TemplateManager from '../components/TemplateManager';
 
 interface ImageStatusResponse {
   configured: boolean;
@@ -32,6 +34,9 @@ interface ProcessResponse {
 }
 
 const ImageProcessor: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const initialCategory = searchParams.get('category') || undefined;
+  
   const [productId, setProductId] = useState('');
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState<ProcessResponse | null>(null);
@@ -254,6 +259,9 @@ const ImageProcessor: React.FC = () => {
             </BlockStack>
           </Card>
         )}
+
+        {/* ── Template Manager ── */}
+        <TemplateManager initialCategory={initialCategory} />
       </BlockStack>
     </Page>
   );

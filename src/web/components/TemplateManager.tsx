@@ -14,6 +14,7 @@ import {
   Text,
   TextField,
 } from '@shopify/polaris';
+import { useQuery } from '@tanstack/react-query';
 import {
   Bookmark,
   Edit3,
@@ -44,11 +45,19 @@ interface PhotoTemplate {
   updatedAt: string;
 }
 
+interface CategoriesResponse {
+  ok: boolean;
+  categories: string[];
+  mounted: boolean;
+}
+
 interface TemplateManagerProps {
   /** If provided, the "Apply" button will use this product ID */
   productId?: string;
   /** Called after a template is applied to a product */
   onApplied?: (templateId: number) => void;
+  /** Initial category to pre-fill when creating new templates */
+  initialCategory?: string;
 }
 
 /* ── Color presets ────────────────────────────────────────────────────── */
@@ -193,13 +202,28 @@ const TemplateFormModal: React.FC<{
     isDefault: boolean;
   }) => void;
   saving: boolean;
-}> = ({ open, editingTemplate, onClose, onSave, saving }) => {
+  initialCategory?: string;
+}> = ({ open, editingTemplate, onClose, onSave, saving, initialCategory }) => {
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
   const [background, setBackground] = useState('#FFFFFF');
   const [padding, setPadding] = useState(10);
   const [shadow, setShadow] = useState(true);
   const [isDefault, setIsDefault] = useState(false);
+
+  // Fetch categories for combobox
+  const { data: categoriesData } = useQuery<CategoriesResponse>({
+    queryKey: ['template-categories'],
+    queryFn: async () => {
+      const response = await fetch('/api/templates/categories');
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return response.json();
+    },
+  });
+
+  const availableCategories = categoriesData?.categories || [];
 
   useEffect(() => {
     if (editingTemplate) {
@@ -211,13 +235,13 @@ const TemplateFormModal: React.FC<{
       setIsDefault(editingTemplate.isDefault);
     } else {
       setName('');
-      setCategory('');
+      setCategory(initialCategory ?? '');
       setBackground('#FFFFFF');
       setPadding(10);
       setShadow(true);
       setIsDefault(false);
     }
-  }, [editingTemplate, open]);
+  }, [editingTemplate, open, initialCategory]);
 
   const handleSave = () => {
     onSave({
@@ -256,8 +280,12 @@ const TemplateFormModal: React.FC<{
             value={category}
             onChange={setCategory}
             autoComplete="off"
-            placeholder="e.g. Trade-Ins - Small Lenses"
-            helpText="Maps to a StyleShoots preset folder name for auto-apply"
+            placeholder="Select or type a category..."
+            helpText={
+              availableCategories.length > 0 
+                ? `Available categories: ${availableCategories.join(', ')}. Maps to a StyleShoots preset folder name for auto-apply.`
+                : "Maps to a StyleShoots preset folder name for auto-apply"
+            }
           />
 
           <Divider />
@@ -435,7 +463,7 @@ const TemplateFormModal: React.FC<{
 
 /* ── Main Component ───────────────────────────────────────────────────── */
 
-const TemplateManager: React.FC<TemplateManagerProps> = ({ productId, onApplied }) => {
+const TemplateManager: React.FC<TemplateManagerProps> = ({ productId, onApplied, initialCategory }) => {
   const [templates, setTemplates] = useState<PhotoTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -628,6 +656,7 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({ productId, onApplied 
         onClose={() => setModalOpen(false)}
         onSave={handleSave}
         saving={saving}
+        initialCategory={initialCategory}
       />
     </>
   );

@@ -8,6 +8,7 @@ import { Router, type Request, type Response } from 'express';
 import { info, error as logError } from '../../utils/logger.js';
 import { getRawDb } from '../../db/client.js';
 import { PhotoRoomService } from '../../services/photoroom.js';
+import { promises as fs } from 'fs';
 import {
   createTemplate,
   getTemplate,
@@ -93,6 +94,51 @@ router.get('/api/templates', async (req: Request, res: Response) => {
   } catch (err) {
     logError(`[Templates API] List failed: ${err}`);
     res.status(500).json({ error: 'Failed to list templates', detail: String(err) });
+  }
+});
+
+// ────────────────────────────────────────────────────────────────────────
+// GET /api/templates/categories — Get available StyleShoots categories
+// ────────────────────────────────────────────────────────────────────────
+
+router.get('/api/templates/categories', async (req: Request, res: Response) => {
+  try {
+    const categories = new Set<string>();
+    let mounted = false;
+    
+    // Try to scan StyleShoots drive for directory names
+    const styleshootsDrive = '/Volumes/StyleShootsDrive/UsedCameraGear';
+    try {
+      const entries = await fs.readdir(styleshootsDrive, { withFileTypes: true });
+      entries
+        .filter(entry => entry.isDirectory())
+        .forEach(dir => categories.add(dir.name));
+      mounted = true;
+      info(`[Templates API] Scanned StyleShoots drive: found ${entries.filter(e => e.isDirectory()).length} folders`);
+    } catch (err) {
+      info(`[Templates API] StyleShoots drive not mounted or not accessible: ${err}`);
+    }
+    
+    // Also get categories already assigned to templates in the DB
+    const db = await getRawDb();
+    const dbCategories = db.prepare(
+      `SELECT DISTINCT category FROM photo_templates WHERE category IS NOT NULL AND category != ''`
+    ).all() as Array<{ category: string }>;
+    
+    dbCategories.forEach(row => categories.add(row.category));
+    
+    const sortedCategories = Array.from(categories).sort();
+    
+    info(`[Templates API] Found ${sortedCategories.length} total categories (drive mounted: ${mounted})`);
+    
+    res.json({ 
+      ok: true, 
+      categories: sortedCategories, 
+      mounted 
+    });
+  } catch (err) {
+    logError(`[Templates API] Get categories failed: ${err}`);
+    res.status(500).json({ error: 'Failed to get categories', detail: String(err) });
   }
 });
 

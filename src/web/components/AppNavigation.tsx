@@ -112,6 +112,13 @@ const AppNavigation: React.FC = () => {
             onClick: () => navigate('/images'),
             url: '/images',
           },
+          {
+            label: 'Category Mapping',
+            icon: undefined,
+            selected: isSelected('/category-mapping'),
+            onClick: () => navigate('/category-mapping'),
+            url: '/category-mapping',
+          },
         ]}
       />
 
