@@ -91,7 +91,7 @@ router.get('/auth/callback', async (req: Request, res: Response) => {
 
     res.send(`
       <html><body style="font-family:system-ui;padding:40px;text-align:center">
-        <h1>✅ Product Bridge Connected!</h1>
+        <h1>✅ ProductPipeline Connected!</h1>
         <p>Authenticated with ${shop}</p>
         <p>Scopes: ${tokenData.scope}</p>
         <p>You can close this window.</p>

@@ -1,7 +1,7 @@
 {
-  "name": "product-bridge",
+  "name": "product-pipeline",
   "version": "0.2.0",
-  "description": "Shopify ↔ eBay sync tool for UsedCameraGear.com",
+  "description": "ProductPipeline — Shopify ↔ eBay listing automation for UsedCameraGear.com",
   "type": "module",
   "bin": {
     "ebaysync": "./dist/cli/index.js"

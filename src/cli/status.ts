@@ -72,7 +72,7 @@ export const buildStatusCommand = () => {
           ),
         );
       } else {
-        info('=== Product Bridge Status ===');
+        info('=== ProductPipeline Status ===');
         info('');
         info(`Shopify: ${shopifyOk ? '✅ connected' : shopify ? '⚠️ expired' : '❌ not connected'}`);
         info(`eBay:    ${ebayOk ? '✅ connected' : ebay ? '⚠️ expired' : '❌ not connected'}`);

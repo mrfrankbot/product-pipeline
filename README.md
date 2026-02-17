@@ -1,8 +1,10 @@
-# ebay-sync-app
+# ProductPipeline
 
-**Shopify ↔ eBay sync CLI for UsedCameraGear.com**
+**Shopify ↔ eBay listing automation for UsedCameraGear.com**
 
-Replaces Marketplace Connect (Codisto) with a standalone, CLI-first tool that syncs products, orders, inventory, prices, and fulfillment between Shopify and eBay.
+> Formerly "ebay-sync-app" / "Product Bridge". Directory and GitHub repo not yet renamed.
+
+Full-featured listing pipeline: Lightspeed → Shopify → AI description → PhotoRoom images → eBay. Replaces Marketplace Connect (Codisto).
 
 ## Features
 

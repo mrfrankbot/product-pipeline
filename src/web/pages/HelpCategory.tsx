@@ -8,7 +8,7 @@ import { categorySlug, categoryFromSlug } from './HelpCenter';
 const CATEGORY_META: Record<string, { icon: string; description: string }> = {
   'Getting Started': {
     icon: '🚀',
-    description: 'New to ProductBridge? Start here with setup guides and first steps.',
+    description: 'New to ProductPipeline? Start here with setup guides and first steps.',
   },
   products: {
     icon: '📦',

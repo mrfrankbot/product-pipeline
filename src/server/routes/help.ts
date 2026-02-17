@@ -22,12 +22,12 @@ async function generateAIAnswer(question: string): Promise<string | null> {
       .map((c) => `- **${c.name}** (${c.category}): ${c.description}\n  Endpoints: ${c.apiEndpoints.join(', ')}`)
       .join('\n');
 
-    const systemPrompt = `You are the help assistant for ProductBridge, a Shopify ↔ eBay listing automation app built for Pictureline, a camera store in Salt Lake City, Utah.
+    const systemPrompt = `You are the help assistant for ProductPipeline, a Shopify ↔ eBay listing automation app built for Pictureline, a camera store in Salt Lake City, Utah.
 
 Your job is to answer user questions about the app clearly and helpfully. Be professional but friendly. Use step-by-step instructions when appropriate.
 
 ## App Purpose
-ProductBridge syncs products from Shopify to eBay, manages listings, processes images, handles orders, and automates the listing pipeline. It's designed specifically for a used camera gear business.
+ProductPipeline syncs products from Shopify to eBay, manages listings, processes images, handles orders, and automates the listing pipeline. It's designed specifically for a used camera gear business.
 
 ## App Capabilities
 ${capList}

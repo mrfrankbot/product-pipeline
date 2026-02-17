@@ -615,7 +615,7 @@ const ChatWidget: React.FC = () => {
         <div style={headerStyle}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Bot size={20} />
-            <span style={{ fontWeight: '600', fontSize: '15px' }}>ProductBridge Assistant</span>
+            <span style={{ fontWeight: '600', fontSize: '15px' }}>ProductPipeline Assistant</span>
           </div>
           <button
             onClick={toggleChat}

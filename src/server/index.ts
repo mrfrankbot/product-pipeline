@@ -131,7 +131,7 @@ app.get('/{*path}', (req, res) => {
   res.sendFile(path.join(webDistPath, 'index.html'), (err) => {
     if (err) {
       res.status(200).json({
-        app: 'Product Bridge',
+        app: 'ProductPipeline',
         version: '0.2.0',
         message: 'Frontend not built yet. Run: npm run build:web',
         endpoints: {
@@ -164,7 +164,7 @@ async function start() {
     // seedDefaultMappings handled by db/client.ts using attribute_mappings table
 
     app.listen(PORT, () => {
-      info(`[Server] Product Bridge running on http://localhost:${PORT}`);
+      info(`[Server] ProductPipeline running on http://localhost:${PORT}`);
       info(`[Server] Health: http://localhost:${PORT}/health`);
       info(`[Server] API: http://localhost:${PORT}/api/status`);
     });

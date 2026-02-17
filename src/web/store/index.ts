@@ -72,7 +72,7 @@ export const useAppStore = create<AppStore>()(
         id: 'welcome',
         role: 'assistant',
         content:
-          'Hi! I\'m your ProductBridge assistant. I can help you sync products, check status, and manage orders.',
+          'Hi! I\'m your ProductPipeline assistant. I can help you sync products, check status, and manage orders.',
         timestamp: new Date(),
       },
     ],

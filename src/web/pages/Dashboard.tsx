@@ -148,7 +148,7 @@ const Dashboard: React.FC = () => {
 
   if (error) {
     return (
-      <Page title="Product Bridge">
+      <Page title="ProductPipeline">
         <Banner tone="critical" title="Unable to connect">
           <Text as="p">{(error as Error).message}</Text>
         </Banner>
@@ -160,7 +160,7 @@ const Dashboard: React.FC = () => {
   const ordersImported = statusData?.orders?.imported ?? 0;
 
   return (
-    <Page title="Product Bridge" fullWidth>
+    <Page title="ProductPipeline" fullWidth>
       <BlockStack gap="500">
 
         {/* ── Status Bar ── */}

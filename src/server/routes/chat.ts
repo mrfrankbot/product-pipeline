@@ -133,7 +133,7 @@ You can also proactively suggest navigation when it makes sense based on the use
 // System prompt for the Responses API + shell tool agent
 // ---------------------------------------------------------------------------
 function buildShellSystemPrompt(currentPage?: string): string {
-  return `You are an Product Bridge Assistant for a Shopify ↔ eBay integration app used by a camera store (UsedCameraGear.com / Pictureline).
+  return `You are a ProductPipeline Assistant for a Shopify ↔ eBay integration app used by a camera store (UsedCameraGear.com / Pictureline).
 
 You have access to a shell environment. You can run commands to help the user manage their product listings, orders, and sync operations.
 ${buildPageAwareBlock(currentPage)}
@@ -166,7 +166,7 @@ For example: NAVIGATE:/orders
 // Fallback system prompt for Chat Completions (gpt-4o-mini)
 // ---------------------------------------------------------------------------
 function buildFallbackSystemPrompt(currentPage?: string): string {
-  return `You are an Product Bridge Assistant for a Shopify ↔ eBay integration app used by a camera store. You help users manage their product listings, orders, and sync operations.
+  return `You are a ProductPipeline Assistant for a Shopify ↔ eBay integration app used by a camera store. You help users manage their product listings, orders, and sync operations.
 
 You have access to internal API endpoints. When the user asks you to do something, determine which API to call, call it, and report the results in a friendly way.
 ${buildPageAwareBlock(currentPage)}
@@ -251,7 +251,7 @@ async function getOrCreateContainer(apiKey: string): Promise<string> {
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      name: 'product-bridge-chat',
+      name: 'product-pipeline-chat',
       expires_after: { anchor: 'last_active_at', minutes: 30 },
     }),
   });
