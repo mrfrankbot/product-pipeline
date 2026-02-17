@@ -48,10 +48,23 @@ export async function processNewProduct(
   const openai = getOpenAI();
   const title = shopifyProduct.title || 'Unknown Product';
   const vendor = shopifyProduct.vendor || 'Unknown';
+  const productId = shopifyProduct.id?.toString() || shopifyProduct.admin_graphql_api_id || '';
+
+  // Fetch product notes if available
+  let productNotes = '';
+  try {
+    const db = await getRawDb();
+    const row = db
+      .prepare(`SELECT product_notes FROM product_mappings WHERE shopify_product_id = ?`)
+      .get(productId) as { product_notes: string } | undefined;
+    productNotes = row?.product_notes ?? '';
+  } catch {
+    // Notes are optional — continue without them
+  }
 
   // Run description and category generation in parallel
   const [descriptionResult, categoryResult] = await Promise.all([
-    generateDescription(openai, title, vendor),
+    generateDescription(openai, title, vendor, productNotes),
     suggestCategory(openai, title, vendor),
   ]);
 
@@ -112,9 +125,16 @@ async function generateDescription(
   openai: OpenAI,
   title: string,
   vendor: string,
+  productNotes?: string,
 ): Promise<string> {
   try {
     const systemPrompt = await getDescriptionPrompt();
+
+    let userContent = `Product: ${title}\nBrand: ${vendor}\nCondition: Used — Excellent Plus (assume unless specified otherwise)\nCategory: Auto-detect from product name\nIncluded accessories: Standard items for this product (caps, hood, etc. — assume typical unless specified)`;
+
+    if (productNotes?.trim()) {
+      userContent += `\n\nProduct condition notes (MUST be mentioned in the description): ${productNotes.trim()}`;
+    }
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -125,7 +145,7 @@ async function generateDescription(
         },
         {
           role: 'user',
-          content: `Product: ${title}\nBrand: ${vendor}\nCondition: Used — Excellent Plus (assume unless specified otherwise)\nCategory: Auto-detect from product name\nIncluded accessories: Standard items for this product (caps, hood, etc. — assume typical unless specified)`,
+          content: userContent,
         },
       ],
       max_tokens: 1000,

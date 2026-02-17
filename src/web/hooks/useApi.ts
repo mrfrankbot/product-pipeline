@@ -559,6 +559,43 @@ export const useImportEbayOrders = () => {
   });
 };
 
+// ---------------------------------------------------------------------------
+// Product Notes
+// ---------------------------------------------------------------------------
+
+export const useProductNotes = (productId: string | undefined) => {
+  return useQuery({
+    queryKey: ['product-notes', productId],
+    queryFn: () => apiClient.get<{ ok: boolean; notes: string }>(`/products/${productId}/notes`),
+    enabled: !!productId,
+  });
+};
+
+export const useSaveProductNotes = () => {
+  const queryClient = useQueryClient();
+  const { addNotification } = useAppStore();
+
+  return useMutation({
+    mutationFn: (params: { productId: string; notes: string }) =>
+      apiClient.put<{ ok: boolean }>(`/products/${params.productId}/notes`, { notes: params.notes }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['product-notes', variables.productId] });
+      addNotification({
+        type: 'success',
+        title: 'Notes saved',
+        autoClose: 3000,
+      });
+    },
+    onError: (error) => {
+      addNotification({
+        type: 'error',
+        title: 'Failed to save notes',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    },
+  });
+};
+
 export const useEbayAuthStatus = () => {
   return useQuery({
     queryKey: ['ebay-auth-status'],

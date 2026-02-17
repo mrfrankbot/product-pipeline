@@ -28,7 +28,7 @@ import {
 } from '@shopify/polaris-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { apiClient, useListings } from '../hooks/useApi';
+import { apiClient, useListings, useProductNotes, useSaveProductNotes } from '../hooks/useApi';
 import { useAppStore } from '../store';
 import PhotoGallery, { type GalleryImage } from '../components/PhotoGallery';
 import PhotoControls, { type PhotoRoomParams } from '../components/PhotoControls';
@@ -164,6 +164,25 @@ export const ShopifyProductDetail: React.FC = () => {
   // Pipeline Review Modal state
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [pipelineResult, setPipelineResult] = useState<any>(null);
+
+  // Product Notes state
+  const { data: notesData } = useProductNotes(id);
+  const saveNotesMutation = useSaveProductNotes();
+  const [localNotes, setLocalNotes] = useState('');
+  const [notesInitialized, setNotesInitialized] = useState(false);
+
+  // Sync fetched notes into local state
+  React.useEffect(() => {
+    if (notesData?.notes !== undefined && !notesInitialized) {
+      setLocalNotes(notesData.notes);
+      setNotesInitialized(true);
+    }
+  }, [notesData, notesInitialized]);
+
+  // Reset when product changes
+  React.useEffect(() => {
+    setNotesInitialized(false);
+  }, [id]);
 
   const { data: productInfo, isLoading: productLoading } = useQuery({
     queryKey: ['product-info', id],
@@ -418,7 +437,7 @@ export const ShopifyProductDetail: React.FC = () => {
 
   // ── Pipeline Review Modal Mutations ──
   const applyChangesMutation = useMutation({
-    mutationFn: async (selections: { description: boolean; photos: boolean; ebayListing: boolean }, ebayCategoryOverride?: string) => {
+    mutationFn: async (selections: { description: boolean; photos: boolean; ebayListing: boolean }) => {
       const promises: Promise<any>[] = [];
 
       if (selections.description && pipelineResult?.description) {
@@ -440,7 +459,7 @@ export const ShopifyProductDetail: React.FC = () => {
           apiClient.post('/ebay/create-draft', {
             productId: id,
             description: pipelineResult?.description,
-            categoryId: ebayCategoryOverride || pipelineResult?.categoryId,
+            categoryId: pipelineResult?.categoryId,
             images: pipelineResult?.images,
           })
         );
@@ -858,6 +877,46 @@ export const ShopifyProductDetail: React.FC = () => {
                   </Card>
                 );
               })()}
+
+              {/* ── Product Notes ── */}
+              <Card>
+                <BlockStack gap="400">
+                  <InlineStack align="space-between" blockAlign="center">
+                    <InlineStack gap="200" blockAlign="center">
+                      <Text variant="headingMd" as="h2">Product Notes</Text>
+                      {localNotes.trim() && <Badge tone="attention">Has Notes</Badge>}
+                    </InlineStack>
+                    <Button
+                      variant="primary"
+                      size="slim"
+                      onClick={() => {
+                        if (id) saveNotesMutation.mutate({ productId: id, notes: localNotes });
+                      }}
+                      loading={saveNotesMutation.isPending}
+                      disabled={!id || localNotes === (notesData?.notes ?? '')}
+                    >
+                      Save Notes
+                    </Button>
+                  </InlineStack>
+                  <TextField
+                    label=""
+                    labelHidden
+                    value={localNotes}
+                    onChange={setLocalNotes}
+                    multiline={4}
+                    placeholder="Add condition notes, blemishes, missing accessories, etc. These will be injected into AI-generated descriptions."
+                    autoComplete="off"
+                    onBlur={() => {
+                      if (id && localNotes !== (notesData?.notes ?? '')) {
+                        saveNotesMutation.mutate({ productId: id, notes: localNotes });
+                      }
+                    }}
+                  />
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    💡 Notes are automatically included when generating AI descriptions.
+                  </Text>
+                </BlockStack>
+              </Card>
 
               {/* ── Description Section ── */}
               <Card>
@@ -1335,7 +1394,7 @@ export const ShopifyProductDetail: React.FC = () => {
           src: photo.src,
         })) || []}
         ebayCategory={pipelineResult.categoryId}
-        onApply={(selections, ebayCategoryOverride) => applyChangesMutation.mutateAsync(selections, ebayCategoryOverride)}
+        onApply={(params) => applyChangesMutation.mutateAsync(params)}
         onSaveDraft={handleSaveDraft}
       />
     )}

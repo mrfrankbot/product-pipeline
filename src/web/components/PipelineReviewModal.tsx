@@ -9,11 +9,13 @@ import {
   InlineStack,
   BlockStack,
   Text,
+  TextField,
   Thumbnail,
   Divider,
   InlineGrid,
   EmptyState,
 } from '@shopify/polaris';
+import { useProductNotes, useSaveProductNotes } from '../hooks/useApi';
 
 interface PipelineReviewModalProps {
   open: boolean;
@@ -111,6 +113,19 @@ export function PipelineReviewModal({
 
   const hasProcessedPhotos = processedPhotos.length > 0 && processedPhotos.some(p => p.processedUrl);
 
+  // Product Notes
+  const { data: notesData } = useProductNotes(productId);
+  const saveNotesMutation = useSaveProductNotes();
+  const [localNotes, setLocalNotes] = React.useState('');
+  const [notesInit, setNotesInit] = React.useState(false);
+
+  React.useEffect(() => {
+    if (notesData?.notes !== undefined && !notesInit) {
+      setLocalNotes(notesData.notes);
+      setNotesInit(true);
+    }
+  }, [notesData, notesInit]);
+
   return (
     <Modal
       open={open}
@@ -138,6 +153,35 @@ export function PipelineReviewModal({
           <Text as="p" variant="bodySm" tone="subdued">
             {productTitle}
           </Text>
+
+          {/* Section 0: Product Notes */}
+          <Card>
+            <BlockStack gap="300">
+              <InlineStack align="space-between" blockAlign="center">
+                <InlineStack gap="200" blockAlign="center">
+                  <Text as="h3" variant="headingSm">Product Notes</Text>
+                  {localNotes.trim() && <Badge tone="attention">Has Notes</Badge>}
+                </InlineStack>
+              </InlineStack>
+              <TextField
+                label=""
+                labelHidden
+                value={localNotes}
+                onChange={setLocalNotes}
+                multiline={3}
+                placeholder="Add condition notes, blemishes, missing accessories, etc."
+                autoComplete="off"
+                onBlur={() => {
+                  if (localNotes !== (notesData?.notes ?? '')) {
+                    saveNotesMutation.mutate({ productId, notes: localNotes });
+                  }
+                }}
+              />
+              <Text as="p" variant="bodySm" tone="subdued">
+                💡 Notes are included in AI description generation. Save before generating.
+              </Text>
+            </BlockStack>
+          </Card>
 
           {/* Section 1: AI Description */}
           <Card>

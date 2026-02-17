@@ -1476,4 +1476,50 @@ router.post('/api/admin/backfill-shopify-metadata', async (_req: Request, res: R
   }
 });
 
+// ---------------------------------------------------------------------------
+// Product Notes
+// ---------------------------------------------------------------------------
+
+/** GET /api/products/:productId/notes — get notes for a product */
+router.get('/api/products/:productId/notes', async (req: Request, res: Response) => {
+  try {
+    const { productId } = req.params;
+    const db = await getRawDb();
+    const row = db
+      .prepare(`SELECT product_notes FROM product_mappings WHERE shopify_product_id = ?`)
+      .get(productId) as { product_notes: string } | undefined;
+    res.json({ ok: true, notes: row?.product_notes ?? '' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to get product notes', detail: String(err) });
+  }
+});
+
+/** PUT /api/products/:productId/notes — save notes for a product */
+router.put('/api/products/:productId/notes', async (req: Request, res: Response) => {
+  try {
+    const { productId } = req.params;
+    const { notes } = req.body as { notes: string };
+    const db = await getRawDb();
+
+    // Check if row exists
+    const existing = db
+      .prepare(`SELECT id FROM product_mappings WHERE shopify_product_id = ?`)
+      .get(productId) as { id: number } | undefined;
+
+    if (existing) {
+      db.prepare(
+        `UPDATE product_mappings SET product_notes = ?, updated_at = unixepoch() WHERE shopify_product_id = ?`,
+      ).run(notes ?? '', productId);
+    } else {
+      db.prepare(
+        `INSERT INTO product_mappings (shopify_product_id, ebay_listing_id, product_notes, created_at, updated_at) VALUES (?, '', ?, unixepoch(), unixepoch())`,
+      ).run(productId, notes ?? '');
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to save product notes', detail: String(err) });
+  }
+});
+
 export default router;

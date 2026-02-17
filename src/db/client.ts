@@ -667,6 +667,18 @@ const migrateProductMappings = (sqlite: InstanceType<typeof Database>) => {
 };
 
 /**
+ * Migrate product_mappings table — add product_notes column if missing.
+ */
+const migrateProductNotes = (sqlite: InstanceType<typeof Database>) => {
+  const cols = sqlite.prepare(`PRAGMA table_info(product_mappings)`).all() as any[];
+  const colNames = new Set(cols.map((c: any) => c.name));
+
+  if (!colNames.has('product_notes')) {
+    sqlite.exec(`ALTER TABLE product_mappings ADD COLUMN product_notes TEXT DEFAULT ''`);
+  }
+};
+
+/**
  * Migrate help_questions table — add sort_order column if missing.
  */
 const migrateHelpQuestions = (sqlite: InstanceType<typeof Database>) => {
@@ -827,6 +839,7 @@ export const getDb = async () => {
     initTables(rawSqlite);
     initExtraTables(rawSqlite);
     migrateProductMappings(rawSqlite);
+    migrateProductNotes(rawSqlite);
     migrateHelpQuestions(rawSqlite);
     migrateHelpCategoryCase(rawSqlite);
     await seedDefaultMappings(rawSqlite);
