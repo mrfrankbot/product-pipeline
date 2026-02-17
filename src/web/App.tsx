@@ -25,6 +25,7 @@ import FeatureAdmin from './pages/FeatureAdmin';
 import AppNavigation from './components/AppNavigation';
 import ChatWidget from './components/ChatWidget';
 import ReviewQueue from './pages/ReviewQueue';
+import ReviewDetail from './pages/ReviewDetail';
 import EbayOrders from './pages/EbayOrders';
 import { useAppStore } from './store';
 
@@ -125,6 +126,7 @@ const AppFrame: React.FC = () => {
           <Route path="/mappings" element={<Mappings />} />
           <Route path="/pipeline" element={<Pipeline />} />
           <Route path="/review" element={<ReviewQueue />} />
+          <Route path="/review/:id" element={<ReviewDetail />} />
           <Route path="/images" element={<ImageProcessor />} />
           <Route path="/category-mapping" element={<CategoryMapping />} />
           <Route path="/settings" element={<Settings />} />

@@ -36,7 +36,7 @@ import ActivePhotosGallery, { type ActivePhoto } from '../components/ActivePhoto
 import EditPhotosPanel, { type EditablePhoto } from '../components/EditPhotosPanel';
 import TemplateManager from '../components/TemplateManager';
 import InlineDraftApproval from '../components/InlineDraftApproval';
-import { PipelineReviewModal } from '../components/PipelineReviewModal';
+// PipelineReviewModal removed — review now happens at /review/:id
 
 /* ── Simple markdown → HTML for AI description preview ── */
 function mdInline(text: string): string {
@@ -273,16 +273,22 @@ export const ShopifyProductDetail: React.FC = () => {
 
   const runPipelineMutation = useMutation({
     mutationFn: () => apiClient.post(`/auto-list/${id}`),
-    onSuccess: (result: any) => {
+    onSuccess: async (result: any) => {
       if (result?.success || result?.ok) {
         setPipelineResult(result);
-        setShowReviewModal(true);
         addNotification({
           type: 'success',
           title: 'Pipeline completed!',
-          message: 'Review the results below.',
+          message: 'Review the results in the Review Queue.',
           autoClose: 4000
         });
+        // Navigate to the draft review page
+        try {
+          const draftData = await apiClient.get<any>(`/drafts/product/${id}`);
+          if (draftData?.draft?.id) {
+            navigate(`/review/${draftData.draft.id}`);
+          }
+        } catch { /* draft may not exist yet, that's ok */ }
       } else {
         addNotification({
           type: 'error',
@@ -671,13 +677,13 @@ export const ShopifyProductDetail: React.FC = () => {
       {product && (
         <>
           {/* ── Draft Ready Banner ── */}
-          {existingDraft && !showReviewModal && (
+          {existingDraft && (existingDraft as any)?.draft?.id && (
             <Banner
               title="Draft ready for review"
               tone="info"
               action={{
                 content: 'Review Now',
-                onAction: () => setShowReviewModal(true),
+                onAction: () => navigate(`/review/${(existingDraft as any).draft.id}`),
               }}
             >
               <p>Pipeline has completed for this product. Review and apply the changes.</p>
@@ -1375,29 +1381,7 @@ export const ShopifyProductDetail: React.FC = () => {
       )}
     </Page>
 
-    {/* Pipeline Review Modal */}
-    {pipelineResult && (
-      <PipelineReviewModal
-        open={showReviewModal}
-        onClose={() => setShowReviewModal(false)}
-        productId={id || ''}
-        productTitle={product?.title || 'Product'}
-        aiDescription={pipelineResult.description}
-        currentDescription={product?.body_html}
-        processedPhotos={pipelineResult.images?.map((url: string, index: number) => ({
-          id: index,
-          originalUrl: activePhotos?.[index]?.src || '',
-          processedUrl: url,
-        })) || []}
-        currentPhotos={activePhotos?.map((photo) => ({
-          id: photo.id,
-          src: photo.src,
-        })) || []}
-        ebayCategory={pipelineResult.categoryId}
-        onApply={(selections) => applyChangesMutation.mutateAsync(selections)}
-        onSaveDraft={handleSaveDraft}
-      />
-    )}
+    {/* Pipeline Review Modal removed — review now at /review/:id */}
     </div>
   );
 };
