@@ -77,6 +77,13 @@ const AppNavigation: React.FC = () => {
             url: '/orders',
           },
           {
+            label: 'eBay Orders',
+            icon: undefined,
+            selected: isSelected('/ebay-orders'),
+            onClick: () => navigate('/ebay-orders'),
+            url: '/ebay-orders',
+          },
+          {
             label: 'Mappings',
             icon: undefined,
             selected: isSelected('/mappings'),

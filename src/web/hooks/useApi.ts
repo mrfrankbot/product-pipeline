@@ -460,6 +460,105 @@ export const useUpdateSettings = () => {
   });
 };
 
+// ── eBay Orders (imported) ──
+
+export interface EbayOrderItem {
+  id: number;
+  ebay_order_id: string;
+  legacy_order_id: string | null;
+  buyer_username: string | null;
+  order_status: string | null;
+  fulfillment_status: string | null;
+  payment_status: string | null;
+  total_amount: number | null;
+  currency: string;
+  item_count: number | null;
+  line_items_json: string | null;
+  shipping_address_json: string | null;
+  ebay_created_at: string | null;
+  ebay_modified_at: string | null;
+  synced_to_shopify: number;
+  shopify_order_id: string | null;
+  imported_at: number;
+}
+
+export interface EbayOrdersResponse {
+  data: EbayOrderItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface EbayOrderStats {
+  total: number;
+  synced: number;
+  unsynced: number;
+  lastImportedAt: number | null;
+  byFulfillmentStatus: Record<string, number>;
+  byPaymentStatus: Record<string, number>;
+}
+
+export const useEbayOrders = (params?: {
+  limit?: number;
+  offset?: number;
+  search?: string;
+  fulfillmentStatus?: string;
+  paymentStatus?: string;
+  synced?: string;
+}) => {
+  return useQuery({
+    queryKey: ['ebay-orders', params],
+    queryFn: () => {
+      const sp = new URLSearchParams();
+      if (params?.limit) sp.set('limit', String(params.limit));
+      if (params?.offset) sp.set('offset', String(params.offset));
+      if (params?.search) sp.set('search', params.search);
+      if (params?.fulfillmentStatus) sp.set('fulfillmentStatus', params.fulfillmentStatus);
+      if (params?.paymentStatus) sp.set('paymentStatus', params.paymentStatus);
+      if (params?.synced) sp.set('synced', params.synced);
+      const q = sp.toString();
+      return apiClient.get<EbayOrdersResponse>(`/ebay/orders${q ? `?${q}` : ''}`);
+    },
+    placeholderData: keepPreviousData,
+  });
+};
+
+export const useEbayOrderStats = () => {
+  return useQuery({
+    queryKey: ['ebay-order-stats'],
+    queryFn: () => apiClient.get<EbayOrderStats>('/ebay/orders/stats'),
+    refetchInterval: 30000,
+  });
+};
+
+export const useImportEbayOrders = () => {
+  const queryClient = useQueryClient();
+  const { addNotification } = useAppStore();
+
+  return useMutation({
+    mutationFn: (params?: { days?: number; limit?: number; fulfillmentStatus?: string }) =>
+      apiClient.post<{ success: boolean; fetched: number; upserted: number }>('/ebay/orders/import', params),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['ebay-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['ebay-order-stats'] });
+      addNotification({
+        type: 'success',
+        title: 'eBay orders imported',
+        message: `Fetched ${data.fetched} orders, upserted ${data.upserted}`,
+        autoClose: 6000,
+      });
+    },
+    onError: (error) => {
+      addNotification({
+        type: 'error',
+        title: 'eBay order import failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        autoClose: 8000,
+      });
+    },
+  });
+};
+
 export const useEbayAuthStatus = () => {
   return useQuery({
     queryKey: ['ebay-auth-status'],

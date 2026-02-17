@@ -20,6 +20,7 @@ import watcherRoutes from './routes/watcher.js';
 import imageRoutes from './routes/images.js';
 import templateRoutes from './routes/templates.js';
 import draftRoutes from './routes/drafts.js';
+import ebayOrderRoutes from './routes/ebay-orders.js';
 import { apiKeyAuth, rateLimit } from './middleware/auth.js';
 import { getCapabilities, getNewCapabilities } from './capabilities.js';
 import { initPhotoTemplatesTable } from '../services/photo-templates.js';
@@ -94,6 +95,7 @@ app.use(watcherRoutes);
 app.use(imageRoutes);
 app.use(templateRoutes);
 app.use(draftRoutes);
+app.use(ebayOrderRoutes);
 
 // --- Capabilities discovery endpoint ---
 app.get('/api/capabilities', (_req, res) => {

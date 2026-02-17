@@ -166,6 +166,29 @@ const initExtraTables = (sqlite: InstanceType<typeof Database>) => {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS ebay_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ebay_order_id TEXT NOT NULL UNIQUE,
+      legacy_order_id TEXT,
+      buyer_username TEXT,
+      order_status TEXT,
+      fulfillment_status TEXT,
+      payment_status TEXT,
+      total_amount REAL,
+      currency TEXT DEFAULT 'USD',
+      item_count INTEGER,
+      line_items_json TEXT,
+      shipping_address_json TEXT,
+      ebay_created_at TEXT,
+      ebay_modified_at TEXT,
+      synced_to_shopify INTEGER DEFAULT 0,
+      shopify_order_id TEXT,
+      imported_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      raw_json TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_ebay_orders_fulfillment ON ebay_orders(fulfillment_status);
+    CREATE INDEX IF NOT EXISTS idx_ebay_orders_payment ON ebay_orders(payment_status);
+    CREATE INDEX IF NOT EXISTS idx_ebay_orders_buyer ON ebay_orders(buyer_username);
     CREATE TABLE IF NOT EXISTS help_questions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       question TEXT NOT NULL,

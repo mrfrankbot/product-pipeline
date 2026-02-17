@@ -418,7 +418,7 @@ export const ShopifyProductDetail: React.FC = () => {
 
   // ── Pipeline Review Modal Mutations ──
   const applyChangesMutation = useMutation({
-    mutationFn: async (selections: { description: boolean; photos: boolean; ebayListing: boolean }) => {
+    mutationFn: async (selections: { description: boolean; photos: boolean; ebayListing: boolean }, ebayCategoryOverride?: string) => {
       const promises: Promise<any>[] = [];
 
       if (selections.description && pipelineResult?.description) {
@@ -440,7 +440,7 @@ export const ShopifyProductDetail: React.FC = () => {
           apiClient.post('/ebay/create-draft', {
             productId: id,
             description: pipelineResult?.description,
-            categoryId: pipelineResult?.categoryId,
+            categoryId: ebayCategoryOverride || pipelineResult?.categoryId,
             images: pipelineResult?.images,
           })
         );
@@ -1335,7 +1335,7 @@ export const ShopifyProductDetail: React.FC = () => {
           src: photo.src,
         })) || []}
         ebayCategory={pipelineResult.categoryId}
-        onApply={(selections) => applyChangesMutation.mutateAsync(selections)}
+        onApply={(selections, ebayCategoryOverride) => applyChangesMutation.mutateAsync(selections, ebayCategoryOverride)}
         onSaveDraft={handleSaveDraft}
       />
     )}

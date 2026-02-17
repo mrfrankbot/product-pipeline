@@ -25,6 +25,7 @@ import FeatureAdmin from './pages/FeatureAdmin';
 import AppNavigation from './components/AppNavigation';
 import ChatWidget from './components/ChatWidget';
 import ReviewQueue from './pages/ReviewQueue';
+import EbayOrders from './pages/EbayOrders';
 import { useAppStore } from './store';
 
 // Create React Query client
@@ -56,6 +57,7 @@ const ShopifyNavMenu: React.FC = () => (
     <Link to="/listings">Products</Link>
     <Link to="/ebay/listings">eBay Listings</Link>
     <Link to="/orders">Orders</Link>
+    <Link to="/ebay-orders">eBay Orders</Link>
     <Link to="/mappings">Mappings</Link>
     <Link to="/pipeline">Pipeline</Link>
     <Link to="/review">Review Queue</Link>
@@ -119,6 +121,7 @@ const AppFrame: React.FC = () => {
           <Route path="/ebay/listings" element={<Listings />} />
           <Route path="/ebay/listings/:id" element={<ListingDetail />} />
           <Route path="/orders" element={<Orders />} />
+          <Route path="/ebay-orders" element={<EbayOrders />} />
           <Route path="/mappings" element={<Mappings />} />
           <Route path="/pipeline" element={<Pipeline />} />
           <Route path="/review" element={<ReviewQueue />} />
