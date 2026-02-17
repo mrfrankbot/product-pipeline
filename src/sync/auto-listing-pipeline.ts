@@ -384,6 +384,23 @@ export async function autoListProduct(
       aiCategoryId: result.ebayCategory,
     });
 
+    // ── Step 2b: Apply TIM condition tag to Shopify ──────────────────
+    try {
+      const { findTimItemForProduct } = await import('../services/tim-matching.js');
+      const { applyConditionTag } = await import('../services/tim-tagging.js');
+      const skus = (product.variants ?? []).map((v: any) => v.sku).filter(Boolean);
+      const timData = await findTimItemForProduct(skus);
+      if (timData?.condition) {
+        const tagResult = await applyConditionTag(tokenRow.access_token, shopifyProductId, timData.condition);
+        if (tagResult.success && !tagResult.skipped) {
+          info(`[AutoList] Applied condition tag: ${tagResult.newTag} to product ${shopifyProductId}`);
+        }
+      }
+    } catch (err) {
+      // TIM tagging is non-fatal
+      logError(`[AutoList] TIM tagging failed (non-fatal): ${err}`);
+    }
+
     // ── Step 3: Process images via PhotoRoom ───────────────────────────
     await updatePipelineStep(jobId, 'process_images', 'running');
 

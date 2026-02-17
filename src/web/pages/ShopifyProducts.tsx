@@ -28,7 +28,7 @@ import {
 } from '@shopify/polaris-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { apiClient, useListings, useProductNotes, useSaveProductNotes, useTimCondition } from '../hooks/useApi';
+import { apiClient, useListings, useProductNotes, useSaveProductNotes, useTimCondition, useTagProductCondition } from '../hooks/useApi';
 import { useAppStore } from '../store';
 import PhotoGallery, { type GalleryImage } from '../components/PhotoGallery';
 import PhotoControls, { type PhotoRoomParams } from '../components/PhotoControls';
@@ -167,6 +167,7 @@ export const ShopifyProductDetail: React.FC = () => {
 
   // TIM Condition data
   const { data: timData, isLoading: timLoading } = useTimCondition(id);
+  const tagMutation = useTagProductCondition(id);
 
   // Product Notes state
   const { data: notesData } = useProductNotes(id);
@@ -1186,6 +1187,47 @@ export const ShopifyProductDetail: React.FC = () => {
                           <Text variant="bodyMd" tone="subdued" as="span">TIM Status</Text>
                           <Text variant="bodyMd" as="span">{timData.match.itemStatus.replace(/_/g, ' ')}</Text>
                         </InlineStack>
+                        <Divider />
+                        <InlineStack align="space-between" blockAlign="center">
+                          <BlockStack gap="100">
+                            <Text variant="bodyMd" tone="subdued" as="span">Condition Tag</Text>
+                            {(() => {
+                              const tags = typeof product.tags === 'string' ? product.tags.split(',').map((t: string) => t.trim()) : (product.tags ?? []);
+                              const conditionTag = tags.find((t: string) => t.startsWith('condition-'));
+                              return conditionTag ? (
+                                <Badge tone="success">{conditionTag}</Badge>
+                              ) : (
+                                <Badge tone="attention">Not tagged</Badge>
+                              );
+                            })()}
+                          </BlockStack>
+                          {timData.match.condition && (
+                            <Button
+                              size="slim"
+                              onClick={() => tagMutation.mutate()}
+                              loading={tagMutation.isPending}
+                              disabled={tagMutation.isPending}
+                            >
+                              {(() => {
+                                const tags = typeof product.tags === 'string' ? product.tags.split(',').map((t: string) => t.trim()) : (product.tags ?? []);
+                                const conditionTag = tags.find((t: string) => t.startsWith('condition-'));
+                                return conditionTag ? 'Update Tag' : 'Tag Product';
+                              })()}
+                            </Button>
+                          )}
+                        </InlineStack>
+                        {tagMutation.isSuccess && tagMutation.data && (
+                          <Banner tone="success" onDismiss={() => tagMutation.reset()}>
+                            {(tagMutation.data as any).newTag
+                              ? `Tagged: ${(tagMutation.data as any).newTag}`
+                              : 'Tag applied successfully'}
+                          </Banner>
+                        )}
+                        {tagMutation.isError && (
+                          <Banner tone="critical" onDismiss={() => tagMutation.reset()}>
+                            Failed to apply tag
+                          </Banner>
+                        )}
                       </BlockStack>
                     ) : (
                       <Text variant="bodyMd" tone="subdued" as="p">

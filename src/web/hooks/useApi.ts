@@ -647,3 +647,25 @@ export const useTimCondition = (productId: string | undefined) => {
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 };
+
+interface TagProductResponse {
+  success: boolean;
+  productId: string;
+  condition?: string;
+  previousTag?: string;
+  newTag?: string;
+  skipped?: boolean;
+  error?: string;
+}
+
+export const useTagProductCondition = (productId: string | undefined) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiClient.post<TagProductResponse>(`/tim/tag/${productId}`),
+    onSuccess: () => {
+      // Invalidate product data to refresh tags
+      queryClient.invalidateQueries({ queryKey: ['shopify-product', productId] });
+      queryClient.invalidateQueries({ queryKey: ['tim-condition', productId] });
+    },
+  });
+};

@@ -5,6 +5,7 @@ import { Router, type Request, type Response } from 'express';
 import { fetchTimItems, clearTimCache } from '../../services/tim-service.js';
 import { findTimItemBySku } from '../../services/tim-matching.js';
 import { fetchDetailedShopifyProduct } from '../../shopify/products.js';
+import { applyConditionTag } from '../../services/tim-tagging.js';
 import { getRawDb } from '../../db/client.js';
 import { error as logError } from '../../utils/logger.js';
 
@@ -77,6 +78,66 @@ router.get('/api/tim/condition/:productId', async (req: Request, res: Response) 
   } catch (err) {
     logError(`[TIM Route] Condition lookup failed: ${err}`);
     res.status(500).json({ error: 'Failed to look up TIM condition' });
+  }
+});
+
+/**
+ * POST /api/tim/tag/:productId — Look up TIM condition and apply tag to Shopify product
+ */
+router.post('/api/tim/tag/:productId', async (req: Request, res: Response) => {
+  try {
+    const { productId } = req.params;
+
+    const accessToken = await getShopifyAccessToken();
+    if (!accessToken) {
+      res.status(500).json({ error: 'Shopify not connected' });
+      return;
+    }
+
+    const pid = Array.isArray(productId) ? productId[0] : productId;
+
+    // Fetch the Shopify product to get its SKU
+    const product = await fetchDetailedShopifyProduct(accessToken, pid);
+    if (!product) {
+      res.status(404).json({ error: 'Shopify product not found' });
+      return;
+    }
+
+    // Get SKUs from all variants
+    const variants = product.variants ?? [];
+    const skus = variants
+      .map((v: any) => v.sku)
+      .filter((s: string | null | undefined): s is string => !!s);
+
+    if (skus.length === 0) {
+      res.json({ success: false, error: 'Product has no SKUs' });
+      return;
+    }
+
+    // Find TIM match
+    let timCondition: string | null = null;
+    for (const sku of skus) {
+      const match = await findTimItemBySku(sku);
+      if (match) {
+        timCondition = match.condition;
+        break;
+      }
+    }
+
+    if (!timCondition) {
+      res.json({ success: false, error: 'No TIM condition data found for this product' });
+      return;
+    }
+
+    // Apply the tag
+    const result = await applyConditionTag(accessToken, pid, timCondition);
+    res.json({
+      ...result,
+      condition: timCondition,
+    });
+  } catch (err) {
+    logError(`[TIM Route] Tagging failed: ${err}`);
+    res.status(500).json({ error: 'Failed to tag product' });
   }
 });
 
