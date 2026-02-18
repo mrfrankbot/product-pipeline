@@ -46,7 +46,10 @@ let sessionCookie: string | null = null;
 let sessionExpiry = 0;
 
 async function getTimCredentials(): Promise<{ email: string; password: string }> {
-  // Password in tradeinmanager.txt, email is mrfrankbot@gmail.com
+  // Try env var first (Railway), then fall back to local file
+  if (process.env.TIM_PASSWORD) {
+    return { email: process.env.TIM_EMAIL || 'mrfrankbot@gmail.com', password: process.env.TIM_PASSWORD };
+  }
   const password = (await fs.readFile(path.join(CREDENTIALS_DIR, 'tradeinmanager.txt'), 'utf8')).trim();
   return { email: 'mrfrankbot@gmail.com', password };
 }
