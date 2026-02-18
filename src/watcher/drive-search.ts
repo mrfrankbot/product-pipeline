@@ -320,3 +320,26 @@ export async function resolveImagePath(imagePath: string): Promise<string> {
   await storage.bucket(GCS_BUCKET).file(imagePath).download({ destination: localPath });
   return localPath;
 }
+
+/**
+ * Get accessible URLs for image paths.
+ * Cloud mode: generates signed URLs (valid 7 days).
+ * Local mode: returns paths as-is.
+ */
+export async function getSignedUrls(imagePaths: string[]): Promise<string[]> {
+  if (DRIVE_MODE !== 'cloud') return imagePaths;
+
+  const storage = await getGcsStorage();
+  const bucket = storage.bucket(GCS_BUCKET);
+  const urls: string[] = [];
+
+  for (const p of imagePaths) {
+    const [url] = await bucket.file(p).getSignedUrl({
+      action: 'read' as const,
+      expires: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+    urls.push(url);
+  }
+
+  return urls;
+}

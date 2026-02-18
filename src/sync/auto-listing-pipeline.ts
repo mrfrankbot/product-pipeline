@@ -414,13 +414,14 @@ export async function autoListProduct(
     // ── Step 2c: Search drive for product photos ─────────────────────
     let driveImages: string[] = [];
     try {
-      const { searchDriveForProduct, isDriveMounted, resolveImagePath } = await import('../watcher/drive-search.js');
+      const { searchDriveForProduct, isDriveMounted, getSignedUrls } = await import('../watcher/drive-search.js');
       if (isDriveMounted()) {
         const sku = (product.variants?.[0] as any)?.sku ?? '';
         const skuSuffix = sku.match(/(\d{2,4})$/)?.[1] ?? null;
         const driveResult = await searchDriveForProduct(product.title || '', skuSuffix);
         if (driveResult) {
-          driveImages = await Promise.all(driveResult.imagePaths.map((p: string) => resolveImagePath(p)));
+          // Get signed URLs for cloud mode, or use local paths
+          driveImages = await getSignedUrls(driveResult.imagePaths);
           info(`[AutoList] Found ${driveImages.length} photos on drive: ${driveResult.presetName}/${driveResult.folderName}`);
         } else {
           info(`[AutoList] No drive photos found for "${product.title}"`);
