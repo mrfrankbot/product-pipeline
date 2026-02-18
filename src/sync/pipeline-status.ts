@@ -284,3 +284,23 @@ export function cancelPipelineJob(jobId: string): boolean {
   pipelineEvents.emit('step', { jobId, step: 'cancelled', status: 'error', message: 'Job cancelled by user' });
   return true;
 }
+
+/** Clean up stuck jobs — any job processing for more than 10 minutes is marked failed. */
+export function cleanupStuckJobs(): number {
+  const TEN_MINUTES = 10 * 60 * 1000;
+  const now = Date.now();
+  let cleaned = 0;
+  for (const [, job] of jobs) {
+    if ((job.status === 'processing' || job.status === 'queued') && job.steps[0]?.startedAt) {
+      const startTime = new Date(job.steps[0].startedAt).getTime();
+      if (now - startTime > TEN_MINUTES) {
+        cancelPipelineJob(job.id);
+        cleaned++;
+      }
+    }
+  }
+  return cleaned;
+}
+
+// Auto-cleanup every 2 minutes
+setInterval(() => cleanupStuckJobs(), 2 * 60 * 1000);
