@@ -245,6 +245,19 @@
   color: #6b7280;
 }
 
+/* Force Polaris Modal above Shopify admin chrome */
+.Polaris-Modal-Dialog,
+.Polaris-Modal-Dialog__Modal,
+.Polaris-Backdrop {
+  z-index: 999999 !important;
+}
+
+/* Portal container for modals — ensure it's on top */
+body > .Polaris-Portal {
+  z-index: 999999 !important;
+  position: relative;
+}
+
 /* Ensure Polaris styles take precedence */
 .Polaris-Frame {
   font-family: var(--p-font-family-sans);

@@ -316,7 +316,6 @@ const ProductPhotoEditor: React.FC<ProductPhotoEditorProps> = ({
   const previewSize = 350;
 
   return (
-    <div style={{ position: 'relative', zIndex: 999999 }}>
     <Modal
       open={open}
       onClose={onClose}
@@ -429,7 +428,6 @@ const ProductPhotoEditor: React.FC<ProductPhotoEditorProps> = ({
         </BlockStack>
       </Modal.Section>
     </Modal>
-    </div>
   );
 };
 
