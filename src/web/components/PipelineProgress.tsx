@@ -262,11 +262,11 @@ const PipelineProgress: React.FC<PipelineProgressProps> = ({ jobId, onComplete, 
               {etaText}
             </Text>
           )}
-          {job.status === 'processing' && (
+          {jobStatus === 'processing' && (
             <button
               onClick={async () => {
                 try {
-                  await fetch(`/api/pipeline/jobs/${job.id}/cancel`, { method: 'POST' });
+                  await fetch(`/api/pipeline/jobs/${jobId}/cancel`, { method: 'POST' });
                 } catch { /* best effort */ }
               }}
               style={{

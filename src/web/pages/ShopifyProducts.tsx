@@ -1469,7 +1469,7 @@ const ShopifyProducts: React.FC = () => {
   const pageItems = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const { selectedResources, allResourcesSelected, handleSelectionChange } =
-    useIndexResourceState(pageItems, { resourceIDResolver: (p) => p.shopifyProductId });
+    useIndexResourceState(pageItems as any[], { resourceIDResolver: (p: any) => p.shopifyProductId });
 
   const [bulkRunning, setBulkRunning] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; current?: string } | null>(null);
