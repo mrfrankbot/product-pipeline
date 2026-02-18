@@ -705,10 +705,10 @@ export const useRunPipeline = (productId: string | undefined) => {
       queryClient.invalidateQueries({ queryKey: ['active-photos', productId] });
       if (data.success) {
         addNotification({
-          type: 'success',
-          title: 'Pipeline completed',
-          message: `Found ${data.photos?.count ?? 0} photos. ${data.description?.generated ? 'Description generated.' : ''}`,
-          autoClose: 6000,
+          type: 'info',
+          title: 'Pipeline started',
+          message: 'Processing in background — check the status bar for progress.',
+          autoClose: 4000,
         });
       } else {
         addNotification({

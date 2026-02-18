@@ -213,11 +213,9 @@ router.get('/api/pipeline/drive-search/:productId', async (req, res) => {
 
 /**
  * POST /api/pipeline/trigger/:productId
- * Manually trigger the full pipeline for a single Shopify product:
- * 1. Fetch product from Shopify (active or draft)
- * 2. Search StyleShoots drive for matching photos
- * 3. If found: create draft with photos, generate AI description, apply TIM tag
- * 4. Return full status
+ * Manually trigger the full pipeline for a single Shopify product.
+ * Returns immediately with a jobId — the pipeline runs in the background.
+ * Use SSE streams (GET /api/pipeline/jobs/:id/stream) to track progress.
  */
 router.post('/api/pipeline/trigger/:productId', async (req, res) => {
   try {
@@ -234,121 +232,18 @@ router.post('/api/pipeline/trigger/:productId', async (req, res) => {
       return;
     }
 
-    info(`[PipelineAPI] Manual trigger for product ${productId}`);
+    info(`[PipelineAPI] Manual trigger for product ${productId} — starting in background`);
 
-    const db = await getRawDb();
-    const tokenRow = db
-      .prepare(`SELECT access_token FROM auth_tokens WHERE platform = 'shopify'`)
-      .get() as { access_token: string } | undefined;
+    const { autoListProduct } = await import('../../sync/auto-listing-pipeline.js');
 
-    if (!tokenRow?.access_token) {
-      res.status(400).json({ success: false, error: 'Shopify token not found' });
-      return;
-    }
-
-    // Step 1: Fetch product
-    const { fetchDetailedShopifyProduct } = await import('../../shopify/products.js');
-    const product = await fetchDetailedShopifyProduct(tokenRow.access_token, productId);
-    if (!product) {
-      res.status(404).json({ success: false, error: 'Product not found in Shopify' });
-      return;
-    }
-
-    info(`[PipelineAPI] Found product: ${product.title} (status: ${product.status})`);
-
-    // Step 2: Search drive for photos
-    const { searchDriveForProduct, isDriveMounted, getSignedUrls } = await import('../../watcher/drive-search.js');
-
-    if (!isDriveMounted()) {
-      res.json({ success: false, error: 'StyleShoots drive is not mounted', product: { id: product.id, title: product.title } });
-      return;
-    }
-
-    const sku = product.variants?.[0]?.sku ?? '';
-    const skuSuffix = sku.match(/(\d{2,4})$/)?.[1] ?? null;
-    const driveResult = await searchDriveForProduct(product.title, skuSuffix);
-
-    if (!driveResult) {
-      res.json({
-        success: false,
-        error: 'No photos found on StyleShoots drive for this product',
-        product: { id: product.id, title: product.title },
-      });
-      return;
-    }
-
-    // Get signed URLs for cloud images, or keep local paths
-    driveResult.imagePaths = await getSignedUrls(driveResult.imagePaths);
-
-    info(`[PipelineAPI] Found ${driveResult.imagePaths.length} photos in ${driveResult.presetName}/${driveResult.folderName}`);
-
-    // Step 3: Create draft with photos (reuse watcher's draft-service)
-    // NOTE: Don't save raw drive photos here — autoListProduct below will process
-    // them through PhotoRoom and save the processed versions to the draft.
-    // Saving raw photos here caused them to be pushed to Shopify unprocessed.
-
-    // Step 4: Run AI description pipeline (also handles photo processing + draft creation)
-    let descriptionGenerated = false;
-    let descriptionPreview: string | undefined;
-    let pipelineJobId: string | undefined;
-    let processedImageCount = 0;
-    let draftId: number | undefined;
-
-    try {
-      const { autoListProduct } = await import('../../sync/auto-listing-pipeline.js');
-      const pipelineResult = await autoListProduct(product.id);
-      descriptionGenerated = pipelineResult.success;
-      descriptionPreview = pipelineResult.description;
-      pipelineJobId = pipelineResult.jobId;
-      processedImageCount = pipelineResult.images?.length ?? 0;
-    } catch (err) {
-      logError(`[PipelineAPI] Pipeline failed (non-fatal): ${err}`);
-    }
-
-    // Look up the draft created by autoListProduct
-    try {
-      const draftRow = db.prepare(
-        `SELECT id FROM product_drafts WHERE shopify_product_id = ? ORDER BY created_at DESC LIMIT 1`,
-      ).get(product.id) as { id: number } | undefined;
-      draftId = draftRow?.id;
-    } catch { /* non-fatal */ }
-
-    // Step 5: Apply TIM condition tag
-    let tagApplied = false;
-    let conditionTag: string | undefined;
-
-    try {
-      const { findTimItemForProduct, formatConditionForPrompt } = await import('../../services/tim-matching.js');
-      const skus = product.variants.map(v => v.sku).filter(Boolean);
-      const timData = await findTimItemForProduct(skus);
-      if (timData?.condition) {
-        conditionTag = `Condition: ${timData.condition}`;
-        tagApplied = true;
-      }
-    } catch (err) {
-      logError(`[PipelineAPI] TIM tag lookup failed (non-fatal): ${err}`);
-    }
-
-    res.json({
-      success: true,
-      product: { id: product.id, title: product.title, status: product.status },
-      photos: {
-        found: true,
-        count: driveResult.imagePaths.length,
-        presetName: driveResult.presetName,
-        folderName: driveResult.folderName,
-      },
-      draft: { id: draftId },
-      description: {
-        generated: descriptionGenerated,
-        preview: descriptionPreview?.substring(0, 500),
-      },
-      condition: {
-        tagApplied,
-        tag: conditionTag,
-      },
-      pipelineJobId,
+    // Fire the pipeline in the background (don't await)
+    autoListProduct(productId).catch((err) => {
+      logError(`[PipelineAPI] Background pipeline failed for ${productId}: ${err}`);
+      // autoListProduct already updates job status internally on failure
     });
+
+    // Return immediately — client should use SSE stream for progress
+    res.json({ success: true, status: 'queued', productId });
   } catch (err) {
     logError(`[PipelineAPI] Trigger error: ${err}`);
     res.status(500).json({ success: false, error: 'Pipeline trigger failed', detail: String(err) });
