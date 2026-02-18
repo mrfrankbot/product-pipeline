@@ -515,39 +515,72 @@ router.delete('/api/products/:productId/images', async (req: Request, res: Respo
   }
 });
 
-// ── Image proxy (CORS-free access to GCS signed URLs) ─────────────────
+// ── Image proxy (CORS-free access to GCS images) ──────────────────────
+
+const GCS_BUCKET_NAME = 'pictureline-product-photos';
+
+/**
+ * Extract the GCS object path from a raw or signed GCS URL.
+ * Handles both:
+ *   - Raw: https://storage.googleapis.com/BUCKET/object/path.png
+ *   - Signed: https://storage.googleapis.com/BUCKET/object/path.png?X-Goog-...
+ */
+function extractGcsObjectPath(rawUrl: string): string | null {
+  try {
+    const parsed = new URL(rawUrl);
+    // pathname = /BUCKET/object/path.png
+    const prefix = `/${GCS_BUCKET_NAME}/`;
+    if (parsed.pathname.startsWith(prefix)) {
+      return decodeURIComponent(parsed.pathname.slice(prefix.length));
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Generate a fresh signed URL for a GCS object, bypassing DRIVE_MODE check.
+ */
+async function signGcsObject(objectPath: string): Promise<string> {
+  const { Storage } = await import('@google-cloud/storage');
+  const credsJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+  if (credsJson && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    const fs = await import('fs');
+    const tmpPath = '/tmp/gcs-credentials.json';
+    fs.writeFileSync(tmpPath, credsJson);
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = tmpPath;
+  }
+  const storage = new Storage({ projectId: process.env.GCS_PROJECT_ID });
+  const [url] = await storage.bucket(GCS_BUCKET_NAME).file(objectPath).getSignedUrl({
+    action: 'read' as const,
+    expires: Date.now() + 60 * 60 * 1000, // 1 hour
+  });
+  return url;
+}
 
 router.get('/proxy', async (req: Request, res: Response) => {
-  let url = req.query.url as string;
+  const url = req.query.url as string;
   const wantClean = req.query.clean === 'true';
   if (!url || (!url.startsWith('https://storage.googleapis.com/') && !url.startsWith('https://storage.cloud.google.com/'))) {
     return res.status(400).json({ error: 'Only GCS URLs allowed' });
   }
 
-  // If clean=true, try to fetch the _clean variant from GCS via signed URL
-  if (wantClean) {
-    try {
-      // Extract the GCS object path from the signed URL and rewrite it
-      // Signed URL path: /pictureline-product-photos/processed/123_0.png
-      const parsed = new URL(url);
-      const cleanPath = parsed.pathname.replace(/(_\d+)(\.png)$/, '$1_clean$2');
-      if (cleanPath !== parsed.pathname) {
-        // Generate a fresh signed URL for the clean file via our GCS service
-        const { getSignedUrls } = await import('../../watcher/drive-search.js');
-        const objectName = cleanPath.replace(/^\/[^/]+\//, ''); // strip bucket name prefix
-        const [signedUrl] = await getSignedUrls([objectName]);
-        if (signedUrl) {
-          url = signedUrl;
-        }
-      }
-    } catch (cleanErr) {
-      // Clean variant doesn't exist or signing failed — fall through to original URL
-      info(`[Image Proxy] Clean variant not available, using original: ${cleanErr}`);
-    }
-  }
-
   try {
-    const upstream = await fetch(url);
+    // Extract the object path from any GCS URL (raw or signed)
+    let objectPath = extractGcsObjectPath(url);
+    if (!objectPath) {
+      return res.status(400).json({ error: 'Could not parse GCS object path from URL' });
+    }
+
+    // For clean=true, rewrite path: processed/123_0.png → processed/123_0_clean.png
+    if (wantClean) {
+      objectPath = objectPath.replace(/(_\d+)(\.png)$/i, '$1_clean$2');
+    }
+
+    // Generate a fresh signed URL and fetch through it
+    const signedUrl = await signGcsObject(objectPath);
+    const upstream = await fetch(signedUrl);
     if (!upstream.ok) {
       return res.status(upstream.status).json({ error: `Upstream ${upstream.status}` });
     }
