@@ -475,23 +475,34 @@ export async function autoListProduct(
         try {
           const imageService = await getImageService();
           for (let i = 0; i < driveImages.length; i++) {
-            try {
-              emitProgress(jobId, 'process_images', i + 1, driveImages.length, `Processing photo ${i + 1}/${driveImages.length} through PhotoRoom...`);
-              info(`[AutoList] Processing drive photo ${i + 1}/${driveImages.length} through image service: ${driveImages[i].substring(0, 80)}`);
-              // Full pipeline: bg removal → trim → uniform padding (400px closest edge) → template
-              const result = await imageService.processWithUniformPadding(driveImages[i], {
-                minPadding: 400,
-                shadow: true,
-                canvasSize: 4000,
-              });
-              const buf = result.buffer;
-              info(`[AutoList] PhotoRoom returned ${buf.length} bytes for image ${i + 1}`);
-              const url = await uploadProcessedImage(buf, `${shopifyProductId}_${i}.png`);
-              info(`[AutoList] Uploaded processed image ${i + 1}: ${url.substring(0, 80)}`);
-              processedImages.push(url);
-            } catch (imgErr) {
-              warn(`[AutoList] PhotoRoom processing failed for drive image ${i + 1}, using original: ${imgErr}`);
-              processedImages.push(driveImages[i]);
+            const MAX_RETRIES = 3;
+            let processed = false;
+            for (let attempt = 1; attempt <= MAX_RETRIES && !processed; attempt++) {
+              try {
+                const attemptLabel = attempt > 1 ? ` (retry ${attempt}/${MAX_RETRIES})` : '';
+                emitProgress(jobId, 'process_images', i + 1, driveImages.length, `Processing photo ${i + 1}/${driveImages.length}${attemptLabel}...`);
+                info(`[AutoList] Processing drive photo ${i + 1}/${driveImages.length}${attemptLabel}: ${driveImages[i].substring(0, 80)}`);
+                const result = await imageService.processWithUniformPadding(driveImages[i], {
+                  minPadding: 400,
+                  shadow: true,
+                  canvasSize: 4000,
+                });
+                const buf = result.buffer;
+                info(`[AutoList] PhotoRoom returned ${buf.length} bytes for image ${i + 1}`);
+                const url = await uploadProcessedImage(buf, `${shopifyProductId}_${i}.png`);
+                info(`[AutoList] Uploaded processed image ${i + 1}: ${url.substring(0, 80)}`);
+                processedImages.push(url);
+                processed = true;
+              } catch (imgErr) {
+                warn(`[AutoList] PhotoRoom attempt ${attempt}/${MAX_RETRIES} failed for image ${i + 1}: ${imgErr}`);
+                if (attempt < MAX_RETRIES) {
+                  // Wait before retry: 2s, 4s
+                  await new Promise(r => setTimeout(r, attempt * 2000));
+                } else {
+                  warn(`[AutoList] All ${MAX_RETRIES} attempts failed for image ${i + 1}, using original`);
+                  processedImages.push(driveImages[i]);
+                }
+              }
             }
           }
           info(`[AutoList] Processed ${processedImages.length} drive photos through image service`);
