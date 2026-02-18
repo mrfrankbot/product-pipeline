@@ -499,7 +499,9 @@ export async function autoListProduct(
     const draftId = await createDraft(shopifyProductId, {
       title: product.title || '',
       description: result.description,
-      images: processedImages,
+      // Only pass images if we actually have processed ones — otherwise let COALESCE
+      // preserve any images saved by an earlier step (e.g. the trigger endpoint's raw drive photos)
+      images: processedImages.length > 0 ? processedImages : undefined,
       originalTitle: existingContent.title,
       originalDescription: existingContent.description,
       originalImages: existingContent.images,
