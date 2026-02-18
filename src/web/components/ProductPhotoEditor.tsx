@@ -305,7 +305,7 @@ const ProductPhotoEditor: React.FC<ProductPhotoEditorProps> = ({
 
   // ── Render ─────────────────────────────────────────────────────────
 
-  const previewSize = 600;
+  const previewSize = 400;
 
   return (
     <div style={{ position: 'relative', zIndex: 999999 }}>
