@@ -444,11 +444,11 @@ export async function autoListProduct(
           for (let i = 0; i < driveImages.length; i++) {
             try {
               info(`[AutoList] Processing drive photo ${i + 1}/${driveImages.length} through image service: ${driveImages[i].substring(0, 80)}`);
-              // Use processWithParams for full pipeline: bg removal → padding → shadow → template
-              const result = await imageService.processWithParams(driveImages[i], {
-                background: '#FFFFFF',
-                padding: 0.25,
+              // Full pipeline: bg removal → trim → uniform padding (100px closest edge) → template
+              const result = await imageService.processWithUniformPadding(driveImages[i], {
+                minPadding: 100,
                 shadow: true,
+                canvasSize: 1200,
               });
               const buf = result.buffer;
               info(`[AutoList] PhotoRoom returned ${buf.length} bytes for image ${i + 1}`);

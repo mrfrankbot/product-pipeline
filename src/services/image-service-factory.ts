@@ -14,6 +14,10 @@ export interface ImageService {
   ): Promise<{ buffer: Buffer; dataUrl: string }>;
   processAllImages(imageUrls: string[], options?: ProcessImageOptions): Promise<Buffer[]>;
   renderWithTemplate(imageUrl: string, templateId?: string): Promise<Buffer>;
+  processWithUniformPadding(
+    imageUrl: string,
+    options?: { minPadding?: number; shadow?: boolean; canvasSize?: number },
+  ): Promise<{ buffer: Buffer; dataUrl: string }>;
 }
 
 let _cached: ImageService | null = null;

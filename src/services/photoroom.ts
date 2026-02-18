@@ -1,4 +1,5 @@
 import { info, warn, error as logError } from '../utils/logger.js';
+import sharp from 'sharp';
 
 /**
  * PhotoRoom API integration for automatic product image processing.
@@ -96,6 +97,104 @@ export class PhotoRoomService {
     const arrayBuffer = await response.arrayBuffer();
     info(`[PhotoRoom] Image processed successfully (${arrayBuffer.byteLength} bytes)`);
     return Buffer.from(arrayBuffer);
+  }
+
+  // ── Process with uniform padding ───────────────────────────────────────
+
+  /**
+   * Process an image with consistent edge padding:
+   * 1. Remove background via PhotoRoom (no padding, no fixed size)
+   * 2. Trim to product bounds
+   * 3. Add shadow
+   * 4. Place on white canvas with uniform closest-edge padding (default 100px)
+   * 5. Apply template overlay
+   *
+   * The closest edge of the product to the image edge will always have
+   * `minPadding` pixels of white space. Other edges get proportionally more.
+   * Final output is 1200x1200.
+   */
+  async processWithUniformPadding(
+    imageUrl: string,
+    options?: { minPadding?: number; shadow?: boolean; canvasSize?: number },
+  ): Promise<{ buffer: Buffer; dataUrl: string }> {
+    const minPad = options?.minPadding ?? 100;
+    const shadow = options?.shadow ?? true;
+    const canvasSize = options?.canvasSize ?? 1200;
+
+    info(`[PhotoRoom] Processing with uniform padding (${minPad}px min): ${imageUrl.substring(0, 60)}...`);
+
+    // Step 1: Remove background only — no padding, no fixed size, transparent bg
+    const imageBuffer = await this.downloadImage(imageUrl);
+    const formData = this.buildFormData(imageBuffer, 'image.jpg');
+    formData.append('removeBackground', 'true');
+    formData.append('background.color', 'transparent');
+    if (shadow) {
+      formData.append('shadow.mode', 'ai.soft');
+    }
+
+    const response = await fetch('https://image-api.photoroom.com/v2/edit', {
+      method: 'POST',
+      headers: { 'x-api-key': this.apiKey },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`PhotoRoom bg removal failed: ${response.status} — ${text}`);
+    }
+
+    const bgRemovedBuffer = Buffer.from(await response.arrayBuffer());
+    info(`[PhotoRoom] Background removed (${bgRemovedBuffer.length} bytes)`);
+
+    // Step 2: Trim transparent pixels to get tight crop around product
+    const trimmed = await sharp(bgRemovedBuffer)
+      .trim()
+      .toBuffer({ resolveWithObject: true });
+
+    const { width: prodW, height: prodH } = trimmed.info;
+    info(`[PhotoRoom] Product trimmed to ${prodW}x${prodH}`);
+
+    // Step 3: Calculate scaling to fit in canvas with minimum padding
+    const availW = canvasSize - (2 * minPad);
+    const availH = canvasSize - (2 * minPad);
+    const scale = Math.min(availW / prodW, availH / prodH);
+    const scaledW = Math.round(prodW * scale);
+    const scaledH = Math.round(prodH * scale);
+
+    // Step 4: Resize product and place centered on white canvas
+    const resizedProduct = await sharp(trimmed.data)
+      .resize(scaledW, scaledH, { fit: 'inside' })
+      .toBuffer();
+
+    const left = Math.round((canvasSize - scaledW) / 2);
+    const top = Math.round((canvasSize - scaledH) / 2);
+
+    const finalBuffer = await sharp({
+      create: {
+        width: canvasSize,
+        height: canvasSize,
+        channels: 4,
+        background: { r: 255, g: 255, b: 255, alpha: 1 },
+      },
+    })
+      .composite([{ input: resizedProduct, left, top }])
+      .png()
+      .toBuffer();
+
+    info(`[PhotoRoom] Placed on ${canvasSize}x${canvasSize} canvas (product: ${scaledW}x${scaledH}, offset: ${left},${top}, closest edge: ${Math.min(left, top)}px)`);
+
+    // Step 5: Apply template overlay
+    try {
+      const base64 = finalBuffer.toString('base64');
+      const dataUrl = `data:image/png;base64,${base64}`;
+      const templateBuffer = await this.renderWithTemplate(dataUrl);
+      const templateBase64 = templateBuffer.toString('base64');
+      return { buffer: templateBuffer, dataUrl: `data:image/png;base64,${templateBase64}` };
+    } catch (templateErr) {
+      warn(`[PhotoRoom] Template overlay failed, returning without template: ${templateErr}`);
+      const base64 = finalBuffer.toString('base64');
+      return { buffer: finalBuffer, dataUrl: `data:image/png;base64,${base64}` };
+    }
   }
 
   // ── Process with custom parameters ────────────────────────────────────

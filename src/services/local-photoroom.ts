@@ -140,4 +140,15 @@ export class LocalPhotoRoomService {
     }
     throw new Error('Local image service unavailable and no PhotoRoom API key configured');
   }
+
+  async processWithUniformPadding(
+    imageUrl: string,
+    options?: { minPadding?: number; shadow?: boolean; canvasSize?: number },
+  ): Promise<{ buffer: Buffer; dataUrl: string }> {
+    // Always delegate to PhotoRoom API for this — needs sharp
+    if (this.fallback) {
+      return this.fallback.processWithUniformPadding(imageUrl, options);
+    }
+    throw new Error('processWithUniformPadding requires PhotoRoom API fallback');
+  }
 }
