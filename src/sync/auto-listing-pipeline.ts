@@ -447,7 +447,7 @@ export async function autoListProduct(
               // Use processWithParams for full pipeline: bg removal → padding → shadow → template
               const result = await imageService.processWithParams(driveImages[i], {
                 background: '#FFFFFF',
-                padding: 0.15,
+                padding: 0.25,
                 shadow: true,
               });
               const buf = result.buffer;
