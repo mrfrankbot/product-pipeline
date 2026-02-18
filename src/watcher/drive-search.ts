@@ -87,7 +87,15 @@ let _gcsStorage: any = null;
 async function getGcsStorage() {
   if (!_gcsStorage) {
     const { Storage } = await import('@google-cloud/storage');
-    _gcsStorage = new Storage();
+    // Support GOOGLE_APPLICATION_CREDENTIALS_JSON env var (Railway)
+    const credsJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+    if (credsJson && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      const fs = await import('fs');
+      const path = '/tmp/gcs-credentials.json';
+      fs.writeFileSync(path, credsJson);
+      process.env.GOOGLE_APPLICATION_CREDENTIALS = path;
+    }
+    _gcsStorage = new Storage({ projectId: process.env.GCS_PROJECT_ID });
   }
   return _gcsStorage;
 }
