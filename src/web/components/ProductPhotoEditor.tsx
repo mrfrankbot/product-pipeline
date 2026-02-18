@@ -81,15 +81,23 @@ const ProductPhotoEditor: React.FC<ProductPhotoEditorProps> = ({
     setLoading(true);
     setError(null);
 
-    // Proxy GCS URLs through our backend to avoid CORS issues
-    // Add clean=true to try loading the no-watermark variant first
-    const proxyUrl = (u: string, clean = false) => {
-      if (!u.includes('storage.googleapis.com')) return u;
-      const base = `/api/images/proxy?url=${encodeURIComponent(u)}`;
-      return clean ? `${base}&clean=true` : base;
+    // Build a proxy URL for any image source (GCS or Shopify CDN)
+    // For Shopify CDN: extract filename pattern (e.g. 10130016665891_0.png) and
+    // proxy the GCS clean variant instead
+    const buildProxyUrl = (u: string, clean = false): string | null => {
+      if (u.includes('storage.googleapis.com')) {
+        const base = `/api/images/proxy?url=${encodeURIComponent(u)}`;
+        return clean ? `${base}&clean=true` : base;
+      }
+      // Shopify CDN: extract product ID and index from filename
+      // e.g., https://cdn.shopify.com/.../10130016665891_0.png?v=...
+      const match = u.match(/(\d{10,})_(\d+)\.png/);
+      if (match && clean) {
+        const gcsUrl = `https://storage.googleapis.com/pictureline-product-photos/processed/${match[1]}_${match[2]}.png`;
+        return `/api/images/proxy?url=${encodeURIComponent(gcsUrl)}&clean=true`;
+      }
+      return null; // Can't proxy this URL
     };
-
-    const isGCS = imageUrl.includes('storage.googleapis.com');
 
     const loadImage = (url: string, isFallback = false) => {
       const img = new Image();
@@ -100,8 +108,9 @@ const ProductPhotoEditor: React.FC<ProductPhotoEditorProps> = ({
       };
       img.onerror = () => {
         if (!isFallback) {
-          // Clean version failed, fall back to watermarked original
-          loadImage(isGCS ? proxyUrl(imageUrl) : imageUrl, true);
+          // Clean version failed, fall back to proxied watermarked or direct URL
+          const fallbackUrl = buildProxyUrl(imageUrl, false) || imageUrl;
+          loadImage(fallbackUrl, true);
         } else {
           setError('Failed to load image. The image may not support cross-origin access.');
           setLoading(false);
@@ -110,8 +119,9 @@ const ProductPhotoEditor: React.FC<ProductPhotoEditorProps> = ({
       img.src = url;
     };
 
-    // Try clean (no watermark) first for GCS images, fall back to original
-    loadImage(isGCS ? proxyUrl(imageUrl, true) : imageUrl);
+    // Always try clean (no watermark) first via proxy, fall back to original
+    const cleanUrl = buildProxyUrl(imageUrl, true);
+    loadImage(cleanUrl || imageUrl);
   }, [imageUrl, open]);
 
   // Reset transform when image changes

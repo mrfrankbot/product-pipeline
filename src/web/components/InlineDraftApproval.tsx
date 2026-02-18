@@ -71,7 +71,7 @@ const InlineDraftApproval: React.FC<InlineDraftApprovalProps> = ({ productId }) 
   // Fetch pending draft for this product
   const { data: draftData, isLoading } = useQuery({
     queryKey: ['draft-by-product', productId],
-    queryFn: () => apiClient.get<DraftResponse>(`/api/drafts/product/${productId}`),
+    queryFn: () => apiClient.get<DraftResponse>(`/drafts/product/${productId}`),
     enabled: Boolean(productId),
     refetchInterval: 30000, // Check for new drafts periodically
   });
