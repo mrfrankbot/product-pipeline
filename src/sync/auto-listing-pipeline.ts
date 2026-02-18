@@ -436,10 +436,27 @@ export async function autoListProduct(
 
     let processedImages: string[] = [];
     try {
-      // If we found drive photos, use those; otherwise process existing Shopify images
       if (driveImages.length > 0) {
-        processedImages = driveImages;
-        info(`[AutoList] Using ${driveImages.length} drive photos`);
+        // Process drive photos through PhotoRoom (bg removal + template)
+        const { uploadProcessedImage } = await import('../watcher/drive-search.js');
+        try {
+          const imageService = await getImageService();
+          for (let i = 0; i < driveImages.length; i++) {
+            try {
+              info(`[AutoList] Processing drive photo ${i + 1}/${driveImages.length} through image service`);
+              const buf = await imageService.renderWithTemplate(driveImages[i]);
+              const url = await uploadProcessedImage(buf, `${shopifyProductId}_${i}.png`);
+              processedImages.push(url);
+            } catch (imgErr) {
+              warn(`[AutoList] PhotoRoom processing failed for drive image ${i + 1}, using original: ${imgErr}`);
+              processedImages.push(driveImages[i]);
+            }
+          }
+          info(`[AutoList] Processed ${processedImages.length} drive photos through image service`);
+        } catch {
+          info(`[AutoList] No image service available — using raw drive photos`);
+          processedImages = driveImages;
+        }
       } else {
         processedImages = await processProductImages(product);
       }

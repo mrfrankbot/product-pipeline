@@ -343,3 +343,29 @@ export async function getSignedUrls(imagePaths: string[]): Promise<string[]> {
 
   return urls;
 }
+
+/**
+ * Upload a processed image buffer to GCS and return a signed URL.
+ */
+export async function uploadProcessedImage(buffer: Buffer, filename: string): Promise<string> {
+  if (DRIVE_MODE !== 'cloud') {
+    // In local mode, save to temp and return path
+    const tmpDir = path.join(process.env.TMPDIR ?? '/tmp', 'processed-images');
+    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+    const localPath = path.join(tmpDir, filename);
+    fs.writeFileSync(localPath, buffer);
+    return localPath;
+  }
+
+  const storage = await getGcsStorage();
+  const bucket = storage.bucket(GCS_BUCKET);
+  const gcsPath = `processed/${filename}`;
+  const file = bucket.file(gcsPath);
+  await file.save(buffer, { contentType: 'image/png' });
+
+  const [url] = await file.getSignedUrl({
+    action: 'read' as const,
+    expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
+  });
+  return url;
+}
