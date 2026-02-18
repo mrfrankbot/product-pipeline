@@ -568,6 +568,7 @@ export async function autoListProduct(
       `[AutoList] ✅ Product ${shopifyProductId} processed (job ${jobId}) — category=${result.ebayCategory}, description=${result.description.length} chars, images=${processedImages.length}, draft=#${draftId}`,
     );
 
+    clearTimeout(timeoutId);
     return {
       success: true,
       jobId,
@@ -576,8 +577,13 @@ export async function autoListProduct(
       images: processedImages,
     };
   } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
+    clearTimeout(timeoutId);
+    const isTimeout = err instanceof Error && err.name === 'AbortError';
+    const errorMsg = isTimeout
+      ? `Pipeline timed out after ${PIPELINE_TIMEOUT_MS / 1000}s`
+      : (err instanceof Error ? err.message : String(err));
     logError(`[AutoList] Failed for product ${shopifyProductId} (job ${jobId}): ${errorMsg}`);
+    await updatePipelineStep(jobId, 'process_images', 'error', errorMsg).catch(() => {});
     return { success: false, jobId, error: errorMsg };
   }
 }
