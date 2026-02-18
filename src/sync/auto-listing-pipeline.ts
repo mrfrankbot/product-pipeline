@@ -443,9 +443,11 @@ export async function autoListProduct(
           const imageService = await getImageService();
           for (let i = 0; i < driveImages.length; i++) {
             try {
-              info(`[AutoList] Processing drive photo ${i + 1}/${driveImages.length} through image service`);
+              info(`[AutoList] Processing drive photo ${i + 1}/${driveImages.length} through image service: ${driveImages[i].substring(0, 80)}`);
               const buf = await imageService.renderWithTemplate(driveImages[i]);
+              info(`[AutoList] PhotoRoom returned ${buf.length} bytes for image ${i + 1}`);
               const url = await uploadProcessedImage(buf, `${shopifyProductId}_${i}.png`);
+              info(`[AutoList] Uploaded processed image ${i + 1}: ${url.substring(0, 80)}`);
               processedImages.push(url);
             } catch (imgErr) {
               warn(`[AutoList] PhotoRoom processing failed for drive image ${i + 1}, using original: ${imgErr}`);
@@ -453,6 +455,7 @@ export async function autoListProduct(
             }
           }
           info(`[AutoList] Processed ${processedImages.length} drive photos through image service`);
+          info(`[AutoList] First processed URL: ${processedImages[0]?.substring(0, 100)}`);
         } catch {
           info(`[AutoList] No image service available — using raw drive photos`);
           processedImages = driveImages;
