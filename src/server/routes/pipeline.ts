@@ -191,26 +191,16 @@ router.post('/api/pipeline/trigger/:productId', async (req, res) => {
     info(`[PipelineAPI] Found ${driveResult.imagePaths.length} photos in ${driveResult.presetName}/${driveResult.folderName}`);
 
     // Step 3: Create draft with photos (reuse watcher's draft-service)
-    const {
-      createDraft,
-      checkExistingContent,
-    } = await import('../../services/draft-service.js');
+    // NOTE: Don't save raw drive photos here — autoListProduct below will process
+    // them through PhotoRoom and save the processed versions to the draft.
+    // Saving raw photos here caused them to be pushed to Shopify unprocessed.
 
-    const existingContent = await checkExistingContent(product.id);
-    const draftId = await createDraft(product.id, {
-      title: product.title,
-      images: driveResult.imagePaths,
-      originalTitle: existingContent.title,
-      originalDescription: existingContent.description,
-      originalImages: existingContent.images,
-    });
-
-    info(`[PipelineAPI] Draft #${draftId} created with ${driveResult.imagePaths.length} images`);
-
-    // Step 4: Run AI description pipeline
+    // Step 4: Run AI description pipeline (also handles photo processing + draft creation)
     let descriptionGenerated = false;
     let descriptionPreview: string | undefined;
     let pipelineJobId: string | undefined;
+    let processedImageCount = 0;
+    let draftId: number | undefined;
 
     try {
       const { autoListProduct } = await import('../../sync/auto-listing-pipeline.js');
@@ -218,9 +208,18 @@ router.post('/api/pipeline/trigger/:productId', async (req, res) => {
       descriptionGenerated = pipelineResult.success;
       descriptionPreview = pipelineResult.description;
       pipelineJobId = pipelineResult.jobId;
+      processedImageCount = pipelineResult.images?.length ?? 0;
     } catch (err) {
-      logError(`[PipelineAPI] AI description failed (non-fatal): ${err}`);
+      logError(`[PipelineAPI] Pipeline failed (non-fatal): ${err}`);
     }
+
+    // Look up the draft created by autoListProduct
+    try {
+      const draftRow = db.prepare(
+        `SELECT id FROM product_drafts WHERE shopify_product_id = ? ORDER BY created_at DESC LIMIT 1`,
+      ).get(product.id) as { id: number } | undefined;
+      draftId = draftRow?.id;
+    } catch { /* non-fatal */ }
 
     // Step 5: Apply TIM condition tag
     let tagApplied = false;
