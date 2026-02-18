@@ -515,4 +515,28 @@ router.delete('/api/products/:productId/images', async (req: Request, res: Respo
   }
 });
 
+// ── Image proxy (CORS-free access to GCS signed URLs) ─────────────────
+
+router.get('/proxy', async (req: Request, res: Response) => {
+  const url = req.query.url as string;
+  if (!url || (!url.startsWith('https://storage.googleapis.com/') && !url.startsWith('https://storage.cloud.google.com/'))) {
+    return res.status(400).json({ error: 'Only GCS URLs allowed' });
+  }
+  try {
+    const upstream = await fetch(url);
+    if (!upstream.ok) {
+      return res.status(upstream.status).json({ error: `Upstream ${upstream.status}` });
+    }
+    const contentType = upstream.headers.get('content-type') || 'image/png';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+    res.send(buffer);
+  } catch (err) {
+    logError(`[Image Proxy] Failed: ${err}`);
+    res.status(502).json({ error: 'Proxy fetch failed' });
+  }
+});
+
 export default router;

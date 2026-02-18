@@ -88,6 +88,10 @@ const ProductPhotoEditor: React.FC<ProductPhotoEditorProps> = ({
     const cleanUrl = imageUrl.replace(/(_\d+)(\.png)(\?|$)/, '$1_clean$2$3');
     const hasCleanVariant = cleanUrl !== imageUrl && imageUrl.includes('storage.googleapis.com');
 
+    // Proxy GCS URLs through our backend to avoid CORS issues
+    const proxyUrl = (u: string) =>
+      u.includes('storage.googleapis.com') ? `/api/images/proxy?url=${encodeURIComponent(u)}` : u;
+
     const loadImage = (url: string) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
@@ -104,7 +108,7 @@ const ProductPhotoEditor: React.FC<ProductPhotoEditorProps> = ({
           setLoading(false);
         }
       };
-      img.src = url;
+      img.src = proxyUrl(url);
     };
 
     loadImage(hasCleanVariant ? cleanUrl : imageUrl);
