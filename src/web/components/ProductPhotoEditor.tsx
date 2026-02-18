@@ -80,17 +80,32 @@ const ProductPhotoEditor: React.FC<ProductPhotoEditorProps> = ({
     if (!open || !imageUrl) return;
     setLoading(true);
     setError(null);
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      setProductImg(img);
-      setLoading(false);
+
+    // Try to load the clean (no watermark) version first
+    // Clean URLs follow pattern: ..._0.png → ..._0_clean.png
+    const cleanUrl = imageUrl.replace(/(_\d+)(\.png)/, '$1_clean$2');
+    const hasCleanVariant = cleanUrl !== imageUrl && imageUrl.includes('storage.googleapis.com');
+
+    const loadImage = (url: string) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        setProductImg(img);
+        setLoading(false);
+      };
+      img.onerror = () => {
+        if (url !== imageUrl) {
+          // Clean version failed, fall back to original
+          loadImage(imageUrl);
+        } else {
+          setError('Failed to load image. The image may not support cross-origin access.');
+          setLoading(false);
+        }
+      };
+      img.src = url;
     };
-    img.onerror = () => {
-      setError('Failed to load image. The image may not support cross-origin access.');
-      setLoading(false);
-    };
-    img.src = imageUrl;
+
+    loadImage(hasCleanVariant ? cleanUrl : imageUrl);
   }, [imageUrl, open]);
 
   // Reset transform when image changes

@@ -494,6 +494,10 @@ export async function autoListProduct(
                 });
                 const buf = result.buffer;
                 info(`[AutoList] PhotoRoom returned ${buf.length} bytes for image ${i + 1}`);
+                // Save clean version (no watermarks) for photo editor
+                if (result.cleanBuffer) {
+                  await uploadProcessedImage(result.cleanBuffer, `${shopifyProductId}_${i}_clean.png`).catch(() => {});
+                }
                 const url = await uploadProcessedImage(buf, `${shopifyProductId}_${i}.png`);
                 info(`[AutoList] Uploaded processed image ${i + 1}: ${url.substring(0, 80)}`);
                 processedImages.push(url);

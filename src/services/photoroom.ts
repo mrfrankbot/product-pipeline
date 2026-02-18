@@ -116,7 +116,7 @@ export class PhotoRoomService {
   async processWithUniformPadding(
     imageUrl: string,
     options?: { minPadding?: number; shadow?: boolean; canvasSize?: number },
-  ): Promise<{ buffer: Buffer; dataUrl: string }> {
+  ): Promise<{ buffer: Buffer; dataUrl: string; cleanBuffer?: Buffer }> {
     const minPad = options?.minPadding ?? 100;
     const shadow = options?.shadow ?? true;
     const canvasSize = options?.canvasSize ?? 1200;
@@ -190,17 +190,20 @@ export class PhotoRoomService {
 
     info(`[PhotoRoom] Placed on ${canvasSize}x${canvasSize} canvas (product: ${scaledW}x${scaledH}, offset: ${left},${top}, closest edge: ${Math.min(left, top)}px)`);
 
+    // Save the clean product-on-white canvas (no watermarks) for the photo editor
+    const cleanBuffer = finalBuffer;
+
     // Step 5: Apply template overlay
     try {
       const base64 = finalBuffer.toString('base64');
       const dataUrl = `data:image/png;base64,${base64}`;
       const templateBuffer = await this.renderWithTemplate(dataUrl);
       const templateBase64 = templateBuffer.toString('base64');
-      return { buffer: templateBuffer, dataUrl: `data:image/png;base64,${templateBase64}` };
+      return { buffer: templateBuffer, dataUrl: `data:image/png;base64,${templateBase64}`, cleanBuffer };
     } catch (templateErr) {
       warn(`[PhotoRoom] Template overlay failed, returning without template: ${templateErr}`);
       const base64 = finalBuffer.toString('base64');
-      return { buffer: finalBuffer, dataUrl: `data:image/png;base64,${base64}` };
+      return { buffer: finalBuffer, dataUrl: `data:image/png;base64,${base64}`, cleanBuffer };
     }
   }
 
@@ -215,7 +218,7 @@ export class PhotoRoomService {
   async processWithParams(
     imageUrl: string,
     params: { background?: string; padding?: number; shadow?: boolean },
-  ): Promise<{ buffer: Buffer; dataUrl: string }> {
+  ): Promise<{ buffer: Buffer; dataUrl: string; cleanBuffer?: Buffer }> {
     const options: ProcessImageOptions = {
       background: (params.background ?? '#FFFFFF').replace(/^#/, ''),
       padding: params.padding ?? 0.1,

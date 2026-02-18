@@ -84,7 +84,7 @@ export class LocalPhotoRoomService {
   async processWithParams(
     imageUrl: string,
     params: { background?: string; padding?: number; shadow?: boolean },
-  ): Promise<{ buffer: Buffer; dataUrl: string }> {
+  ): Promise<{ buffer: Buffer; dataUrl: string; cleanBuffer?: Buffer }> {
     const bg = (params.background ?? '#FFFFFF').replace(/^#/, '');
     const padding = params.padding ?? 0.1;
     const shadow = params.shadow ?? true;
@@ -144,7 +144,7 @@ export class LocalPhotoRoomService {
   async processWithUniformPadding(
     imageUrl: string,
     options?: { minPadding?: number; shadow?: boolean; canvasSize?: number },
-  ): Promise<{ buffer: Buffer; dataUrl: string }> {
+  ): Promise<{ buffer: Buffer; dataUrl: string; cleanBuffer?: Buffer }> {
     // Always delegate to PhotoRoom API for this — needs sharp
     if (this.fallback) {
       return this.fallback.processWithUniformPadding(imageUrl, options);

@@ -11,13 +11,13 @@ export interface ImageService {
   processWithParams(
     imageUrl: string,
     params: { background?: string; padding?: number; shadow?: boolean },
-  ): Promise<{ buffer: Buffer; dataUrl: string }>;
+  ): Promise<{ buffer: Buffer; dataUrl: string; cleanBuffer?: Buffer }>;
   processAllImages(imageUrls: string[], options?: ProcessImageOptions): Promise<Buffer[]>;
   renderWithTemplate(imageUrl: string, templateId?: string): Promise<Buffer>;
   processWithUniformPadding(
     imageUrl: string,
     options?: { minPadding?: number; shadow?: boolean; canvasSize?: number },
-  ): Promise<{ buffer: Buffer; dataUrl: string }>;
+  ): Promise<{ buffer: Buffer; dataUrl: string; cleanBuffer?: Buffer }>;
 }
 
 let _cached: ImageService | null = null;
