@@ -83,7 +83,9 @@ const ProductPhotoEditor: React.FC<ProductPhotoEditorProps> = ({
 
     // Try to load the clean (no watermark) version first
     // Clean URLs follow pattern: ..._0.png → ..._0_clean.png
-    const cleanUrl = imageUrl.replace(/(_\d+)(\.png)/, '$1_clean$2');
+    // Signed GCS URLs: ...processed/123_0.png?GoogleAccessId=...
+    // Need to insert _clean before .png but before the query string
+    const cleanUrl = imageUrl.replace(/(_\d+)(\.png)(\?|$)/, '$1_clean$2$3');
     const hasCleanVariant = cleanUrl !== imageUrl && imageUrl.includes('storage.googleapis.com');
 
     const loadImage = (url: string) => {

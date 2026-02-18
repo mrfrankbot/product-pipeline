@@ -156,7 +156,7 @@ const Lightbox: React.FC<{ src: string; alt: string; onClose: () => void }> = ({
     style={{
       position: 'fixed',
       inset: 0,
-      zIndex: 9999,
+      zIndex: 999999,
       background: 'rgba(0,0,0,0.85)',
       display: 'flex',
       alignItems: 'center',
