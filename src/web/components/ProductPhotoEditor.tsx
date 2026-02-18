@@ -81,18 +81,17 @@ const ProductPhotoEditor: React.FC<ProductPhotoEditorProps> = ({
     setLoading(true);
     setError(null);
 
-    // Try to load the clean (no watermark) version first
-    // Clean URLs follow pattern: ..._0.png → ..._0_clean.png
-    // Signed GCS URLs: ...processed/123_0.png?GoogleAccessId=...
-    // Need to insert _clean before .png but before the query string
-    const cleanUrl = imageUrl.replace(/(_\d+)(\.png)(\?|$)/, '$1_clean$2$3');
-    const hasCleanVariant = cleanUrl !== imageUrl && imageUrl.includes('storage.googleapis.com');
-
     // Proxy GCS URLs through our backend to avoid CORS issues
-    const proxyUrl = (u: string) =>
-      u.includes('storage.googleapis.com') ? `/api/images/proxy?url=${encodeURIComponent(u)}` : u;
+    // Add clean=true to try loading the no-watermark variant first
+    const proxyUrl = (u: string, clean = false) => {
+      if (!u.includes('storage.googleapis.com')) return u;
+      const base = `/api/images/proxy?url=${encodeURIComponent(u)}`;
+      return clean ? `${base}&clean=true` : base;
+    };
 
-    const loadImage = (url: string) => {
+    const isGCS = imageUrl.includes('storage.googleapis.com');
+
+    const loadImage = (url: string, isFallback = false) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => {
@@ -100,18 +99,19 @@ const ProductPhotoEditor: React.FC<ProductPhotoEditorProps> = ({
         setLoading(false);
       };
       img.onerror = () => {
-        if (url !== imageUrl) {
-          // Clean version failed, fall back to original
-          loadImage(imageUrl);
+        if (!isFallback) {
+          // Clean version failed, fall back to watermarked original
+          loadImage(isGCS ? proxyUrl(imageUrl) : imageUrl, true);
         } else {
           setError('Failed to load image. The image may not support cross-origin access.');
           setLoading(false);
         }
       };
-      img.src = proxyUrl(url);
+      img.src = url;
     };
 
-    loadImage(hasCleanVariant ? cleanUrl : imageUrl);
+    // Try clean (no watermark) first for GCS images, fall back to original
+    loadImage(isGCS ? proxyUrl(imageUrl, true) : imageUrl);
   }, [imageUrl, open]);
 
   // Reset transform when image changes

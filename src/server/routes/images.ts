@@ -518,10 +518,34 @@ router.delete('/api/products/:productId/images', async (req: Request, res: Respo
 // ── Image proxy (CORS-free access to GCS signed URLs) ─────────────────
 
 router.get('/proxy', async (req: Request, res: Response) => {
-  const url = req.query.url as string;
+  let url = req.query.url as string;
+  const wantClean = req.query.clean === 'true';
   if (!url || (!url.startsWith('https://storage.googleapis.com/') && !url.startsWith('https://storage.cloud.google.com/'))) {
     return res.status(400).json({ error: 'Only GCS URLs allowed' });
   }
+
+  // If clean=true, try to fetch the _clean variant from GCS via signed URL
+  if (wantClean) {
+    try {
+      // Extract the GCS object path from the signed URL and rewrite it
+      // Signed URL path: /pictureline-product-photos/processed/123_0.png
+      const parsed = new URL(url);
+      const cleanPath = parsed.pathname.replace(/(_\d+)(\.png)$/, '$1_clean$2');
+      if (cleanPath !== parsed.pathname) {
+        // Generate a fresh signed URL for the clean file via our GCS service
+        const { getSignedUrls } = await import('../../watcher/drive-search.js');
+        const objectName = cleanPath.replace(/^\/[^/]+\//, ''); // strip bucket name prefix
+        const [signedUrl] = await getSignedUrls([objectName]);
+        if (signedUrl) {
+          url = signedUrl;
+        }
+      }
+    } catch (cleanErr) {
+      // Clean variant doesn't exist or signing failed — fall through to original URL
+      info(`[Image Proxy] Clean variant not available, using original: ${cleanErr}`);
+    }
+  }
+
   try {
     const upstream = await fetch(url);
     if (!upstream.ok) {
