@@ -1,12 +1,11 @@
 import { info, warn } from '../utils/logger.js';
-import { PhotoRoomService } from './photoroom.js';
+import { getImageService, timedImageCall } from './image-service-factory.js';
 
 /**
  * Orchestrates product image processing for listings.
  *
- * If PHOTOROOM_API_KEY is configured, images are processed through PhotoRoom
- * (background removal, white background, drop shadow). Otherwise the original
- * Shopify image URLs are returned unchanged with a warning.
+ * Uses the configured image processing service (self-hosted or PhotoRoom)
+ * via the factory. If no service is available, returns original URLs.
  */
 
 export async function processProductImages(
@@ -21,24 +20,24 @@ export async function processProductImages(
 
   const imageUrls = images.map((img) => img.src);
 
-  const apiKey = process.env.PHOTOROOM_API_KEY;
-  if (!apiKey) {
-    warn(
-      '[ImageProcessor] PHOTOROOM_API_KEY not set — returning original image URLs',
-    );
+  let imageService;
+  try {
+    imageService = await getImageService();
+  } catch {
+    warn('[ImageProcessor] No image service available — returning original image URLs');
     return imageUrls;
   }
 
-  info(
-    `[ImageProcessor] Processing ${imageUrls.length} images through PhotoRoom`,
-  );
-  const photoroom = new PhotoRoomService(apiKey);
+  info(`[ImageProcessor] Processing ${imageUrls.length} images`);
 
-  const processedBuffers = await photoroom.processAllImages(imageUrls, {
-    background: 'FFFFFF',
-    shadow: true,
-    padding: 0.1,
-  });
+  const processedBuffers = await timedImageCall(
+    `batch ${imageUrls.length} images`,
+    () => imageService.processAllImages(imageUrls, {
+      background: 'FFFFFF',
+      shadow: true,
+      padding: 0.1,
+    }),
+  );
 
   // Convert buffers to base64 data URLs so they can be used directly
   const dataUrls = processedBuffers.map((buf) => {
@@ -46,9 +45,7 @@ export async function processProductImages(
     return `data:image/png;base64,${base64}`;
   });
 
-  info(
-    `[ImageProcessor] Returned ${dataUrls.length} processed images as data URLs`,
-  );
+  info(`[ImageProcessor] Returned ${dataUrls.length} processed images as data URLs`);
   return dataUrls;
 }
 
@@ -56,15 +53,11 @@ export async function processProductImages(
  * Upload processed images back to Shopify.
  *
  * TODO: Implement actual Shopify image upload via Admin API.
- * For now this is a stub that logs and returns an empty array.
  */
 export async function uploadToShopify(
   productId: string,
   imageBuffers: Buffer[],
 ): Promise<string[]> {
-  // TODO: Use Shopify Admin API to upload images to the product
-  //   POST /admin/api/2024-01/products/{productId}/images.json
-  //   with { image: { attachment: <base64> } }
   info(
     `[ImageProcessor] uploadToShopify stub called for product ${productId} with ${imageBuffers.length} images — not yet implemented`,
   );

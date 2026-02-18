@@ -6,7 +6,7 @@ import { fetchDetailedShopifyProduct } from '../shopify/products.js';
 import { saveProductOverride } from './attribute-mapping-service.js';
 import { getRawDb } from '../db/client.js';
 import { info, warn, error as logError } from '../utils/logger.js';
-import { PhotoRoomService } from '../services/photoroom.js';
+import { getImageService } from '../services/image-service-factory.js';
 import {
   createPipelineJob,
   startPipelineJob,
@@ -227,13 +227,13 @@ export async function processProductImages(
     .map((img: any) => (img.url || img.src || '').replace(/^http:/, 'https:'))
     .filter((url: string) => url.length > 0);
 
-  const apiKey = process.env.PHOTOROOM_API_KEY;
-  if (!apiKey) {
-    info('[AutoList] No PHOTOROOM_API_KEY — skipping image processing, using originals');
+  let imageService: Awaited<ReturnType<typeof getImageService>>;
+  try {
+    imageService = await getImageService();
+  } catch {
+    info('[AutoList] No image service available — skipping image processing, using originals');
     return imageUrls;
   }
-
-  const photoroom = new PhotoRoomService(apiKey);
   const tmpDir = path.join(os.tmpdir(), 'ebay-sync-images', shopifyProduct.id?.toString() || 'unknown');
   fs.mkdirSync(tmpDir, { recursive: true });
 
@@ -242,14 +242,14 @@ export async function processProductImages(
   for (let i = 0; i < imageUrls.length; i++) {
     const url = imageUrls[i];
     try {
-      info(`[AutoList] Rendering image ${i + 1}/${imageUrls.length} with PhotoRoom template`);
-      const buf = await photoroom.renderWithTemplate(url);
+      info(`[AutoList] Rendering image ${i + 1}/${imageUrls.length} with image service`);
+      const buf = await imageService.renderWithTemplate(url);
       const filePath = path.join(tmpDir, `image_${i}.png`);
       fs.writeFileSync(filePath, buf);
       processedPaths.push(filePath);
       info(`[AutoList] Saved processed image → ${filePath}`);
     } catch (err) {
-      warn(`[AutoList] PhotoRoom render failed for image ${i + 1}, using original URL: ${err}`);
+      warn(`[AutoList] Image processing failed for image ${i + 1}, using original URL: ${err}`);
       processedPaths.push(url); // fallback to original
     }
   }

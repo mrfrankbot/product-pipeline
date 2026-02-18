@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { getRawDb } from '../../db/client.js';
-import { PhotoRoomService } from '../../services/photoroom.js';
+import { getImageService, timedImageCall } from '../../services/image-service-factory.js';
 import { info, error as logError, warn } from '../../utils/logger.js';
 
 const router = Router();
@@ -140,12 +140,6 @@ router.post('/api/products/:id/images/reprocess', async (req: Request, res: Resp
       return;
     }
 
-    const apiKey = process.env.PHOTOROOM_API_KEY;
-    if (!apiKey) {
-      res.status(400).json({ error: 'PHOTOROOM_API_KEY not configured' });
-      return;
-    }
-
     const params = {
       background: background ?? '#FFFFFF',
       padding: typeof padding === 'number' ? padding : 0.1,
@@ -165,8 +159,11 @@ router.post('/api/products/:id/images/reprocess', async (req: Request, res: Resp
     info(`[Images API] Reprocessing image for product ${productId} (log ${logId})`);
 
     try {
-      const photoroom = new PhotoRoomService(apiKey);
-      const { dataUrl } = await photoroom.processWithParams(imageUrl, params);
+      const imageService = await getImageService();
+      const { dataUrl } = await timedImageCall(
+        `reprocess product=${productId}`,
+        () => imageService.processWithParams(imageUrl, params),
+      );
 
       // Update log entry with success
       db.prepare(
@@ -224,12 +221,6 @@ router.post('/api/products/:id/images/reprocess-all', async (req: Request, res: 
     const productId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const { background, padding, shadow } = req.body;
 
-    const apiKey = process.env.PHOTOROOM_API_KEY;
-    if (!apiKey) {
-      res.status(400).json({ error: 'PHOTOROOM_API_KEY not configured' });
-      return;
-    }
-
     const accessToken = await getShopifyToken();
     if (!accessToken) {
       res.status(400).json({ error: 'Shopify token not configured' });
@@ -253,7 +244,7 @@ router.post('/api/products/:id/images/reprocess-all', async (req: Request, res: 
     info(`[Images API] Reprocessing ALL ${shopifyImages.length} images for product ${productId}`);
 
     const db = await getRawDb();
-    const photoroom = new PhotoRoomService(apiKey);
+    const imageService = await getImageService();
     const results: Array<{
       originalUrl: string;
       processedUrl: string | null;
@@ -271,7 +262,10 @@ router.post('/api/products/:id/images/reprocess-all', async (req: Request, res: 
       const logId = insertResult.lastInsertRowid;
 
       try {
-        const { buffer, dataUrl } = await photoroom.processWithParams(img.src, params);
+        const { buffer, dataUrl } = await timedImageCall(
+          `reprocess-all product=${productId} image=${img.id}`,
+          () => imageService.processWithParams(img.src, params),
+        );
 
         db.prepare(
           `UPDATE image_processing_log SET status = 'completed', processed_url = ?, updated_at = ? WHERE id = ?`,

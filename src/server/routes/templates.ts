@@ -7,7 +7,7 @@
 import { Router, type Request, type Response } from 'express';
 import { info, error as logError } from '../../utils/logger.js';
 import { getRawDb } from '../../db/client.js';
-import { PhotoRoomService } from '../../services/photoroom.js';
+import { getImageService, timedImageCall } from '../../services/image-service-factory.js';
 import { promises as fs } from 'fs';
 import {
   createTemplate,
@@ -285,12 +285,6 @@ router.post('/api/templates/:id/apply/:productId', async (req: Request, res: Res
       return;
     }
 
-    const apiKey = process.env.PHOTOROOM_API_KEY;
-    if (!apiKey) {
-      res.status(400).json({ error: 'PHOTOROOM_API_KEY not configured' });
-      return;
-    }
-
     const accessToken = await getShopifyToken();
     if (!accessToken) {
       res.status(400).json({ error: 'Shopify token not configured' });
@@ -307,7 +301,7 @@ router.post('/api/templates/:id/apply/:productId', async (req: Request, res: Res
     info(`[Templates API] Applying template "${template.name}" to product ${productId} (${shopifyImages.length} images)`);
 
     const db = await getRawDb();
-    const photoroom = new PhotoRoomService(apiKey);
+    const imageService = await getImageService();
     const results: Array<{
       originalUrl: string;
       processedUrl: string | null;
@@ -324,7 +318,10 @@ router.post('/api/templates/:id/apply/:productId', async (req: Request, res: Res
       const logId = insertResult.lastInsertRowid;
 
       try {
-        const { buffer, dataUrl } = await photoroom.processWithParams(img.src, template.params);
+        const { buffer, dataUrl } = await timedImageCall(
+          `template="${template.name}" product=${productId} image=${img.id}`,
+          () => imageService.processWithParams(img.src, template.params),
+        );
 
         db.prepare(
           `UPDATE image_processing_log SET status = 'completed', processed_url = ?, updated_at = ? WHERE id = ?`,

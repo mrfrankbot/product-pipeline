@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+  image-service:
+    build: .
+    container_name: image-service
+    ports:
+      - "8100:8100"
+    environment:
+      - MAX_CONCURRENT=2
+      - MAX_QUEUE_SIZE=20
+      - REQUEST_TIMEOUT=120
+      - MAX_IMAGE_SIZE=52428800  # 50 MB
+      - MIN_DISK_MB=500
+    volumes:
+      - model-cache:/home/appuser/.u2net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: "2.0"
+        reservations:
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+volumes:
+  model-cache:
