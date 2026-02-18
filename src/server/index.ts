@@ -20,6 +20,7 @@ import watcherRoutes from './routes/watcher.js';
 import imageRoutes from './routes/images.js';
 import templateRoutes from './routes/templates.js';
 import draftRoutes from './routes/drafts.js';
+import photoEditRoutes from './routes/photo-edit.js';
 import ebayOrderRoutes from './routes/ebay-orders.js';
 import timRoutes from './routes/tim.js';
 import { apiKeyAuth, rateLimit } from './middleware/auth.js';
@@ -96,6 +97,7 @@ app.use(watcherRoutes);
 app.use(imageRoutes);
 app.use(templateRoutes);
 app.use(draftRoutes);
+app.use(photoEditRoutes);
 app.use(ebayOrderRoutes);
 app.use(timRoutes);
 

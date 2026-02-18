@@ -31,6 +31,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, useProductNotes, useSaveProductNotes } from '../hooks/useApi';
 import { useAppStore } from '../store';
+import ProductPhotoEditor from '../components/ProductPhotoEditor';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -138,6 +139,9 @@ const ReviewDetail: React.FC = () => {
   // Notes state
   const [localNotes, setLocalNotes] = useState('');
   const [notesInit, setNotesInit] = useState(false);
+
+  // Photo editor state
+  const [editingPhotoIndex, setEditingPhotoIndex] = useState<number | null>(null);
 
   // ── Fetch queue list for prev/next navigation ──────────────────────
 
@@ -331,9 +335,8 @@ const ReviewDetail: React.FC = () => {
                       {draftImages.map((img, i) => (
                         <div
                           key={`draft-${i}`}
-                          onClick={() => setLightboxSrc(img)}
                           style={{
-                            cursor: 'zoom-in',
+                            position: 'relative',
                             borderRadius: '8px',
                             overflow: 'hidden',
                             border: '2px solid #e3e5e7',
@@ -343,8 +346,33 @@ const ReviewDetail: React.FC = () => {
                           <img
                             src={img}
                             alt={`Draft photo ${i + 1}`}
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            onClick={() => setLightboxSrc(img)}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'zoom-in' }}
                           />
+                          {draft.status === 'pending' && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setEditingPhotoIndex(i); }}
+                              style={{
+                                position: 'absolute',
+                                bottom: '8px',
+                                right: '8px',
+                                background: 'rgba(0,0,0,0.7)',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: '6px',
+                                padding: '4px 10px',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                              }}
+                              title="Edit photo position/rotation"
+                            >
+                              ✏️ Edit
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -641,6 +669,23 @@ const ReviewDetail: React.FC = () => {
 
         <div style={{ height: '2rem' }} />
       </Page>
+
+      {/* Photo Editor Modal */}
+      {editingPhotoIndex !== null && (
+        <ProductPhotoEditor
+          open={editingPhotoIndex !== null}
+          imageUrl={draftImages[editingPhotoIndex]}
+          draftId={draftId}
+          imageIndex={editingPhotoIndex}
+          allDraftImages={draftImages}
+          onSave={() => {
+            queryClient.invalidateQueries({ queryKey: ['draft-detail', draftId] });
+            setEditingPhotoIndex(null);
+            addNotification({ type: 'success', title: 'Photo updated', message: 'Edited photo saved', autoClose: 4000 });
+          }}
+          onClose={() => setEditingPhotoIndex(null)}
+        />
+      )}
     </>
   );
 };
