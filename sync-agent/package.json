@@ -1,0 +1,21 @@
+{
+  "name": "styleshoots-sync-agent",
+  "version": "1.0.0",
+  "description": "Syncs StyleShoots drive photos to Google Cloud Storage",
+  "type": "module",
+  "scripts": {
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "build": "tsc",
+    "sync": "tsx src/index.ts --once",
+    "watch": "tsx src/index.ts --watch"
+  },
+  "dependencies": {
+    "@google-cloud/storage": "^7.7.0",
+    "chokidar": "^4.0.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  }
+}

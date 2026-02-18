@@ -1,9 +1,14 @@
 /**
- * drive-search.ts — Search the StyleShoots drive for product photo folders.
+ * drive-search.ts — Search for product photo folders.
  *
- * Scans all preset folders in the StyleShoots drive and matches folder names
- * to a given product name using the same parsing/tokenization logic as the
- * shopify-matcher but in reverse (product name → folder).
+ * Supports two modes:
+ *   - "local" (default): Reads directly from the mounted StyleShoots drive
+ *   - "cloud": Reads from Google Cloud Storage bucket
+ *
+ * Config via env vars:
+ *   DRIVE_MODE=local|cloud
+ *   GCS_BUCKET=pictureline-product-photos
+ *   GCS_PREFIX=UsedCameraGear/
  */
 
 import fs from 'node:fs';
@@ -12,6 +17,9 @@ import { parseFolderName, isImageFile } from './folder-parser.js';
 import { info, warn } from '../utils/logger.js';
 
 const DEFAULT_DRIVE_PATH = '/Volumes/StyleShootsDrive/UsedCameraGear/';
+const DRIVE_MODE = process.env.DRIVE_MODE ?? 'local';
+const GCS_BUCKET = process.env.GCS_BUCKET ?? 'pictureline-product-photos';
+const GCS_PREFIX = process.env.GCS_PREFIX ?? 'UsedCameraGear/';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -20,11 +28,12 @@ export interface DriveSearchResult {
   presetName: string;
   folderName: string;
   imagePaths: string[];
+  /** When mode=cloud, these are GCS URLs for downloading */
+  imageUrls?: string[];
 }
 
 // ── Tokenization & Matching ────────────────────────────────────────────
 
-/** Extract a serial number (digits following #) from a string, or null. */
 function extractSerial(str: string): string | null {
   const m = str.match(/#\s*(\d+)/);
   return m ? m[1] : null;
@@ -38,7 +47,6 @@ function tokenize(str: string): string[] {
     .filter(t => t.length > 0);
 }
 
-/** What fraction of `from` tokens appear (exactly or as substring) in `in_` tokens. */
 function tokenOverlapDir(from: string[], in_: string[]): number {
   if (from.length === 0) return 0;
   let matches = 0;
@@ -51,46 +59,152 @@ function tokenOverlapDir(from: string[], in_: string[]): number {
   return matches / from.length;
 }
 
-/**
- * Score how well a folder matches a Shopify product name.
- *
- * Strategy:
- * 1. If both have a serial number (#NNN) and they match → high confidence.
- *    Check that remaining folder tokens exist in Shopify title. Score 0.95+ if they do.
- * 2. If no serial → bidirectional token overlap, take the higher direction.
- */
 function matchScore(shopifyName: string, folderName: string, folderSerial: string | null): number {
   const shopifySerial = extractSerial(shopifyName);
   const shopifyTokens = tokenize(shopifyName);
   const folderTokens = tokenize(folderName);
 
-  // Serial-based matching
   if (shopifySerial && folderSerial && shopifySerial === folderSerial) {
-    // Serial matches — verify folder tokens appear in shopify title
-    // Remove the serial digits from folder tokens for this check
     const folderNonSerial = folderTokens.filter(t => t !== folderSerial);
-    if (folderNonSerial.length === 0) return 0.95; // only had serial
+    if (folderNonSerial.length === 0) return 0.95;
     const overlap = tokenOverlapDir(folderNonSerial, shopifyTokens);
-    // Even partial overlap with serial match is strong
-    return 0.90 + (overlap * 0.10); // range: 0.90–1.0
+    return 0.90 + (overlap * 0.10);
   }
 
-  // Serial mismatch (both have serials but different) → not a match
   if (shopifySerial && folderSerial && shopifySerial !== folderSerial) {
     return 0;
   }
 
-  // No serial — bidirectional token overlap, take the higher score
   const folder2shopify = tokenOverlapDir(folderTokens, shopifyTokens);
   const shopify2folder = tokenOverlapDir(shopifyTokens, folderTokens);
   return Math.max(folder2shopify, shopify2folder);
 }
 
-// ── Public API ─────────────────────────────────────────────────────────
+// ── Cloud (GCS) Backend ────────────────────────────────────────────────
+
+let _gcsStorage: any = null;
+
+async function getGcsStorage() {
+  if (!_gcsStorage) {
+    const { Storage } = await import('@google-cloud/storage');
+    _gcsStorage = new Storage();
+  }
+  return _gcsStorage;
+}
+
+interface GcsFolder {
+  presetName: string;
+  folderName: string;
+  prefix: string;
+}
 
 /**
- * Check if the StyleShoots drive is mounted and accessible.
+ * List all product folders in GCS by scanning prefixes.
+ * Structure: GCS_PREFIX/<preset>/<product_folder>/<images>
  */
+async function listGcsFolders(): Promise<GcsFolder[]> {
+  const storage = await getGcsStorage();
+  const bucket = storage.bucket(GCS_BUCKET);
+
+  // List "preset" level prefixes
+  const [, , apiResponse] = await bucket.getFiles({
+    prefix: GCS_PREFIX,
+    delimiter: '/',
+    autoPaginate: false,
+  });
+
+  const presetPrefixes: string[] = apiResponse?.prefixes ?? [];
+  const folders: GcsFolder[] = [];
+
+  for (const presetPrefix of presetPrefixes) {
+    const presetName = presetPrefix.replace(GCS_PREFIX, '').replace(/\/$/, '');
+    if (!presetName || presetName.startsWith('.')) continue;
+
+    // List product folder prefixes within this preset
+    const [, , presetResponse] = await bucket.getFiles({
+      prefix: presetPrefix,
+      delimiter: '/',
+      autoPaginate: false,
+    });
+
+    const productPrefixes: string[] = presetResponse?.prefixes ?? [];
+    for (const productPrefix of productPrefixes) {
+      const folderName = productPrefix.replace(presetPrefix, '').replace(/\/$/, '');
+      if (!folderName || folderName.startsWith('.')) continue;
+      folders.push({ presetName, folderName, prefix: productPrefix });
+    }
+  }
+
+  return folders;
+}
+
+async function listGcsImages(prefix: string): Promise<string[]> {
+  const storage = await getGcsStorage();
+  const bucket = storage.bucket(GCS_BUCKET);
+
+  const [files] = await bucket.getFiles({ prefix });
+  return files
+    .map((f: any) => f.name as string)
+    .filter((name: string) => {
+      const basename = path.basename(name);
+      return isImageFile(basename);
+    })
+    .sort();
+}
+
+function gcsPublicUrl(objectName: string): string {
+  return `https://storage.googleapis.com/${GCS_BUCKET}/${objectName}`;
+}
+
+async function gcsSignedUrl(objectName: string): Promise<string> {
+  const storage = await getGcsStorage();
+  const [url] = await storage
+    .bucket(GCS_BUCKET)
+    .file(objectName)
+    .getSignedUrl({
+      action: 'read' as const,
+      expires: Date.now() + 60 * 60 * 1000, // 1 hour
+    });
+  return url;
+}
+
+async function searchCloudForProduct(
+  productName: string,
+): Promise<DriveSearchResult | null> {
+  const folders = await listGcsFolders();
+  let bestMatch: { result: DriveSearchResult; score: number } | null = null;
+
+  for (const folder of folders) {
+    const parsed = parseFolderName(folder.folderName);
+    const score = matchScore(productName, parsed.productName, parsed.serialSuffix);
+
+    if (score >= 0.7 && (!bestMatch || score > bestMatch.score)) {
+      const imageKeys = await listGcsImages(folder.prefix);
+      if (imageKeys.length > 0) {
+        const imageUrls = imageKeys.map(gcsPublicUrl);
+        bestMatch = {
+          result: {
+            folderPath: `gs://${GCS_BUCKET}/${folder.prefix}`,
+            presetName: folder.presetName,
+            folderName: folder.folderName,
+            imagePaths: imageKeys, // GCS object keys
+            imageUrls,
+          },
+          score,
+        };
+      }
+    }
+  }
+
+  if (bestMatch) {
+    info(`[DriveSearch:cloud] Found match for "${productName}": ${bestMatch.result.presetName}/${bestMatch.result.folderName} (${bestMatch.result.imagePaths.length} images, score: ${bestMatch.score.toFixed(2)})`);
+  }
+
+  return bestMatch?.result ?? null;
+}
+
+// ── Local Backend ──────────────────────────────────────────────────────
+
 export function isDriveMounted(drivePath?: string): boolean {
   try {
     fs.accessSync(drivePath ?? DEFAULT_DRIVE_PATH, fs.constants.R_OK);
@@ -100,20 +214,25 @@ export function isDriveMounted(drivePath?: string): boolean {
   }
 }
 
-/**
- * Search the StyleShoots drive for a folder matching the given product name.
- *
- * Returns the best match with its image paths, or null if no match found.
- */
-export async function searchDriveForProduct(
+function collectImages(folderPath: string): string[] {
+  try {
+    return fs.readdirSync(folderPath)
+      .filter(isImageFile)
+      .sort()
+      .map(f => path.join(folderPath, f));
+  } catch {
+    return [];
+  }
+}
+
+async function searchLocalForProduct(
   productName: string,
-  serialSuffix?: string | null,
   drivePath?: string,
 ): Promise<DriveSearchResult | null> {
   const basePath = drivePath ?? DEFAULT_DRIVE_PATH;
 
   if (!isDriveMounted(basePath)) {
-    warn('[DriveSearch] StyleShoots drive is not mounted');
+    warn('[DriveSearch:local] StyleShoots drive is not mounted');
     return null;
   }
 
@@ -124,34 +243,23 @@ export async function searchDriveForProduct(
 
     for (const preset of presets) {
       if (!preset.isDirectory() || preset.name.startsWith('.')) continue;
-
       const presetPath = path.join(basePath, preset.name);
       let productDirs: fs.Dirent[];
-
       try {
         productDirs = fs.readdirSync(presetPath, { withFileTypes: true });
-      } catch {
-        continue;
-      }
+      } catch { continue; }
 
       for (const dir of productDirs) {
         if (!dir.isDirectory() || dir.name.startsWith('.')) continue;
-
         const parsed = parseFolderName(dir.name);
         const score = matchScore(productName, parsed.productName, parsed.serialSuffix);
 
         if (score >= 0.7 && (!bestMatch || score > bestMatch.score)) {
           const folderPath = path.join(presetPath, dir.name);
           const imagePaths = collectImages(folderPath);
-
           if (imagePaths.length > 0) {
             bestMatch = {
-              result: {
-                folderPath,
-                presetName: preset.name,
-                folderName: dir.name,
-                imagePaths,
-              },
+              result: { folderPath, presetName: preset.name, folderName: dir.name, imagePaths },
               score,
             };
           }
@@ -159,27 +267,46 @@ export async function searchDriveForProduct(
       }
     }
   } catch (err) {
-    warn(`[DriveSearch] Error scanning drive: ${err}`);
+    warn(`[DriveSearch:local] Error scanning drive: ${err}`);
     return null;
   }
 
   if (bestMatch) {
-    info(`[DriveSearch] Found match for "${productName}": ${bestMatch.result.presetName}/${bestMatch.result.folderName} (${bestMatch.result.imagePaths.length} images, score: ${bestMatch.score.toFixed(2)})`);
+    info(`[DriveSearch:local] Found match for "${productName}": ${bestMatch.result.presetName}/${bestMatch.result.folderName} (${bestMatch.result.imagePaths.length} images, score: ${bestMatch.score.toFixed(2)})`);
   }
 
   return bestMatch?.result ?? null;
 }
 
+// ── Public API ─────────────────────────────────────────────────────────
+
 /**
- * Collect image files from a folder, sorted by name.
+ * Search for product photos, using the configured mode (local or cloud).
  */
-function collectImages(folderPath: string): string[] {
-  try {
-    return fs.readdirSync(folderPath)
-      .filter(isImageFile)
-      .sort()
-      .map(f => path.join(folderPath, f));
-  } catch {
-    return [];
+export async function searchDriveForProduct(
+  productName: string,
+  serialSuffix?: string | null,
+  drivePath?: string,
+): Promise<DriveSearchResult | null> {
+  if (DRIVE_MODE === 'cloud') {
+    return searchCloudForProduct(productName);
   }
+  return searchLocalForProduct(productName, drivePath);
+}
+
+/**
+ * Download a cloud image to a temp file. Returns local path.
+ * For local mode, returns the path as-is.
+ */
+export async function resolveImagePath(imagePath: string): Promise<string> {
+  if (DRIVE_MODE !== 'cloud') return imagePath;
+
+  // imagePath is a GCS object key — download to temp
+  const storage = await getGcsStorage();
+  const tmpDir = path.join(process.env.TMPDIR ?? '/tmp', 'styleshoots-cache');
+  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+
+  const localPath = path.join(tmpDir, path.basename(imagePath));
+  await storage.bucket(GCS_BUCKET).file(imagePath).download({ destination: localPath });
+  return localPath;
 }

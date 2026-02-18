@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.pictureline.styleshoots-sync</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/node</string>
+        <string>/Users/frank/projects/product-pipeline/sync-agent/dist/index.js</string>
+        <string>--watch</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>GCS_BUCKET</key>
+        <string>pictureline-product-photos</string>
+        <key>DRIVE_PATH</key>
+        <string>/Volumes/StyleShootsDrive/UsedCameraGear/</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/Users/frank/Library/Logs/styleshoots-sync.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/frank/Library/Logs/styleshoots-sync.log</string>
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+</dict>
+</plist>
