@@ -16,8 +16,8 @@ import { RotateCw, Move, ZoomIn } from 'lucide-react';
 interface ProductPhotoEditorProps {
   /** The source image URL (bg-removed transparent PNG) */
   imageUrl: string;
-  /** Draft ID for saving back */
-  draftId: number;
+  /** Draft ID for saving back (not needed when using onCustomSave) */
+  draftId?: number;
   /** Index of this image in the draft's image array */
   imageIndex: number;
   /** All current draft image URLs */
@@ -28,6 +28,8 @@ interface ProductPhotoEditorProps {
   onClose: () => void;
   /** Whether the modal is open */
   open: boolean;
+  /** Optional custom save handler — receives the rendered blob. If provided, skips default draft save logic. */
+  onCustomSave?: (blob: Blob) => Promise<void>;
 }
 
 interface Transform {
@@ -59,6 +61,7 @@ const ProductPhotoEditor: React.FC<ProductPhotoEditorProps> = ({
   onSave,
   onClose,
   open,
+  onCustomSave,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [productImg, setProductImg] = useState<HTMLImageElement | null>(null);
@@ -229,7 +232,14 @@ const ProductPhotoEditor: React.FC<ProductPhotoEditorProps> = ({
         );
       });
 
-      // Upload via API
+      // Custom save flow (e.g., direct Shopify replace)
+      if (onCustomSave) {
+        await onCustomSave(blob);
+        onClose();
+        return;
+      }
+
+      // Default draft save flow
       const formData = new FormData();
       formData.append('image', blob, `edited-${draftId}-${imageIndex}-${Date.now()}.png`);
       formData.append('draftId', String(draftId));

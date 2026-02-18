@@ -12,7 +12,7 @@ import {
   Thumbnail,
   ButtonGroup,
 } from '@shopify/polaris';
-import { X, ZoomIn } from 'lucide-react';
+import { X, ZoomIn, Pencil } from 'lucide-react';
 
 export interface ActivePhoto {
   id: number;
@@ -29,6 +29,7 @@ interface ActivePhotosGalleryProps {
   onEditPhotos: (imageIds: number[]) => void;
   onSelectionChange?: (selectedIds: number[]) => void;
   onImageClick?: (photo: ActivePhoto, index: number) => void;
+  onEditPhoto?: (photo: ActivePhoto, index: number) => void;
 }
 
 const PLACEHOLDER_IMG =
@@ -42,6 +43,7 @@ const ActivePhotosGallery: React.FC<ActivePhotosGalleryProps> = ({
   onEditPhotos,
   onSelectionChange,
   onImageClick,
+  onEditPhoto,
 }) => {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   
@@ -271,6 +273,33 @@ const ActivePhotosGallery: React.FC<ActivePhotosGalleryProps> = ({
                         onChange={() => handleSelectPhoto(photo.id)}
                       />
                     </div>
+
+                    {/* Edit button */}
+                    {onEditPhoto && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEditPhoto(photo, index);
+                        }}
+                        style={{
+                          position: 'absolute',
+                          bottom: '6px',
+                          left: '6px',
+                          background: 'rgba(0, 0, 0, 0.7)',
+                          border: 'none',
+                          borderRadius: '50%',
+                          padding: '4px',
+                          cursor: 'pointer',
+                          color: 'white',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                        title="Edit photo (rotate/scale/reposition)"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                    )}
 
                     {/* Zoom button */}
                     <button

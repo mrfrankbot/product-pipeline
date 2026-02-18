@@ -40,6 +40,7 @@ import PhotoGallery, { type GalleryImage } from '../components/PhotoGallery';
 import PhotoControls, { type PhotoRoomParams } from '../components/PhotoControls';
 import ActivePhotosGallery, { type ActivePhoto } from '../components/ActivePhotosGallery';
 import EditPhotosPanel, { type EditablePhoto } from '../components/EditPhotosPanel';
+import ProductPhotoEditor from '../components/ProductPhotoEditor';
 import TemplateManager from '../components/TemplateManager';
 import InlineDraftApproval from '../components/InlineDraftApproval';
 
@@ -190,6 +191,7 @@ export const ShopifyProductDetail: React.FC = () => {
   
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [pipelineResult, setPipelineResult] = useState<any>(null);
+  const [editingPhoto, setEditingPhoto] = useState<{ photo: ActivePhoto; index: number } | null>(null);
   const [drivePipelineResult, setDrivePipelineResult] = useState<PipelineTriggerResult | null>(null);
 
   const drivePipelineMutation = useRunPipeline(id);
@@ -834,6 +836,7 @@ export const ShopifyProductDetail: React.FC = () => {
                           onDeleteBulk={handleDeleteBulk}
                           onEditPhotos={handleEditPhotos}
                           onSelectionChange={setSelectedPhotoIds}
+                          onEditPhoto={(photo, index) => setEditingPhoto({ photo, index })}
                         />
                       )}
                     </BlockStack>
@@ -1383,6 +1386,58 @@ export const ShopifyProductDetail: React.FC = () => {
 
         <div style={{ height: '2rem' }} />
       </Page>
+
+      {/* ── Product Photo Editor Modal ── */}
+      {editingPhoto && (
+        <ProductPhotoEditor
+          open={true}
+          imageUrl={editingPhoto.photo.src}
+          imageIndex={editingPhoto.index}
+          allDraftImages={activePhotos.map(p => p.src)}
+          onSave={() => {
+            queryClient.invalidateQueries({ queryKey: ['active-photos', id] });
+            queryClient.invalidateQueries({ queryKey: ['product-info', id] });
+            setEditingPhoto(null);
+            addNotification({ type: 'success', title: 'Photo updated', message: 'Edited photo saved to Shopify', autoClose: 4000 });
+          }}
+          onClose={() => setEditingPhoto(null)}
+          onCustomSave={async (blob: Blob) => {
+            // Convert blob to base64
+            const reader = new FileReader();
+            const base64 = await new Promise<string>((resolve, reject) => {
+              reader.onload = () => {
+                const result = reader.result as string;
+                // Strip data:image/png;base64, prefix
+                resolve(result.split(',')[1]);
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(blob);
+            });
+
+            // Replace image on Shopify via API
+            const res = await fetch(`/api/products/${id}/images/${editingPhoto.photo.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                attachment: base64,
+                filename: `edited-${editingPhoto.photo.id}-${Date.now()}.png`,
+                position: editingPhoto.photo.position,
+              }),
+            });
+
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({ error: 'Replace failed' }));
+              throw new Error(data.error || `Replace failed (${res.status})`);
+            }
+
+            // Trigger onSave to refresh
+            queryClient.invalidateQueries({ queryKey: ['active-photos', id] });
+            queryClient.invalidateQueries({ queryKey: ['product-info', id] });
+            setEditingPhoto(null);
+            addNotification({ type: 'success', title: 'Photo updated', message: 'Edited photo saved to Shopify', autoClose: 4000 });
+          }}
+        />
+      )}
     </>
   );
 };

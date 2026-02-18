@@ -1202,6 +1202,80 @@ router.delete('/api/test/delete-image', async (req: Request, res: Response) => {
   }
 });
 
+/** PUT /api/products/:productId/images/:imageId — Replace a single Shopify product image */
+router.put('/api/products/:productId/images/:imageId', async (req: Request, res: Response) => {
+  try {
+    const db = await getRawDb();
+    const tokenRow = db.prepare(`SELECT access_token FROM auth_tokens WHERE platform = 'shopify'`).get() as any;
+    if (!tokenRow?.access_token) { res.status(400).json({ error: 'No Shopify token' }); return; }
+
+    const { productId, imageId } = req.params;
+    const { attachment, imageUrl, filename, position } = req.body;
+
+    if (!attachment && !imageUrl) {
+      res.status(400).json({ error: 'attachment (base64) or imageUrl required' });
+      return;
+    }
+
+    const headers = {
+      'X-Shopify-Access-Token': tokenRow.access_token,
+      'Content-Type': 'application/json',
+    };
+    const baseUrl = `https://usedcameragear.myshopify.com/admin/api/2024-01/products/${productId}`;
+
+    // Get original image position before deleting
+    let originalPosition = position;
+    if (!originalPosition) {
+      const getRes = await fetch(`${baseUrl}/images/${imageId}.json`, { headers });
+      if (getRes.ok) {
+        const getData = await getRes.json() as any;
+        originalPosition = getData.image?.position;
+      }
+    }
+
+    // Delete old image
+    const delRes = await fetch(`${baseUrl}/images/${imageId}.json`, {
+      method: 'DELETE',
+      headers,
+    });
+    if (!delRes.ok && delRes.status !== 404) {
+      const errText = await delRes.text();
+      res.status(500).json({ error: 'Failed to delete old image', detail: errText });
+      return;
+    }
+
+    // Add new image
+    const imagePayload: Record<string, any> = {};
+    if (attachment) {
+      imagePayload.attachment = attachment;
+      if (filename) imagePayload.filename = filename;
+    } else {
+      imagePayload.src = imageUrl;
+    }
+    if (originalPosition) {
+      imagePayload.position = originalPosition;
+    }
+
+    const addRes = await fetch(`${baseUrl}/images.json`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ image: imagePayload }),
+    });
+
+    if (!addRes.ok) {
+      const errText = await addRes.text();
+      res.status(500).json({ error: 'Failed to add replacement image', detail: errText });
+      return;
+    }
+
+    const addData = await addRes.json() as any;
+    info(`[API] Replaced image ${imageId} on product ${productId} with new image ${addData.image?.id}`);
+    res.json({ ok: true, image: addData.image });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed', detail: String(err) });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // AI Listing Management Endpoints
 // ---------------------------------------------------------------------------
