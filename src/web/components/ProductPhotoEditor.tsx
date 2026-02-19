@@ -181,24 +181,6 @@ const ProductPhotoEditor: React.FC<ProductPhotoEditorProps> = ({
       if (imgAspect > 1) { drawW = size * 0.8; drawH = drawW / imgAspect; }
       else { drawH = size * 0.8; drawW = drawH * imgAspect; }
 
-      // Soft shadow under product (follows transform)
-      ctx.save();
-      ctx.translate(size / 2 + offsetX, size / 2 + offsetY);
-      ctx.rotate((rotation * Math.PI) / 180);
-      ctx.scale(scale, scale);
-      const shadowY = drawH / 2 + drawH * 0.02; // just below product bottom
-      const shadowW = drawW * 0.7;
-      const shadowH = drawH * 0.06;
-      const shadowGrad = ctx.createRadialGradient(0, shadowY, 0, 0, shadowY, shadowW * 0.6);
-      shadowGrad.addColorStop(0, 'rgba(0,0,0,0.15)');
-      shadowGrad.addColorStop(0.5, 'rgba(0,0,0,0.06)');
-      shadowGrad.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = shadowGrad;
-      ctx.beginPath();
-      ctx.ellipse(0, shadowY, shadowW, shadowH, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-
       // Product image with transforms
       ctx.save();
       ctx.translate(size / 2 + offsetX, size / 2 + offsetY);
@@ -206,6 +188,20 @@ const ProductPhotoEditor: React.FC<ProductPhotoEditorProps> = ({
       ctx.scale(scale, scale);
       ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
       ctx.restore();
+
+      // Fixed ground shadow (doesn't move with product)
+      const shadowCenterX = size / 2 + offsetX;
+      const shadowCenterY = size / 2 + (drawH * scale) / 2 + size * 0.02;
+      const shadowW = drawW * scale * 0.65;
+      const shadowH = size * 0.025;
+      const shadowGrad = ctx.createRadialGradient(shadowCenterX, shadowCenterY, 0, shadowCenterX, shadowCenterY, shadowW);
+      shadowGrad.addColorStop(0, 'rgba(0,0,0,0.13)');
+      shadowGrad.addColorStop(0.5, 'rgba(0,0,0,0.05)');
+      shadowGrad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = shadowGrad;
+      ctx.beginPath();
+      ctx.ellipse(shadowCenterX, shadowCenterY, shadowW, shadowH, 0, 0, Math.PI * 2);
+      ctx.fill();
 
       // Fixed watermark overlay
       ctx.save();
