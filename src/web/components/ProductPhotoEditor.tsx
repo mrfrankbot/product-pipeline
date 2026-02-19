@@ -181,15 +181,7 @@ const ProductPhotoEditor: React.FC<ProductPhotoEditorProps> = ({
       if (imgAspect > 1) { drawW = size * 0.8; drawH = drawW / imgAspect; }
       else { drawH = size * 0.8; drawW = drawH * imgAspect; }
 
-      // Product image with transforms
-      ctx.save();
-      ctx.translate(size / 2 + offsetX, size / 2 + offsetY);
-      ctx.rotate((rotation * Math.PI) / 180);
-      ctx.scale(scale, scale);
-      ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
-      ctx.restore();
-
-      // Fixed ground shadow (stays at bottom, doesn't rotate)
+      // Fixed ground shadow BEHIND the product (does NOT rotate)
       ctx.save();
       const shadowCenterX = size / 2 + offsetX;
       const shadowY = size / 2 + (drawH * scale) / 2 + size * 0.015;
@@ -203,6 +195,14 @@ const ProductPhotoEditor: React.FC<ProductPhotoEditorProps> = ({
       ctx.beginPath();
       ctx.ellipse(shadowCenterX, shadowY, shadowW, shadowH, 0, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
+
+      // Product image with transforms (drawn AFTER shadow)
+      ctx.save();
+      ctx.translate(size / 2 + offsetX, size / 2 + offsetY);
+      ctx.rotate((rotation * Math.PI) / 180);
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
       ctx.restore();
 
       // Fixed watermark overlay

@@ -545,16 +545,17 @@ function extractGcsObjectPath(rawUrl: string): string | null {
 async function signGcsObject(objectPath: string): Promise<string> {
   const { Storage } = await import('@google-cloud/storage');
   const credsJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-  if (credsJson && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-    const fs = await import('fs');
-    const tmpPath = '/tmp/gcs-credentials.json';
-    fs.writeFileSync(tmpPath, credsJson);
-    process.env.GOOGLE_APPLICATION_CREDENTIALS = tmpPath;
+  let storage: InstanceType<typeof Storage>;
+  if (credsJson) {
+    const credentials = JSON.parse(credsJson);
+    storage = new Storage({ projectId: credentials.project_id, credentials });
+  } else {
+    storage = new Storage({ projectId: process.env.GCS_PROJECT_ID });
   }
-  const storage = new Storage({ projectId: process.env.GCS_PROJECT_ID });
   const [url] = await storage.bucket(GCS_BUCKET_NAME).file(objectPath).getSignedUrl({
     action: 'read' as const,
     expires: Date.now() + 60 * 60 * 1000, // 1 hour
+    version: 'v4',
   });
   return url;
 }
