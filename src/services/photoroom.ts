@@ -193,11 +193,44 @@ export class PhotoRoomService {
     // Save the clean product-on-white canvas (no watermarks) for the photo editor
     const cleanBuffer = finalBuffer;
 
-    // Save the raw cutout (transparent bg, no shadow) for the rotation editor
-    const cutoutBuffer = await sharp(trimmed.data)
-      .resize(scaledW, scaledH, { fit: 'inside' })
-      .png()
-      .toBuffer();
+    // Save the raw cutout (transparent bg, shadow stripped) for the rotation editor
+    // PhotoRoom's AI shadow has low alpha — threshold it out by re-trimming
+    // from the original bg-removed buffer WITHOUT shadow
+    let cutoutBuffer: Buffer;
+    try {
+      // Make a second bg-removal call without shadow for clean cutout
+      const cutoutFormData = this.buildFormData(imageBuffer, 'image.jpg');
+      cutoutFormData.append('removeBackground', 'true');
+      cutoutFormData.append('background.color', 'transparent');
+      // No shadow.mode — pure cutout
+      const cutoutResponse = await fetch('https://image-api.photoroom.com/v2/edit', {
+        method: 'POST',
+        headers: { 'x-api-key': this.apiKey },
+        body: cutoutFormData,
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (cutoutResponse.ok) {
+        const cutoutRaw = Buffer.from(await cutoutResponse.arrayBuffer());
+        const cutoutTrimmed = await sharp(cutoutRaw).trim().toBuffer({ resolveWithObject: true });
+        cutoutBuffer = await sharp(cutoutTrimmed.data)
+          .resize(scaledW, scaledH, { fit: 'inside' })
+          .png()
+          .toBuffer();
+        info(`[PhotoRoom] Clean cutout (no shadow): ${cutoutBuffer.length} bytes`);
+      } else {
+        // Fallback: use the shadow version
+        cutoutBuffer = await sharp(trimmed.data)
+          .resize(scaledW, scaledH, { fit: 'inside' })
+          .png()
+          .toBuffer();
+        warn(`[PhotoRoom] No-shadow cutout failed, using shadow version`);
+      }
+    } catch {
+      cutoutBuffer = await sharp(trimmed.data)
+        .resize(scaledW, scaledH, { fit: 'inside' })
+        .png()
+        .toBuffer();
+    }
 
     // Step 5: Apply template overlay
     try {

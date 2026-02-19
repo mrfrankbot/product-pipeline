@@ -189,19 +189,21 @@ const ProductPhotoEditor: React.FC<ProductPhotoEditorProps> = ({
       ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
       ctx.restore();
 
-      // Fixed ground shadow (doesn't move with product)
+      // Fixed ground shadow (stays at bottom, doesn't rotate)
+      ctx.save();
       const shadowCenterX = size / 2 + offsetX;
-      const shadowCenterY = size / 2 + (drawH * scale) / 2 + size * 0.02;
-      const shadowW = drawW * scale * 0.65;
-      const shadowH = size * 0.025;
-      const shadowGrad = ctx.createRadialGradient(shadowCenterX, shadowCenterY, 0, shadowCenterX, shadowCenterY, shadowW);
-      shadowGrad.addColorStop(0, 'rgba(0,0,0,0.13)');
-      shadowGrad.addColorStop(0.5, 'rgba(0,0,0,0.05)');
-      shadowGrad.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = shadowGrad;
+      const shadowY = size / 2 + (drawH * scale) / 2 + size * 0.015;
+      const shadowW = drawW * scale * 0.6;
+      const shadowH = size * 0.02;
+      const grad = ctx.createRadialGradient(shadowCenterX, shadowY, 0, shadowCenterX, shadowY, shadowW);
+      grad.addColorStop(0, 'rgba(0,0,0,0.12)');
+      grad.addColorStop(0.6, 'rgba(0,0,0,0.04)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.ellipse(shadowCenterX, shadowCenterY, shadowW, shadowH, 0, 0, Math.PI * 2);
+      ctx.ellipse(shadowCenterX, shadowY, shadowW, shadowH, 0, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
 
       // Fixed watermark overlay
       ctx.save();
