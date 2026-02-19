@@ -170,54 +170,71 @@ const ProductPhotoEditor: React.FC<ProductPhotoEditorProps> = ({
 
   // ── Render canvas ──────────────────────────────────────────────────
 
-  const renderCanvas = useCallback(
+  // Preview render: white bg + product + simple shadow for visual feedback
+  const renderPreview = useCallback(
     (ctx: CanvasRenderingContext2D, size: number, img: HTMLImageElement, t: Transform) => {
       const { rotation, scale, offsetX, offsetY } = t;
 
-      // White background
       ctx.fillStyle = '#FFFFFF';
       ctx.fillRect(0, 0, size, size);
 
-      // Calculate product dimensions
       const imgAspect = img.width / img.height;
       let drawW: number, drawH: number;
       if (imgAspect > 1) { drawW = size * 0.8; drawH = drawW / imgAspect; }
       else { drawH = size * 0.8; drawW = drawH * imgAspect; }
 
-      // Fixed ground shadow BEHIND the product (does NOT rotate)
+      // Simple preview shadow (PhotoRoom will add the real one)
       ctx.save();
-      const shadowCenterX = size / 2 + offsetX;
+      const shadowCX = size / 2 + offsetX;
       const shadowY = size / 2 + (drawH * scale) / 2 + size * 0.015;
-      const shadowW = drawW * scale * 0.6;
-      const shadowH = size * 0.02;
-      const grad = ctx.createRadialGradient(shadowCenterX, shadowY, 0, shadowCenterX, shadowY, shadowW);
-      grad.addColorStop(0, 'rgba(0,0,0,0.12)');
-      grad.addColorStop(0.6, 'rgba(0,0,0,0.04)');
+      const grad = ctx.createRadialGradient(shadowCX, shadowY, 0, shadowCX, shadowY, drawW * scale * 0.5);
+      grad.addColorStop(0, 'rgba(0,0,0,0.08)');
       grad.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.ellipse(shadowCenterX, shadowY, shadowW, shadowH, 0, 0, Math.PI * 2);
+      ctx.ellipse(shadowCX, shadowY, drawW * scale * 0.5, size * 0.015, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
 
-      // Product image with transforms (drawn AFTER shadow)
+      // Product
       ctx.save();
       ctx.translate(size / 2 + offsetX, size / 2 + offsetY);
       ctx.rotate((rotation * Math.PI) / 180);
       ctx.scale(scale, scale);
       ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
       ctx.restore();
+    }, [],
+  );
 
-      // Fixed watermark overlay
+  // Export render: rotated product on TRANSPARENT background (for PhotoRoom reprocessing)
+  const renderForExport = useCallback(
+    (img: HTMLImageElement, t: Transform): HTMLCanvasElement => {
+      const size = CANVAS_SIZE;
+      const offscreen = document.createElement('canvas');
+      offscreen.width = size;
+      offscreen.height = size;
+      const ctx = offscreen.getContext('2d')!;
+
+      // Transparent background — PhotoRoom will add white bg + shadow
+      ctx.clearRect(0, 0, size, size);
+
+      const previewSize = canvasRef.current?.width || PREVIEW_SIZE;
+      const scaleFactor = size / previewSize;
+      const { rotation, scale, offsetX, offsetY } = t;
+
+      const imgAspect = img.width / img.height;
+      let drawW: number, drawH: number;
+      if (imgAspect > 1) { drawW = size * 0.8; drawH = drawW / imgAspect; }
+      else { drawH = size * 0.8; drawW = drawH * imgAspect; }
+
       ctx.save();
-      ctx.font = `${WATERMARK_FONT_SIZE}px Arial, sans-serif`;
-      ctx.fillStyle = 'rgba(180, 180, 180, 0.6)';
-      ctx.textBaseline = 'bottom';
-      ctx.textAlign = 'left';
-      ctx.fillText('©2026 ACTUAL IMAGE OF PRODUCT', WATERMARK_PADDING, size - WATERMARK_PADDING);
-      ctx.textAlign = 'right';
-      ctx.fillText('usedcameragear.com', size - WATERMARK_PADDING, size - WATERMARK_PADDING);
+      ctx.translate(size / 2 + offsetX * scaleFactor, size / 2 + offsetY * scaleFactor);
+      ctx.rotate((rotation * Math.PI) / 180);
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
       ctx.restore();
+
+      return offscreen;
     }, [],
   );
 
@@ -227,8 +244,8 @@ const ProductPhotoEditor: React.FC<ProductPhotoEditorProps> = ({
     if (!canvas || !productImg) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    renderCanvas(ctx, canvas.width, productImg, transform);
-  }, [productImg, transform, renderCanvas]);
+    renderPreview(ctx, canvas.width, productImg, transform);
+  }, [productImg, transform, renderPreview]);
 
   // ── Drag handlers ──────────────────────────────────────────────────
 
@@ -256,36 +273,46 @@ const ProductPhotoEditor: React.FC<ProductPhotoEditorProps> = ({
     setSaving(true);
     setError(null);
     try {
-      const offscreen = document.createElement('canvas');
-      offscreen.width = CANVAS_SIZE;
-      offscreen.height = CANVAS_SIZE;
-      const ctx = offscreen.getContext('2d');
-      if (!ctx) throw new Error('Failed to create canvas context');
-
-      const previewCanvasSize = canvasRef.current?.width || PREVIEW_SIZE;
-      const scaleFactor = CANVAS_SIZE / previewCanvasSize;
-      renderCanvas(ctx, CANVAS_SIZE, productImg, {
-        ...transform,
-        offsetX: transform.offsetX * scaleFactor,
-        offsetY: transform.offsetY * scaleFactor,
-      });
-
+      // 1. Export rotated product on transparent background
+      const exportCanvas = renderForExport(productImg, transform);
       const blob = await new Promise<Blob>((resolve, reject) => {
-        offscreen.toBlob(b => (b ? resolve(b) : reject(new Error('Canvas toBlob failed'))), 'image/png');
+        exportCanvas.toBlob(b => (b ? resolve(b) : reject(new Error('Canvas toBlob failed'))), 'image/png');
       });
 
-      if (onCustomSave) { await onCustomSave(blob); onClose(); return; }
+      if (onCustomSave) {
+        // Custom save path: send transparent PNG to PhotoRoom via backend, then save result
+        const formData = new FormData();
+        formData.append('image', blob, `rotated-${Date.now()}.png`);
+        const prRes = await fetch('/api/images/reprocess-edited', { method: 'POST', body: formData });
+        if (!prRes.ok) {
+          const d = await prRes.json().catch(() => ({ error: 'Reprocess failed' }));
+          throw new Error(d.error || `PhotoRoom reprocess failed (${prRes.status})`);
+        }
+        const prData = await prRes.json();
+        // Convert the processed data URL to a blob for onCustomSave
+        const processedRes = await fetch(prData.dataUrl);
+        const processedBlob = await processedRes.blob();
+        await onCustomSave(processedBlob);
+        onClose();
+        return;
+      }
 
+      // Draft save path: send to PhotoRoom then update draft
       const formData = new FormData();
-      formData.append('image', blob, `edited-${draftId}-${imageIndex}-${Date.now()}.png`);
-      formData.append('draftId', String(draftId));
-      formData.append('imageIndex', String(imageIndex));
-      const res = await fetch('/api/photos/edit', { method: 'POST', body: formData });
-      if (!res.ok) { const d = await res.json().catch(() => ({ error: 'Upload failed' })); throw new Error(d.error || `Upload failed (${res.status})`); }
-      const data = await res.json();
+      formData.append('image', blob, `rotated-${draftId}-${imageIndex}-${Date.now()}.png`);
+      const prRes = await fetch('/api/images/reprocess-edited', { method: 'POST', body: formData });
+      if (!prRes.ok) {
+        const d = await prRes.json().catch(() => ({ error: 'Reprocess failed' }));
+        throw new Error(d.error || `PhotoRoom reprocess failed (${prRes.status})`);
+      }
+      const prData = await prRes.json();
       const updatedImages = [...allDraftImages];
-      updatedImages[imageIndex] = data.url;
-      const updateRes = await fetch(`/api/drafts/${draftId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ images: updatedImages }) });
+      updatedImages[imageIndex] = prData.dataUrl;
+      const updateRes = await fetch(`/api/drafts/${draftId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ images: updatedImages }),
+      });
       if (!updateRes.ok) throw new Error('Failed to update draft');
       onSave(updatedImages);
       onClose();
@@ -294,7 +321,7 @@ const ProductPhotoEditor: React.FC<ProductPhotoEditorProps> = ({
     } finally {
       setSaving(false);
     }
-  }, [productImg, transform, draftId, imageIndex, allDraftImages, onSave, onClose, renderCanvas, onCustomSave]);
+  }, [productImg, transform, draftId, imageIndex, allDraftImages, onSave, onClose, renderForExport, onCustomSave]);
 
   // ── Escape key ─────────────────────────────────────────────────────
 
@@ -391,7 +418,7 @@ const ProductPhotoEditor: React.FC<ProductPhotoEditorProps> = ({
             onClick={handleSave}
             disabled={loading || !productImg || saving}
           >
-            {saving ? 'Saving...' : 'Save & Replace'}
+            {saving ? 'Processing with PhotoRoom...' : 'Save & Replace'}
           </button>
         </div>
       </div>

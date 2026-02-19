@@ -515,6 +515,63 @@ router.delete('/api/products/:productId/images', async (req: Request, res: Respo
   }
 });
 
+// ── Reprocess edited image through PhotoRoom ──────────────────────────
+// Accepts a rotated/scaled product PNG (transparent bg) and sends it through
+// PhotoRoom for proper shadow + white background + padding.
+
+import multer from 'multer';
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+router.post('/api/images/reprocess-edited', upload.single('image'), async (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file provided' });
+    }
+
+    info(`[Images API] Reprocessing edited image (${req.file.size} bytes) through PhotoRoom`);
+
+    const imageService = await getImageService();
+
+    // The image already has bg removed (transparent PNG). Send it to PhotoRoom
+    // with removeBackground still on (it's a no-op on transparent images) plus shadow.
+    const blob = new Blob([req.file.buffer as unknown as BlobPart]);
+    const formData = new FormData();
+    formData.append('imageFile', blob, 'edited.png');
+    formData.append('background.color', 'FFFFFF');
+    formData.append('padding', '0.1');
+    formData.append('shadow.mode', 'ai.soft');
+    formData.append('outputSize', '4000x4000');
+
+    const apiKey = process.env.PHOTOROOM_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: 'PhotoRoom API key not configured' });
+    }
+
+    const response = await fetch('https://image-api.photoroom.com/v2/edit', {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey },
+      body: formData as any,
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      logError(`[Images API] PhotoRoom reprocess failed (${response.status}): ${text}`);
+      return res.status(502).json({ error: `PhotoRoom failed: ${response.status}`, detail: text });
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const base64 = buffer.toString('base64');
+    const dataUrl = `data:image/png;base64,${base64}`;
+
+    info(`[Images API] PhotoRoom reprocess complete (${buffer.length} bytes)`);
+    res.json({ ok: true, dataUrl, size: buffer.length });
+  } catch (err) {
+    logError(`[Images API] Reprocess-edited failed: ${err}`);
+    res.status(500).json({ error: 'Reprocess failed', detail: String(err) });
+  }
+});
+
 // ── Image proxy (CORS-free access to GCS images) ──────────────────────
 
 const GCS_BUCKET_NAME = 'pictureline-product-photos';
