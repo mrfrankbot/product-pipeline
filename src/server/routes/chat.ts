@@ -813,4 +813,204 @@ router.post('/api/chat', async (req: Request, res: Response) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// GET /api/chat/stream — SSE streaming chat endpoint
+// ---------------------------------------------------------------------------
+router.post('/api/chat/stream', async (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+
+  const sendSSE = (event: string, data: unknown) => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
+  try {
+    const { message, currentPage, history } = req.body as {
+      message?: string;
+      currentPage?: string;
+      history?: Array<{ role: string; content: string }>;
+    };
+
+    if (!message || typeof message !== 'string' || !message.trim()) {
+      sendSSE('error', { error: 'message is required' });
+      res.end();
+      return;
+    }
+
+    info(`[Chat/Stream] User message: ${message} (page: ${currentPage || 'unknown'})`);
+
+    // Try photo/template commands first (instant response)
+    try {
+      const photoResult = await tryHandlePhotoCommand(message, currentPage || undefined);
+      if (photoResult.handled) {
+        sendSSE('done', {
+          response: photoResult.response,
+          actions: photoResult.actions || [],
+        });
+        res.end();
+        return;
+      }
+    } catch (err) {
+      logError(`[Chat/Stream] Photo command error: ${err}`);
+    }
+
+    // Read API key
+    let apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      try {
+        const fs = await import('node:fs/promises');
+        const os = await import('node:os');
+        const path = await import('node:path');
+        apiKey = (await fs.readFile(path.join(os.homedir(), '.clawdbot', 'credentials', 'openai.key'), 'utf8')).trim();
+      } catch {
+        // no key file
+      }
+    }
+    if (!apiKey) {
+      sendSSE('error', { error: 'OPENAI_API_KEY not configured' });
+      res.end();
+      return;
+    }
+
+    // Build messages array with conversation history
+    const messages: Array<{ role: string; content: string }> = [
+      { role: 'system', content: buildStreamingSystemPrompt(currentPage) },
+    ];
+    if (history && Array.isArray(history)) {
+      // Include last 10 turns for context
+      for (const h of history.slice(-10)) {
+        messages.push({ role: h.role, content: h.content });
+      }
+    }
+    messages.push({ role: 'user', content: message });
+
+    // Stream from OpenAI
+    sendSSE('start', { timestamp: Date.now() });
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages,
+        temperature: 0.3,
+        max_tokens: 2048,
+        stream: true,
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      sendSSE('error', { error: `OpenAI API error ${response.status}: ${errText}` });
+      res.end();
+      return;
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      sendSSE('error', { error: 'No response body' });
+      res.end();
+      return;
+    }
+
+    const decoder = new TextDecoder();
+    let fullText = '';
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') continue;
+
+        try {
+          const parsed = JSON.parse(data);
+          const delta = parsed.choices?.[0]?.delta?.content;
+          if (delta) {
+            fullText += delta;
+            sendSSE('chunk', { text: delta });
+          }
+        } catch {
+          // skip unparseable chunks
+        }
+      }
+    }
+
+    // Check for action directives in the full response
+    let navigate: string | undefined;
+    let actions: Array<{ type: string; detail: string }> = [];
+    const { cleanText, navigate: navPath } = extractNavigate(fullText);
+    if (navPath) navigate = navPath;
+
+    // Check if AI returned JSON with api_calls
+    try {
+      const cleaned = fullText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+      const parsed = JSON.parse(cleaned);
+      if (parsed.api_calls && Array.isArray(parsed.api_calls) && parsed.api_calls.length > 0) {
+        // Execute API calls and stream results
+        sendSSE('status', { text: 'Executing actions...' });
+        for (const call of parsed.api_calls) {
+          try {
+            const result = await callInternalApi(call);
+            actions.push({
+              type: result.status < 400 ? 'success' : 'error',
+              detail: `${call.method} ${call.path} → ${result.status}`,
+            });
+            sendSSE('action', { type: 'api_result', call, result: result.data });
+          } catch (err) {
+            actions.push({ type: 'error', detail: `${call.method} ${call.path} failed` });
+          }
+        }
+      }
+    } catch {
+      // Not JSON, that's fine — it's plain text
+    }
+
+    sendSSE('done', { response: cleanText || fullText, actions, navigate });
+    res.end();
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    logError(`[Chat/Stream] Error: ${errMsg}`);
+    sendSSE('error', { error: errMsg });
+    res.end();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Streaming system prompt (simpler, for gpt-4o-mini streaming)
+// ---------------------------------------------------------------------------
+function buildStreamingSystemPrompt(currentPage?: string): string {
+  return `You are a ProductPipeline Assistant for a Shopify ↔ eBay integration app used by a camera store (UsedCameraGear.com / Pictureline).
+
+You help users manage their product listings, orders, sync operations, photo processing, and more.
+Be concise, friendly, and use markdown formatting (headers, bold, lists, code blocks) for readability.
+${buildPageAwareBlock(currentPage)}
+${buildCapabilitiesBlock()}
+${PHOTO_EDITING_INSTRUCTIONS}
+${NAVIGATION_INSTRUCTIONS}
+
+## Response Style
+- Use **markdown** formatting for readability
+- Use bullet points and headers for lists
+- Keep responses concise but helpful
+- Use emoji sparingly for visual clarity
+- For data tables, use markdown tables
+- When suggesting navigation, add NAVIGATE:/path on a new line at the end
+
+Reference the user's current page when it's relevant.`;
+}
+
 export default router;

@@ -45,6 +45,59 @@ ebaysync orders sync --since 2026-02-01
 
 # Watch mode — poll every 10 minutes
 ebaysync sync --watch 10
+
+# --- New Commands (v0.2) ---
+
+# Image Pipeline
+ebaysync pipeline trigger <productId>   # Trigger image pipeline
+ebaysync pipeline status [jobId]        # Check job status
+ebaysync pipeline cancel <jobId>        # Cancel a running job
+ebaysync pipeline history               # Recent pipeline runs
+ebaysync pipeline clear-stuck           # Clear stuck jobs
+
+# Drafts / Review Queue
+ebaysync drafts list                    # List drafts (--status pending|approved|rejected)
+ebaysync drafts review                  # Pending count
+ebaysync drafts approve <id>            # Approve a draft
+ebaysync drafts reject <id>             # Reject (--reason "...")
+ebaysync drafts approve-all             # Approve all pending
+ebaysync drafts settings                # View auto-publish settings
+
+# Images & Templates
+ebaysync images list <productId>        # List product images
+ebaysync images process <productId>     # Process images (bg removal)
+ebaysync images reprocess <productId>   # Reprocess all images
+ebaysync images templates               # List photo templates
+ebaysync images set-template <id>       # Set default template
+ebaysync images status                  # Image service status
+
+# eBay Listings
+ebaysync listings list                  # List listings (--search, --status)
+ebaysync listings stale                 # Show stale listings
+ebaysync listings health                # Listing health check
+ebaysync listings republish             # Republish stale listings
+ebaysync listings price-drops           # Apply price drops
+ebaysync listings promote               # Promote listings
+
+# Analytics
+ebaysync analytics summary              # Sales summary (eBay order stats)
+ebaysync analytics orders               # Recent eBay orders
+
+# TIM Integration
+ebaysync tim items                      # List TIM items
+ebaysync tim condition <productId>      # Get condition data
+ebaysync tim tag <productId>            # Apply condition tag
+
+# Health & Config
+ebaysync health                         # Full health check
+ebaysync config show                    # Show configuration
+ebaysync config set <key> <value>       # Update server setting
+
+# Feature Requests
+ebaysync features list                  # List feature requests
+ebaysync features add "Title"           # Submit a feature request
+
+# Global flags: --json, --dry-run, --verbose
 ```
 
 ## Architecture

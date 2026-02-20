@@ -6,6 +6,15 @@ import { buildOrdersCommand } from './orders.js';
 import { buildInventoryCommand } from './inventory.js';
 import { buildStatusCommand } from './status.js';
 import { buildWatcherCommand } from './watcher.js';
+import { buildPipelineCommand } from './pipeline.js';
+import { buildDraftsCommand } from './drafts.js';
+import { buildImagesCommand } from './images.js';
+import { buildListingsCommand } from './listings.js';
+import { buildAnalyticsCommand } from './analytics.js';
+import { buildTimCommand } from './tim.js';
+import { buildHealthCommand } from './health.js';
+import { buildConfigCommand } from './config.js';
+import { buildFeaturesCommand } from './features.js';
 import { setVerbose } from '../utils/logger.js';
 import { syncOrders } from '../sync/order-sync.js';
 import { syncAllInventory } from '../sync/inventory-sync.js';
@@ -18,8 +27,8 @@ const program = new Command();
 
 program
   .name('ebaysync')
-  .description('Shopify ↔ eBay sync tool for UsedCameraGear.com')
-  .version('0.1.0')
+  .description('ProductPipeline — Shopify ↔ eBay product management CLI')
+  .version('0.2.0')
   .option('--json', 'JSON output')
   .option('--dry-run', 'Preview changes without applying')
   .option('--verbose', 'Detailed logging');
@@ -121,6 +130,15 @@ program.addCommand(buildOrdersCommand());
 program.addCommand(buildInventoryCommand());
 program.addCommand(buildStatusCommand());
 program.addCommand(buildWatcherCommand());
+program.addCommand(buildPipelineCommand());
+program.addCommand(buildDraftsCommand());
+program.addCommand(buildImagesCommand());
+program.addCommand(buildListingsCommand());
+program.addCommand(buildAnalyticsCommand());
+program.addCommand(buildTimCommand());
+program.addCommand(buildHealthCommand());
+program.addCommand(buildConfigCommand());
+program.addCommand(buildFeaturesCommand());
 
 program.parseAsync().catch((error) => {
   console.error(error instanceof Error ? error.message : error);
