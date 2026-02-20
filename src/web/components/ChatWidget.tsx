@@ -1,57 +1,60 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { MessageCircle, Send, X, Bot, User, Zap, Clock, Navigation } from 'lucide-react';
-import { useAppStore, ChatMessage } from '../store';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import {
+  MessageCircle, Send, X, Bot, User, Zap, Clock, Navigation,
+  ChevronDown, ChevronUp, Copy, Check, Maximize2, Minimize2, Trash2,
+  Sparkles, Command,
+} from 'lucide-react';
+import { useAppStore, type ChatMessage } from '../store';
 
-// Command parsing patterns
+// ─── Types ───────────────────────────────────────────────────────
+interface StreamMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+  actions?: Array<{ type: string; detail: string }>;
+  navigate?: string;
+  isStreaming?: boolean;
+}
+
+interface PersistedMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+}
+
+// ─── Command patterns (fast path) ───────────────────────────────
 const commandPatterns = [
-  // Sync commands
   { pattern: /sync\s+(all\s+)?products?/i, action: 'sync_products', method: 'POST', endpoint: '/api/sync/products' },
   { pattern: /sync\s+orders?\s+since\s+(\d{4}-\d{2}-\d{2})/i, action: 'sync_orders_dated', method: 'POST', endpoint: '/api/sync/trigger', dataFn: (m: RegExpMatchArray) => ({ type: 'orders', startDate: m[1] }) },
   { pattern: /sync\s+orders?/i, action: 'sync_orders', method: 'POST', endpoint: '/api/sync/trigger', dataFn: () => {
     const since = new Date(); since.setDate(since.getDate() - 7);
     return { type: 'orders', startDate: since.toISOString().slice(0, 10) };
-  } },
+  }},
   { pattern: /sync\s+inventory/i, action: 'sync_inventory', method: 'POST', endpoint: '/api/sync/inventory' },
-  
-  // Listing commands
   { pattern: /republish\s+stale\s+listings?/i, action: 'republish_stale', method: 'POST', endpoint: '/api/listings/republish-stale' },
   { pattern: /apply\s+price\s+drops?/i, action: 'apply_price_drops', method: 'POST', endpoint: '/api/listings/apply-price-drops' },
   { pattern: /show\s+stale\s+listings?/i, action: 'show_stale_listings', method: 'GET', endpoint: '/api/listings/stale' },
   { pattern: /show\s+listing\s+health/i, action: 'show_listing_health', method: 'GET', endpoint: '/api/listings/health' },
-  
-  // Status commands
-  { pattern: /show\s+status|check\s+status|status/i, action: 'show_status', method: 'GET', endpoint: '/api/status' },
+  { pattern: /show\s+status|check\s+status|^status$/i, action: 'show_status', method: 'GET', endpoint: '/api/status' },
   { pattern: /check\s+inventory/i, action: 'check_inventory', method: 'GET', endpoint: '/api/sync/inventory' },
-  
-  // Settings and cleanup
   { pattern: /show\s+settings/i, action: 'show_settings', method: 'GET', endpoint: '/api/settings' },
   { pattern: /cleanup\s+duplicate\s+orders?/i, action: 'cleanup_orders', method: 'POST', endpoint: '/api/orders/cleanup' },
 ];
 
-// Command suggestions (for autocomplete)
+// ─── Suggestions ─────────────────────────────────────────────────
 const suggestions = [
-  'sync all products',
-  'sync orders',
-  'check inventory',
-  'show status',
-  'show stale listings',
-  'show listing health',
-  'apply price drops',
-  'republish stale listings',
-  'cleanup duplicate orders',
-  'show settings',
-  // Phase 3: Photo editing + templates
-  'add more white space',
-  'remove the shadow',
-  'make background gray',
-  'tighter crop',
-  'reprocess all photos',
-  'list templates',
-  'save settings as template',
+  'sync all products', 'sync orders', 'check inventory', 'show status',
+  'show stale listings', 'show listing health', 'apply price drops',
+  'republish stale listings', 'cleanup duplicate orders', 'show settings',
+  'add more white space', 'remove the shadow', 'make background gray',
+  'tighter crop', 'reprocess all photos', 'list templates', 'save settings as template',
+  'show me products that haven\'t sold in 30 days',
+  'how many orders this week', 'what\'s the revenue today',
 ];
 
-// Fallback quick actions (used until capabilities API responds)
 const defaultQuickActions = [
   { label: '📊 Show status', message: 'show status', isNew: false },
   { label: '📦 List products', message: 'list products', isNew: false },
@@ -61,17 +64,10 @@ const defaultQuickActions = [
   { label: '🏥 Listing health check', message: 'show listing health', isNew: false },
 ];
 
-// Category emoji map
 const categoryEmoji: Record<string, string> = {
-  shopify: '🛍️',
-  ebay: '📦',
-  pipeline: '🔄',
-  images: '🖼️',
-  analytics: '📊',
-  settings: '⚙️',
+  shopify: '🛍️', ebay: '📦', pipeline: '🔄', images: '🖼️', analytics: '📊', settings: '⚙️',
 };
 
-// Page-specific contextual quick actions
 const pageQuickActions: Record<string, Array<{ label: string; message: string }>> = {
   '/': [
     { label: '📊 Full status check', message: 'show status' },
@@ -86,7 +82,6 @@ const pageQuickActions: Record<string, Array<{ label: string; message: string }>
     { label: '🔄 Sync recent orders', message: 'sync orders' },
     { label: '📋 Show orders', message: 'show orders' },
   ],
-  // Phase 3: Photo editing quick actions on product pages
   '/listings/:id': [
     { label: '🖼️ Reprocess all photos', message: 'reprocess all photos' },
     { label: '📋 List templates', message: 'list templates' },
@@ -99,78 +94,227 @@ const pageQuickActions: Record<string, Array<{ label: string; message: string }>
   ],
 };
 
+// ─── Persistence helpers ─────────────────────────────────────────
+const STORAGE_KEY = 'pp-chat-history';
+const MAX_STORED = 50;
+
+function loadHistory(): StreamMessage[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const items: PersistedMessage[] = JSON.parse(raw);
+    return items.map(m => ({ ...m, timestamp: new Date(m.timestamp) }));
+  } catch { return []; }
+}
+
+function saveHistory(messages: StreamMessage[]) {
+  try {
+    const toStore: PersistedMessage[] = messages
+      .filter(m => !m.isStreaming)
+      .slice(-MAX_STORED)
+      .map(m => ({ role: m.role, content: m.content, timestamp: m.timestamp.toISOString() }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(toStore));
+  } catch { /* quota exceeded, ignore */ }
+}
+
+// ─── Usage tracking ──────────────────────────────────────────────
+const USAGE_KEY = 'pp-chat-usage';
+
+function trackUsage(command: string) {
+  try {
+    const raw = localStorage.getItem(USAGE_KEY);
+    const usage: Record<string, number> = raw ? JSON.parse(raw) : {};
+    usage[command] = (usage[command] || 0) + 1;
+    localStorage.setItem(USAGE_KEY, JSON.stringify(usage));
+  } catch { /* ignore */ }
+}
+
+function getTopCommands(n = 3): string[] {
+  try {
+    const raw = localStorage.getItem(USAGE_KEY);
+    if (!raw) return [];
+    const usage: Record<string, number> = JSON.parse(raw);
+    return Object.entries(usage)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, n)
+      .map(([cmd]) => cmd);
+  } catch { return []; }
+}
+
+// ─── Copy button component ──────────────────────────────────────
+const CopyButton: React.FC<{ text: string }> = ({ text }) => {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      className="chat-copy-btn"
+      title="Copy to clipboard"
+    >
+      {copied ? <Check size={12} /> : <Copy size={12} />}
+      {copied ? 'Copied' : 'Copy'}
+    </button>
+  );
+};
+
+// ─── Collapsible section ─────────────────────────────────────────
+const Collapsible: React.FC<{ title: string; children: React.ReactNode; defaultOpen?: boolean }> = ({
+  title, children, defaultOpen = false,
+}) => {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="chat-collapsible">
+      <button className="chat-collapsible-header" onClick={() => setOpen(!open)}>
+        {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        <span>{title}</span>
+      </button>
+      {open && <div className="chat-collapsible-body">{children}</div>}
+    </div>
+  );
+};
+
+// ─── Markdown message renderer ───────────────────────────────────
+const MarkdownMessage: React.FC<{ content: string }> = ({ content }) => {
+  // Detect large data blocks for collapsible treatment
+  const lines = content.split('\n');
+  const isLargeData = lines.length > 20;
+
+  const rendered = (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        // Custom code block with copy button
+        code({ children, className, ...props }) {
+          const isBlock = className?.startsWith('language-');
+          const text = String(children).replace(/\n$/, '');
+          if (isBlock) {
+            return (
+              <div className="chat-code-block">
+                <div className="chat-code-header">
+                  <span>{className?.replace('language-', '') || 'code'}</span>
+                  <CopyButton text={text} />
+                </div>
+                <pre><code className={className} {...props}>{children}</code></pre>
+              </div>
+            );
+          }
+          return <code className="chat-inline-code" {...props}>{children}</code>;
+        },
+        // Tables get horizontal scroll
+        table({ children, ...props }) {
+          return (
+            <div className="chat-table-wrapper">
+              <table {...props}>{children}</table>
+            </div>
+          );
+        },
+        // Links open in new tab
+        a({ children, href, ...props }) {
+          return <a href={href} target="_blank" rel="noopener noreferrer" {...props}>{children}</a>;
+        },
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+
+  if (isLargeData) {
+    return (
+      <Collapsible title={`Results (${lines.length} lines)`} defaultOpen>
+        {rendered}
+      </Collapsible>
+    );
+  }
+
+  return rendered;
+};
+
+// ─── Main ChatWidget ─────────────────────────────────────────────
 const ChatWidget: React.FC = () => {
-  const { 
-    chatOpen, 
-    toggleChat, 
-    chatMessages, 
-    chatLoading, 
-    addChatMessage, 
-    setChatLoading 
-  } = useAppStore();
-  
+  const { chatOpen, toggleChat } = useAppStore();
   const location = useLocation();
   const navigate = useNavigate();
-  
+
+  const [messages, setMessages] = useState<StreamMessage[]>(() => loadHistory());
   const [inputValue, setInputValue] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [filteredSuggestions, setFilteredSuggestions] = useState<string[]>([]);
   const [navToast, setNavToast] = useState<string | null>(null);
   const [welcomeQuickActions, setWelcomeQuickActions] = useState(defaultQuickActions);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [panelSize, setPanelSize] = useState({ width: 420, height: 600 });
+  const [isResizing, setIsResizing] = useState(false);
 
-  // Fetch capabilities on mount to build dynamic quick-action pills
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Persist messages
+  useEffect(() => { saveHistory(messages); }, [messages]);
+
+  // Fetch capabilities
   useEffect(() => {
     let cancelled = false;
     fetch('/api/capabilities')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
         if (cancelled || !data?.capabilities) return;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const caps = data.capabilities as Array<{
-          id: string;
-          name: string;
-          category: string;
-          examplePrompts: string[];
-          isNew?: boolean;
+          id: string; name: string; category: string;
+          examplePrompts: string[]; isNew?: boolean;
         }>;
-        // Pick one representative prompt per capability, limit to 8
         const pills = caps
-          .filter((c) => c.examplePrompts.length > 0)
+          .filter(c => c.examplePrompts.length > 0)
           .slice(0, 8)
-          .map((c) => ({
+          .map(c => ({
             label: `${categoryEmoji[c.category] || '🔹'} ${c.name}`,
             message: c.examplePrompts[0],
             isNew: !!c.isNew,
           }));
-        if (pills.length > 0) {
-          setWelcomeQuickActions(pills);
-        }
+        if (pills.length > 0) setWelcomeQuickActions(pills);
       })
-      .catch(() => {
-        /* keep defaults */
-      });
-    return () => {
-      cancelled = true;
-    };
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
-  const scrollToBottom = () => {
+  // Scroll to bottom
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  }, []);
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [chatMessages]);
+  useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
 
+  // Focus input when opened
   useEffect(() => {
     if (chatOpen && inputRef.current) {
-      inputRef.current.focus();
+      setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, [chatOpen]);
 
-  // Auto-dismiss navigation toast
+  // Cmd+K global shortcut
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        toggleChat();
+      }
+      // Escape to close
+      if (e.key === 'Escape' && chatOpen) {
+        toggleChat();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [chatOpen, toggleChat]);
+
+  // Nav toast auto-dismiss
   useEffect(() => {
     if (navToast) {
       const timer = setTimeout(() => setNavToast(null), 2500);
@@ -178,800 +322,797 @@ const ChatWidget: React.FC = () => {
     }
   }, [navToast]);
 
-  // Get contextual quick actions for the current page (supports dynamic routes)
-  const currentPageActions = (() => {
+  // Resize handling
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startW = panelSize.width;
+    const startH = panelSize.height;
+
+    const onMove = (ev: MouseEvent) => {
+      setPanelSize({
+        width: Math.max(340, Math.min(800, startW - (ev.clientX - startX))),
+        height: Math.max(400, Math.min(900, startH - (ev.clientY - startY))),
+      });
+    };
+    const onUp = () => {
+      setIsResizing(false);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [panelSize]);
+
+  // Page-specific actions
+  const currentPageActions = useMemo(() => {
     const exact = pageQuickActions[location.pathname];
     if (exact) return exact;
-    // Check for /listings/:id pattern
-    if (/^\/listings\/\d+/.test(location.pathname)) {
-      return pageQuickActions['/listings/:id'] || [];
-    }
+    if (/^\/listings\/\d+/.test(location.pathname)) return pageQuickActions['/listings/:id'] || [];
     return pageQuickActions['/'] || [];
-  })();
+  }, [location.pathname]);
 
+  // Parse fast-path commands
   const parseCommand = (message: string) => {
-    for (const pattern of commandPatterns) {
-      const match = pattern.pattern.exec(message);
-      if (match) {
-        return { ...pattern, match };
-      }
+    for (const p of commandPatterns) {
+      const match = p.pattern.exec(message);
+      if (match) return { ...p, match };
     }
     return null;
   };
 
   const executeApiCall = async (endpoint: string, method: string, data?: unknown) => {
-    const options: RequestInit = {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    };
-
-    if (data && method !== 'GET') {
-      options.body = JSON.stringify(data);
-    }
-
-    const response = await fetch(endpoint, options);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    return await response.json();
+    const opts: RequestInit = { method, headers: { 'Content-Type': 'application/json' } };
+    if (data && method !== 'GET') opts.body = JSON.stringify(data);
+    const r = await fetch(endpoint, opts);
+    if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+    return r.json();
   };
 
-  const formatApiResponse = (action: string, data: unknown, error?: string) => {
-    if (error) {
-      return `❌ **Error**: ${error}`;
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const formatApiResponse = (action: string, data: unknown, error?: string): string => {
+    if (error) return `❌ **Error**: ${error}`;
     const d = data as any;
-
     switch (action) {
-      case 'sync_products':
-        return `✅ **Product sync started successfully!**\n\nI'll update you as the sync progresses. You can check the dashboard for real-time status updates.`;
-        
-      case 'sync_orders':
-        return `✅ **Order sync triggered!**\n\nSyncing orders from eBay to Shopify. This usually takes a few minutes depending on the volume.`;
-        
-      case 'sync_inventory':
-        return `✅ **Inventory sync completed!**\n\nUpdated stock levels between Shopify and eBay.`;
-        
+      case 'sync_products': return '✅ **Product sync started!**\nCheck the dashboard for real-time progress.';
+      case 'sync_orders': case 'sync_orders_dated': return '✅ **Order sync triggered!**\nSyncing orders from eBay to Shopify.';
+      case 'sync_inventory': return '✅ **Inventory sync completed!**\nStock levels updated.';
       case 'show_status':
         if (d?.status) {
           const { products, orders, shopifyConnected, ebayConnected, revenue } = d;
-          return `📊 **System Status**\n\n` +
-            `**Connections:**\n` +
-            `• Shopify: ${shopifyConnected ? '✅ Connected' : '❌ Disconnected'}\n` +
-            `• eBay: ${ebayConnected ? '✅ Connected' : '❌ Disconnected'}\n\n` +
-            `**Products:** ${products?.mapped || 0} mapped, ${products?.pending || 0} pending\n` +
-            `**Orders:** ${orders?.imported || 0} imported today\n` +
-            `**Revenue:** $${revenue?.today?.toFixed(2) || '0.00'} today`;
+          return `## 📊 System Status\n\n| Platform | Status |\n|----------|--------|\n| Shopify | ${shopifyConnected ? '✅ Connected' : '❌ Disconnected'} |\n| eBay | ${ebayConnected ? '✅ Connected' : '❌ Disconnected'} |\n\n- **Products:** ${products?.mapped || 0} mapped, ${products?.pending || 0} pending\n- **Orders:** ${orders?.imported || 0} imported today\n- **Revenue:** $${revenue?.today?.toFixed(2) || '0.00'} today`;
         }
-        break;
-        
+        return '✅ **Status check complete**';
       case 'show_stale_listings':
         if (d?.data && Array.isArray(d.data)) {
-          const staleCount = d.data.length;
-          return `📋 **Stale Listings Found: ${staleCount}**\n\n` +
-            (staleCount > 0 
-              ? d.data.slice(0, 5).map((item: { title: string; lastSynced: string }) => 
-                  `• ${item.title} (Last updated: ${new Date(item.lastSynced).toLocaleDateString()})`
-                ).join('\n') +
-                (staleCount > 5 ? `\n\n...and ${staleCount - 5} more` : '')
-              : 'No stale listings found! Everything is up to date. 🎉');
+          const n = d.data.length;
+          if (n === 0) return '🎉 **No stale listings!** Everything is up to date.';
+          let text = `## 📋 Stale Listings (${n})\n\n`;
+          text += d.data.slice(0, 10).map((item: any) =>
+            `- **${item.title}** — Last updated: ${new Date(item.lastSynced).toLocaleDateString()}`
+          ).join('\n');
+          if (n > 10) text += `\n\n...and ${n - 10} more`;
+          return text;
         }
-        break;
-        
-      case 'show_listing_health':
-        return `🏥 **Listing Health Report**\n\nAnalyzing your listings for optimization opportunities...`;
-          
-      case 'check_inventory':
-        return `📦 **Inventory Status**\n\nChecking stock levels across platforms...`;
-          
-      case 'republish_stale':
-        return `🔄 **Republishing stale listings...**\n\nThis will refresh outdated listings and improve visibility.`;
-          
-      case 'apply_price_drops':
-        return `💰 **Applying price drops...**\n\nUpdating pricing strategy based on current market conditions.`;
-          
-      case 'cleanup_orders':
-        return `🧹 **Cleaning up duplicate orders...**\n\nRemoving duplicate entries and consolidating order data.`;
-          
-      case 'show_settings':
-        return `⚙️ **Settings Overview**\n\nCurrent configuration and sync preferences are displayed in the Settings page.`;
-          
+        return '✅ **Stale listings check complete**';
       default:
-        return `✅ **Command executed successfully!**\n\n` +
-          (typeof data === 'object' ? `Result: ${JSON.stringify(data, null, 2)}` : `Result: ${data}`);
+        return `✅ **Done!**\n\n\`\`\`json\n${JSON.stringify(data, null, 2)}\n\`\`\``;
     }
-
-    return `✅ **Command completed**`;
   };
 
   const handleNavigate = (path: string) => {
-    const pageNames: Record<string, string> = {
-      '/': 'Dashboard',
-      '/listings': 'Products',
-      '/orders': 'Orders',
-      '/mappings': 'Mappings',
-      '/logs': 'Analytics',
-      '/settings': 'Settings',
-      '/images': 'Image Processor',
+    const names: Record<string, string> = {
+      '/': 'Dashboard', '/listings': 'Products', '/orders': 'Orders',
+      '/mappings': 'Mappings', '/logs': 'Analytics', '/settings': 'Settings', '/images': 'Image Processor',
     };
-    const pageName = pageNames[path] || path;
-    setNavToast(`Navigating to ${pageName}...`);
+    setNavToast(`Navigating to ${names[path] || path}...`);
     navigate(path);
   };
 
+  // ─── Send message ──────────────────────────────────────────────
   const sendMessage = async (messageText: string) => {
-    if (!messageText.trim()) return;
+    const text = messageText.trim();
+    if (!text) return;
 
-    const userMessage: Omit<ChatMessage, 'id'> = {
-      role: 'user',
-      content: messageText,
-      timestamp: new Date(),
-    };
+    trackUsage(text);
 
-    addChatMessage(userMessage);
-    const command = parseCommand(messageText);
+    const userMsg: StreamMessage = { role: 'user', content: text, timestamp: new Date() };
+    setMessages(prev => [...prev, userMsg]);
     setInputValue('');
     setShowSuggestions(false);
-    setChatLoading(true);
+    setIsLoading(true);
+
+    const command = parseCommand(text);
 
     try {
       if (command) {
-        // Fast-path: execute recognized API command directly
-        const commandData = 'dataFn' in command && command.dataFn ? command.dataFn(command.match) : ('data' in command ? command.data : undefined);
-        const result = await executeApiCall(command.endpoint, command.method, commandData);
-        const formattedResponse = formatApiResponse(command.action, result);
-        
-        addChatMessage({
-          role: 'assistant',
-          content: formattedResponse,
-          timestamp: new Date(),
-          commandResult: result,
-        });
+        // Fast path — direct API call
+        const cmdData = 'dataFn' in command && command.dataFn ? command.dataFn(command.match) : undefined;
+        const result = await executeApiCall(command.endpoint, command.method, cmdData);
+        const response = formatApiResponse(command.action, result);
+        setMessages(prev => [...prev, { role: 'assistant', content: response, timestamp: new Date() }]);
       } else {
-        // Send to AI chat backend for natural language processing
-        try {
-          const res = await fetch('/api/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: messageText, currentPage: location.pathname }),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            let content = data.response || 'No response';
-            if (data.actions?.length) {
-              content += '\n\n' + data.actions.map((a: { success?: boolean; type: string; detail?: string }) =>
-                `${a.success !== false ? '✅' : '❌'} ${a.type}: ${a.detail || ''}`
-              ).join('\n');
-            }
-            addChatMessage({ role: 'assistant', content, timestamp: new Date() });
-
-            // Handle navigation if the AI requested it
-            if (data.navigate && typeof data.navigate === 'string') {
-              handleNavigate(data.navigate);
-            }
-          } else {
-            // AI not available, fall back to local help
-            const response = generateHelpfulResponse(messageText);
-            addChatMessage({ role: 'assistant', content: response, timestamp: new Date() });
-          }
-        } catch {
-          // AI endpoint unreachable, fall back to local help
-          const response = generateHelpfulResponse(messageText);
-          addChatMessage({ role: 'assistant', content: response, timestamp: new Date() });
-        }
+        // Stream from AI
+        await streamFromAI(text);
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      const formattedResponse = formatApiResponse(command?.action || 'error', null, errorMessage);
-      
-      addChatMessage({
+      const errMsg = error instanceof Error ? error.message : 'Unknown error';
+      setMessages(prev => [...prev, {
         role: 'assistant',
-        content: formattedResponse,
+        content: `❌ **Error:** ${errMsg}`,
         timestamp: new Date(),
-        error: errorMessage,
-      });
+      }]);
     } finally {
-      setChatLoading(false);
+      setIsLoading(false);
     }
   };
 
-  const handleSendMessage = async () => {
-    await sendMessage(inputValue);
+  const streamFromAI = async (text: string) => {
+    abortRef.current = new AbortController();
+
+    // Build history for context
+    const history = messages
+      .filter(m => !m.isStreaming)
+      .slice(-10)
+      .map(m => ({ role: m.role, content: m.content }));
+
+    const streamingMsg: StreamMessage = {
+      role: 'assistant', content: '', timestamp: new Date(), isStreaming: true,
+    };
+    setMessages(prev => [...prev, streamingMsg]);
+
+    try {
+      const response = await fetch('/api/chat/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, currentPage: location.pathname, history }),
+        signal: abortRef.current.signal,
+      });
+
+      if (!response.ok) {
+        // Fallback to non-streaming
+        const fallback = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text, currentPage: location.pathname }),
+        });
+        if (fallback.ok) {
+          const data = await fallback.json();
+          setMessages(prev => {
+            const updated = [...prev];
+            updated[updated.length - 1] = {
+              role: 'assistant', content: data.response || 'No response',
+              timestamp: new Date(), actions: data.actions,
+            };
+            return updated;
+          });
+          if (data.navigate) handleNavigate(data.navigate);
+        } else {
+          throw new Error(`HTTP ${fallback.status}`);
+        }
+        return;
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response body');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let fullContent = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            const event = line.slice(7).trim();
+            // Next data line
+            continue;
+          }
+          if (!line.startsWith('data: ')) continue;
+          const raw = line.slice(6).trim();
+          if (!raw) continue;
+
+          try {
+            const data = JSON.parse(raw);
+            // Determine event type from previous event line or data shape
+            if (data.text && !data.response) {
+              // chunk
+              fullContent += data.text;
+              setMessages(prev => {
+                const updated = [...prev];
+                const last = updated[updated.length - 1];
+                if (last?.isStreaming) {
+                  updated[updated.length - 1] = { ...last, content: fullContent };
+                }
+                return updated;
+              });
+            } else if (data.response !== undefined) {
+              // done
+              setMessages(prev => {
+                const updated = [...prev];
+                updated[updated.length - 1] = {
+                  role: 'assistant',
+                  content: data.response || fullContent,
+                  timestamp: new Date(),
+                  actions: data.actions,
+                };
+                return updated;
+              });
+              if (data.navigate) handleNavigate(data.navigate);
+            } else if (data.error) {
+              setMessages(prev => {
+                const updated = [...prev];
+                updated[updated.length - 1] = {
+                  role: 'assistant',
+                  content: `❌ **Error:** ${data.error}`,
+                  timestamp: new Date(),
+                };
+                return updated;
+              });
+            }
+          } catch { /* skip */ }
+        }
+      }
+
+      // If streaming ended without a "done" event, finalize
+      setMessages(prev => {
+        const updated = [...prev];
+        const last = updated[updated.length - 1];
+        if (last?.isStreaming) {
+          updated[updated.length - 1] = { ...last, isStreaming: false };
+        }
+        return updated;
+      });
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') return;
+      throw err;
+    }
   };
 
-  const handleQuickAction = async (message: string) => {
-    await sendMessage(message);
-  };
-
-  const generateHelpfulResponse = (input: string) => {
-    const lowercaseInput = input.toLowerCase();
-    
-    if (lowercaseInput.includes('help') || lowercaseInput.includes('what can you do')) {
-      return `🤖 **I can help you with:**\n\n` +
-        `**Sync Operations:**\n• sync all products\n• sync orders\n• sync inventory\n\n` +
-        `**Listing Management:**\n• show stale listings\n• republish stale listings\n• apply price drops\n• show listing health\n\n` +
-        `**System Status:**\n• show status\n• check inventory\n• show settings\n\n` +
-        `**Maintenance:**\n• cleanup duplicate orders\n\n` +
-        `Just type any of these commands naturally!`;
-    }
-    
-    if (lowercaseInput.includes('thank')) {
-      return `You're welcome! 😊 Is there anything else I can help you with?`;
-    }
-    
-    // Find closest matching command
-    const closeMatches = suggestions.filter(suggestion => 
-      suggestion.includes(lowercaseInput) || lowercaseInput.includes(suggestion.split(' ')[0])
-    );
-    
-    if (closeMatches.length > 0) {
-      return `🤔 I didn't recognize that exact command, but did you mean:\n\n` +
-        closeMatches.slice(0, 3).map(match => `• ${match}`).join('\n') +
-        `\n\nType "help" to see all available commands.`;
-    }
-    
-    return `🤔 I'm not sure how to help with that. Try typing "help" to see what I can do, or use commands like:\n\n` +
-      `• "sync all products"\n• "show status"\n• "check inventory"`;
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ─── Input handling ────────────────────────────────────────────
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     setInputValue(value);
-    
-    if (value.trim().length > 0) {
-      const filtered = suggestions.filter(suggestion =>
-        suggestion.toLowerCase().includes(value.toLowerCase())
-      );
-      setFilteredSuggestions(filtered);
-      setShowSuggestions(filtered.length > 0);
+    if (value.trim().length > 1) {
+      const lower = value.toLowerCase();
+      const filtered = suggestions.filter(s => s.toLowerCase().includes(lower));
+      // Also include top used commands
+      const top = getTopCommands().filter(c => c.toLowerCase().includes(lower) && !filtered.includes(c));
+      setFilteredSuggestions([...top, ...filtered].slice(0, 6));
+      setShowSuggestions(filtered.length > 0 || top.length > 0);
     } else {
       setShowSuggestions(false);
     }
-  };
 
-  const handleSuggestionClick = (suggestion: string) => {
-    setInputValue(suggestion);
-    setShowSuggestions(false);
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    } else if (e.key === 'Escape') {
-      setShowSuggestions(false);
+    // Auto-resize textarea
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+      inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 120) + 'px';
     }
   };
 
-  // ─── Styles ───────────────────────────────────────────────────────
-
-  const bubbleStyle: React.CSSProperties = {
-    position: 'fixed',
-    bottom: '20px',
-    right: '20px',
-    width: '60px',
-    height: '60px',
-    borderRadius: '50%',
-    backgroundColor: '#00b341',
-    color: 'white',
-    border: 'none',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    boxShadow: '0 4px 12px rgba(0, 179, 65, 0.3)',
-    zIndex: 9999,
-    transition: 'all 0.3s ease',
-    transform: chatOpen ? 'scale(0.9)' : 'scale(1)',
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage(inputValue);
+    }
+    if (e.key === 'Escape') setShowSuggestions(false);
   };
 
-  const panelStyle: React.CSSProperties = {
-    position: 'fixed',
-    bottom: '90px',
-    right: '20px',
-    width: '380px',
-    height: '600px',
-    backgroundColor: '#1a1a1a',
-    borderRadius: '16px',
-    boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)',
-    zIndex: 9998,
-    display: 'flex',
-    flexDirection: 'column',
-    transform: chatOpen ? 'scale(1) translateY(0)' : 'scale(0.8) translateY(20px)',
-    opacity: chatOpen ? 1 : 0,
-    transition: 'all 0.3s ease',
-    pointerEvents: chatOpen ? 'auto' : 'none',
+  const clearHistory = () => {
+    setMessages([]);
+    localStorage.removeItem(STORAGE_KEY);
   };
 
-  const headerStyle: React.CSSProperties = {
-    padding: '16px 20px',
-    borderBottom: '1px solid #333',
-    backgroundColor: '#00b341',
-    color: 'white',
-    borderRadius: '16px 16px 0 0',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  };
+  const showWelcome = messages.length === 0;
+  const effectiveWidth = isExpanded ? Math.min(800, window.innerWidth - 40) : panelSize.width;
+  const effectiveHeight = isExpanded ? Math.min(900, window.innerHeight - 100) : panelSize.height;
 
-  const messagesStyle: React.CSSProperties = {
-    flex: 1,
-    padding: '16px',
-    overflowY: 'auto',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '12px',
-    scrollbarWidth: 'thin',
-    scrollbarColor: '#333 transparent',
-  };
-
-  const inputContainerStyle: React.CSSProperties = {
-    padding: '12px 16px 16px',
-    borderTop: '1px solid #333',
-    backgroundColor: '#2a2a2a',
-    borderRadius: '0 0 16px 16px',
-    position: 'relative',
-  };
-
-  const inputWrapperStyle: React.CSSProperties = {
-    display: 'flex',
-    gap: '8px',
-    alignItems: 'center',
-  };
-
-  const inputStyle: React.CSSProperties = {
-    flex: 1,
-    padding: '12px',
-    backgroundColor: '#333',
-    color: 'white',
-    border: '1px solid #444',
-    borderRadius: '8px',
-    fontSize: '14px',
-    outline: 'none',
-  };
-
-  const sendButtonStyle: React.CSSProperties = {
-    padding: '12px',
-    backgroundColor: '#00b341',
-    color: 'white',
-    border: 'none',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: '44px',
-    opacity: inputValue.trim() ? 1 : 0.5,
-    transition: 'all 0.2s ease',
-  };
-
-  const suggestionsStyle: React.CSSProperties = {
-    position: 'absolute',
-    bottom: '100%',
-    left: '0',
-    right: '0',
-    backgroundColor: '#333',
-    borderRadius: '8px 8px 0 0',
-    border: '1px solid #444',
-    maxHeight: '200px',
-    overflowY: 'auto',
-    zIndex: 10,
-  };
-
-  const pillStyle: React.CSSProperties = {
-    padding: '6px 14px',
-    backgroundColor: '#2a2a2a',
-    color: '#ccc',
-    border: '1px solid #444',
-    borderRadius: '20px',
-    cursor: 'pointer',
-    fontSize: '13px',
-    whiteSpace: 'nowrap',
-    transition: 'all 0.15s ease',
-  };
-
-  const chipStyle: React.CSSProperties = {
-    padding: '4px 10px',
-    backgroundColor: 'transparent',
-    color: '#aaa',
-    border: '1px solid #444',
-    borderRadius: '14px',
-    cursor: 'pointer',
-    fontSize: '12px',
-    whiteSpace: 'nowrap',
-    transition: 'all 0.15s ease',
-  };
-
-  const navToastStyle: React.CSSProperties = {
-    position: 'absolute',
-    top: '60px',
-    left: '50%',
-    transform: 'translateX(-50%)',
-    backgroundColor: '#0066cc',
-    color: 'white',
-    padding: '8px 16px',
-    borderRadius: '8px',
-    fontSize: '13px',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    zIndex: 20,
-    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
-    animation: 'fadeInOut 2.5s ease',
-  };
-
-  const showWelcome = chatMessages.length === 0;
-
+  // ─── Render ────────────────────────────────────────────────────
   return (
-    <div>
-      {/* Chat Panel */}
-      <div style={panelStyle}>
-        {/* Header */}
-        <div style={headerStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Bot size={20} />
-            <span style={{ fontWeight: '600', fontSize: '15px' }}>ProductPipeline Assistant</span>
-          </div>
-          <button
-            onClick={toggleChat}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'white',
-              cursor: 'pointer',
-              padding: '4px',
-              borderRadius: '4px',
-              opacity: 0.8,
-            }}
-          >
-            <X size={16} />
-          </button>
-        </div>
+    <>
+      <style>{chatStyles}</style>
+      <div className="chat-widget">
+        {/* Panel */}
+        <div
+          ref={panelRef}
+          className={`chat-panel ${chatOpen ? 'chat-panel-open' : 'chat-panel-closed'}`}
+          style={{ width: effectiveWidth, height: effectiveHeight }}
+        >
+          {/* Resize handle */}
+          {!isExpanded && (
+            <div className="chat-resize-handle" onMouseDown={handleResizeStart} />
+          )}
 
-        {/* Navigation toast */}
-        {navToast && (
-          <div style={navToastStyle}>
-            <Navigation size={14} />
-            {navToast}
+          {/* Header */}
+          <div className="chat-header">
+            <div className="chat-header-left">
+              <Bot size={20} />
+              <span className="chat-header-title">ProductPipeline AI</span>
+              <Sparkles size={14} className="chat-sparkle" />
+            </div>
+            <div className="chat-header-actions">
+              <button onClick={clearHistory} className="chat-header-btn" title="Clear history">
+                <Trash2 size={14} />
+              </button>
+              <button onClick={() => setIsExpanded(!isExpanded)} className="chat-header-btn" title={isExpanded ? 'Minimize' : 'Maximize'}>
+                {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+              </button>
+              <button onClick={toggleChat} className="chat-header-btn" title="Close (Esc)">
+                <X size={16} />
+              </button>
+            </div>
           </div>
-        )}
 
-        {/* Messages */}
-        <div style={messagesStyle}>
-          {/* Welcome screen */}
-          {showWelcome && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '8px 0' }}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '8px',
-                }}
-              >
-                <div
-                  style={{
-                    width: '28px',
-                    height: '28px',
-                    borderRadius: '50%',
-                    backgroundColor: '#00b341',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                    marginTop: '2px',
-                  }}
-                >
-                  <Bot size={14} color="white" />
+          {/* Nav toast */}
+          {navToast && (
+            <div className="chat-nav-toast">
+              <Navigation size={14} />
+              {navToast}
+            </div>
+          )}
+
+          {/* Messages */}
+          <div className="chat-messages">
+            {showWelcome && (
+              <div className="chat-welcome">
+                <div className="chat-welcome-icon">
+                  <Bot size={32} />
                 </div>
-                <div
-                  style={{
-                    padding: '12px 16px',
-                    borderRadius: '16px 16px 16px 4px',
-                    backgroundColor: '#333',
-                    color: 'white',
-                    fontSize: '14px',
-                    lineHeight: '1.5',
-                  }}
-                >
-                  <span style={{ fontWeight: '600' }}>Hey! I'm your listing assistant.</span>
-                  <br />
-                  <span style={{ opacity: 0.85 }}>Here's what I can do:</span>
+                <h3>Hey! I'm your AI assistant.</h3>
+                <p>Ask me anything about your products, orders, listings, or sync operations. I can also execute actions for you.</p>
+                <div className="chat-shortcut-hint">
+                  <Command size={12} /> <span>+</span> <kbd>K</kbd> to toggle
+                </div>
+                <div className="chat-welcome-pills">
+                  {welcomeQuickActions.map(qa => (
+                    <button
+                      key={qa.message}
+                      onClick={() => sendMessage(qa.message)}
+                      className="chat-pill"
+                    >
+                      {qa.label}
+                      {qa.isNew && <span className="chat-new-badge">✨ New</span>}
+                    </button>
+                  ))}
                 </div>
               </div>
+            )}
 
-              <div
-                style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: '8px',
-                  paddingLeft: '36px',
-                }}
-              >
-                {welcomeQuickActions.map((qa) => (
-                  <button
-                    key={qa.message}
-                    onClick={() => handleQuickAction(qa.message)}
-                    style={pillStyle}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#00b341';
-                      e.currentTarget.style.borderColor = '#00b341';
-                      e.currentTarget.style.color = 'white';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = '#2a2a2a';
-                      e.currentTarget.style.borderColor = '#444';
-                      e.currentTarget.style.color = '#ccc';
-                    }}
-                  >
+            {messages.map((msg, i) => (
+              <div key={i} className={`chat-msg chat-msg-${msg.role}`}>
+                {msg.role === 'assistant' && (
+                  <div className="chat-avatar chat-avatar-bot"><Bot size={14} /></div>
+                )}
+                <div className={`chat-bubble chat-bubble-${msg.role}`}>
+                  {msg.role === 'assistant' ? (
+                    <div className="chat-markdown">
+                      <MarkdownMessage content={msg.content} />
+                      {msg.content && !msg.isStreaming && (
+                        <CopyButton text={msg.content} />
+                      )}
+                    </div>
+                  ) : (
+                    <div className="chat-user-text">{msg.content}</div>
+                  )}
+                  {msg.actions && msg.actions.length > 0 && (
+                    <div className="chat-actions">
+                      {msg.actions.map((a, j) => (
+                        <span key={j} className={`chat-action-badge chat-action-${a.type}`}>
+                          {a.type === 'success' ? '✅' : a.type === 'error' ? '❌' : '🔧'} {a.detail}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="chat-timestamp">
+                    <Clock size={10} />
+                    {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                </div>
+                {msg.role === 'user' && (
+                  <div className="chat-avatar chat-avatar-user"><User size={14} /></div>
+                )}
+              </div>
+            ))}
+
+            {isLoading && messages[messages.length - 1]?.role !== 'assistant' && (
+              <div className="chat-msg chat-msg-assistant">
+                <div className="chat-avatar chat-avatar-bot"><Bot size={14} /></div>
+                <div className="chat-bubble chat-bubble-assistant">
+                  <div className="chat-typing">
+                    <span /><span /><span />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Input area */}
+          <div className="chat-input-area">
+            {currentPageActions.length > 0 && !isLoading && messages.length > 0 && (
+              <div className="chat-chips">
+                {currentPageActions.map(qa => (
+                  <button key={qa.message} onClick={() => sendMessage(qa.message)} className="chat-chip">
                     {qa.label}
-                    {qa.isNew && (
-                      <span
-                        style={{
-                          marginLeft: '6px',
-                          fontSize: '10px',
-                          backgroundColor: '#ff6b00',
-                          color: 'white',
-                          padding: '1px 6px',
-                          borderRadius: '8px',
-                          fontWeight: 600,
-                        }}
-                      >
-                        ✨ New
-                      </span>
-                    )}
                   </button>
                 ))}
               </div>
-            </div>
-          )}
+            )}
 
-          {chatMessages.map((message) => (
-            <div
-              key={message.id}
-              style={{
-                display: 'flex',
-                justifyContent: message.role === 'user' ? 'flex-end' : 'flex-start',
-                alignItems: 'flex-start',
-                gap: '8px',
-              }}
-            >
-              {message.role === 'assistant' && (
-                <div
-                  style={{
-                    width: '28px',
-                    height: '28px',
-                    borderRadius: '50%',
-                    backgroundColor: '#00b341',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                    marginTop: '2px',
-                  }}
-                >
-                  <Bot size={14} color="white" />
-                </div>
-              )}
-              
-              <div
-                style={{
-                  maxWidth: message.role === 'user' ? '280px' : '320px',
-                  padding: '12px 16px',
-                  borderRadius: message.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                  backgroundColor: message.role === 'user' ? '#0066cc' : '#333',
-                  color: 'white',
-                  fontSize: '14px',
-                  lineHeight: '1.4',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                }}
-              >
-                {message.content}
-                <div
-                  style={{
-                    fontSize: '11px',
-                    opacity: 0.6,
-                    marginTop: '6px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                  }}
-                >
-                  <Clock size={10} />
-                  {message.timestamp.toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </div>
+            {showSuggestions && (
+              <div className="chat-suggestions">
+                {filteredSuggestions.map((s, i) => (
+                  <button
+                    key={i}
+                    onClick={() => { setInputValue(s); setShowSuggestions(false); }}
+                    className="chat-suggestion-item"
+                  >
+                    <Zap size={12} /> {s}
+                  </button>
+                ))}
               </div>
+            )}
 
-              {message.role === 'user' && (
-                <div
-                  style={{
-                    width: '28px',
-                    height: '28px',
-                    borderRadius: '50%',
-                    backgroundColor: '#0066cc',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                    marginTop: '2px',
-                  }}
-                >
-                  <User size={14} color="white" />
-                </div>
-              )}
-            </div>
-          ))}
-
-          {chatLoading && (
-            <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'flex-start', gap: '8px' }}>
-              <div
-                style={{
-                  width: '28px',
-                  height: '28px',
-                  borderRadius: '50%',
-                  backgroundColor: '#00b341',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                }}
+            <div className="chat-input-row">
+              <textarea
+                ref={inputRef}
+                value={inputValue}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask anything... (⌘K to toggle)"
+                className="chat-input"
+                rows={1}
+              />
+              <button
+                onClick={() => sendMessage(inputValue)}
+                disabled={!inputValue.trim() || isLoading}
+                className="chat-send-btn"
               >
-                <Bot size={14} color="white" />
-              </div>
-              <div
-                style={{
-                  padding: '12px 16px',
-                  borderRadius: '16px 16px 16px 4px',
-                  backgroundColor: '#333',
-                  color: 'white',
-                  fontSize: '14px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-              >
-                <Zap size={12} style={{ animation: 'pulse 1.5s infinite' }} />
-                Processing...
-              </div>
+                <Send size={16} />
+              </button>
             </div>
-          )}
-
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input area */}
-        <div style={inputContainerStyle}>
-          {/* Contextual quick action chips */}
-          {currentPageActions.length > 0 && !chatLoading && (
-            <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: '6px',
-                marginBottom: '10px',
-              }}
-            >
-              {currentPageActions.map((qa) => (
-                <button
-                  key={qa.message}
-                  onClick={() => handleQuickAction(qa.message)}
-                  style={chipStyle}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = '#444';
-                    e.currentTarget.style.color = 'white';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                    e.currentTarget.style.color = '#aaa';
-                  }}
-                >
-                  {qa.label}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {showSuggestions && (
-            <div style={suggestionsStyle}>
-              {filteredSuggestions.slice(0, 5).map((suggestion, index) => (
-                <button
-                  key={index}
-                  onClick={() => handleSuggestionClick(suggestion)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 16px',
-                    backgroundColor: 'transparent',
-                    color: 'white',
-                    border: 'none',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    borderBottom: index < filteredSuggestions.length - 1 ? '1px solid #444' : 'none',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = '#444';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                  }}
-                >
-                  {suggestion}
-                </button>
-              ))}
-            </div>
-          )}
-          
-          <div style={inputWrapperStyle}>
-            <input
-              ref={inputRef}
-              type="text"
-              value={inputValue}
-              onChange={handleInputChange}
-              onKeyPress={handleKeyPress}
-              placeholder="Type a command or ask a question..."
-              style={inputStyle}
-            />
-            <button
-              onClick={handleSendMessage}
-              disabled={!inputValue.trim() || chatLoading}
-              style={sendButtonStyle}
-            >
-              <Send size={16} />
-            </button>
           </div>
         </div>
+
+        {/* Floating bubble */}
+        <button onClick={toggleChat} className={`chat-bubble-btn ${chatOpen ? 'chat-bubble-active' : ''}`}>
+          {chatOpen ? <X size={24} /> : <MessageCircle size={24} />}
+          {!chatOpen && <div className="chat-bubble-dot" />}
+        </button>
       </div>
-
-      {/* Chat Bubble */}
-      <button onClick={toggleChat} style={bubbleStyle}>
-        <MessageCircle size={24} />
-        {!chatOpen && (
-          <div
-            style={{
-              position: 'absolute',
-              top: '-2px',
-              right: '-2px',
-              width: '12px',
-              height: '12px',
-              backgroundColor: '#ff4757',
-              borderRadius: '50%',
-              fontSize: '8px',
-              color: 'white',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              animation: 'pulse 2s infinite',
-            }}
-          />
-        )}
-      </button>
-
-      {/* Animations */}
-      <style>
-        {`
-          @keyframes pulse {
-            0% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.7; transform: scale(1.1); }
-            100% { opacity: 1; transform: scale(1); }
-          }
-          @keyframes fadeInOut {
-            0% { opacity: 0; transform: translateX(-50%) translateY(-8px); }
-            15% { opacity: 1; transform: translateX(-50%) translateY(0); }
-            85% { opacity: 1; transform: translateX(-50%) translateY(0); }
-            100% { opacity: 0; transform: translateX(-50%) translateY(-8px); }
-          }
-        `}
-      </style>
-    </div>
+    </>
   );
 };
+
+// ─── Styles ──────────────────────────────────────────────────────
+const chatStyles = `
+/* Reset & Container */
+.chat-widget { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+
+/* Floating Bubble */
+.chat-bubble-btn {
+  position: fixed; bottom: 20px; right: 20px;
+  width: 60px; height: 60px; border-radius: 50%;
+  background: linear-gradient(135deg, #00b341, #009933);
+  color: white; border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 20px rgba(0,179,65,0.4);
+  z-index: 10000; transition: all 0.3s ease;
+}
+.chat-bubble-btn:hover { transform: scale(1.08); box-shadow: 0 6px 28px rgba(0,179,65,0.5); }
+.chat-bubble-active { background: #333; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+.chat-bubble-dot {
+  position: absolute; top: -2px; right: -2px;
+  width: 14px; height: 14px; background: #ff4757;
+  border-radius: 50%; border: 2px solid white;
+  animation: pulse 2s infinite;
+}
+
+/* Panel */
+.chat-panel {
+  position: fixed; bottom: 90px; right: 20px;
+  background: #1a1a2e; border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  z-index: 9999; display: flex; flex-direction: column;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  overflow: hidden; border: 1px solid #2a2a4a;
+}
+.chat-panel-open { transform: scale(1) translateY(0); opacity: 1; pointer-events: auto; }
+.chat-panel-closed { transform: scale(0.85) translateY(20px); opacity: 0; pointer-events: none; }
+
+/* Resize handle */
+.chat-resize-handle {
+  position: absolute; top: 0; left: 0;
+  width: 20px; height: 20px; cursor: nw-resize;
+  z-index: 10;
+}
+.chat-resize-handle::before {
+  content: ''; position: absolute; top: 4px; left: 4px;
+  width: 8px; height: 8px;
+  border-top: 2px solid #555; border-left: 2px solid #555;
+  opacity: 0; transition: opacity 0.2s;
+}
+.chat-panel:hover .chat-resize-handle::before { opacity: 1; }
+
+/* Header */
+.chat-header {
+  padding: 14px 16px; background: linear-gradient(135deg, #00b341, #009933);
+  color: white; display: flex; align-items: center; justify-content: space-between;
+  flex-shrink: 0;
+}
+.chat-header-left { display: flex; align-items: center; gap: 8px; }
+.chat-header-title { font-weight: 700; font-size: 15px; }
+.chat-sparkle { animation: sparkle 2s ease-in-out infinite; }
+.chat-header-actions { display: flex; gap: 4px; }
+.chat-header-btn {
+  background: rgba(255,255,255,0.15); border: none; color: white;
+  cursor: pointer; padding: 6px; border-radius: 6px;
+  transition: background 0.2s;
+}
+.chat-header-btn:hover { background: rgba(255,255,255,0.3); }
+
+/* Nav toast */
+.chat-nav-toast {
+  position: absolute; top: 56px; left: 50%; transform: translateX(-50%);
+  background: #0066cc; color: white; padding: 8px 16px;
+  border-radius: 8px; font-size: 13px; display: flex; align-items: center; gap: 6px;
+  z-index: 20; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  animation: fadeInOut 2.5s ease forwards;
+}
+
+/* Messages */
+.chat-messages {
+  flex: 1; padding: 16px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 12px;
+  scrollbar-width: thin; scrollbar-color: #333 transparent;
+}
+.chat-messages::-webkit-scrollbar { width: 6px; }
+.chat-messages::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+
+/* Welcome */
+.chat-welcome {
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center; padding: 20px 10px; gap: 12px;
+}
+.chat-welcome-icon {
+  width: 64px; height: 64px; border-radius: 50%;
+  background: linear-gradient(135deg, #00b341, #009933);
+  display: flex; align-items: center; justify-content: center; color: white;
+}
+.chat-welcome h3 { color: #eee; margin: 0; font-size: 18px; }
+.chat-welcome p { color: #888; margin: 0; font-size: 13px; line-height: 1.5; max-width: 300px; }
+.chat-shortcut-hint {
+  display: flex; align-items: center; gap: 4px;
+  color: #666; font-size: 12px;
+}
+.chat-shortcut-hint kbd {
+  background: #333; padding: 2px 6px; border-radius: 4px;
+  font-size: 11px; color: #aaa; border: 1px solid #444;
+}
+.chat-welcome-pills {
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 8px;
+}
+
+/* Pills & Chips */
+.chat-pill {
+  padding: 8px 14px; background: #2a2a4a; color: #ccc;
+  border: 1px solid #3a3a5a; border-radius: 20px;
+  cursor: pointer; font-size: 13px; white-space: nowrap;
+  transition: all 0.2s;
+}
+.chat-pill:hover { background: #00b341; border-color: #00b341; color: white; }
+.chat-new-badge {
+  margin-left: 6px; font-size: 10px; background: #ff6b00;
+  color: white; padding: 1px 6px; border-radius: 8px; font-weight: 600;
+}
+
+.chat-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.chat-chip {
+  padding: 4px 10px; background: transparent; color: #888;
+  border: 1px solid #3a3a5a; border-radius: 14px;
+  cursor: pointer; font-size: 12px; white-space: nowrap;
+  transition: all 0.15s;
+}
+.chat-chip:hover { background: #2a2a4a; color: white; border-color: #4a4a6a; }
+
+/* Messages */
+.chat-msg { display: flex; align-items: flex-start; gap: 8px; }
+.chat-msg-user { justify-content: flex-end; }
+.chat-msg-assistant { justify-content: flex-start; }
+
+.chat-avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-top: 2px; color: white;
+}
+.chat-avatar-bot { background: #00b341; }
+.chat-avatar-user { background: #0066cc; }
+
+.chat-bubble {
+  max-width: 85%; padding: 10px 14px;
+  font-size: 14px; line-height: 1.5;
+  word-break: break-word; position: relative;
+}
+.chat-bubble-user {
+  background: linear-gradient(135deg, #0066cc, #0055aa);
+  color: white; border-radius: 16px 16px 4px 16px;
+}
+.chat-bubble-assistant {
+  background: #2a2a4a; color: #e0e0e0;
+  border-radius: 16px 16px 16px 4px;
+  border: 1px solid #3a3a5a;
+}
+.chat-user-text { white-space: pre-wrap; }
+
+/* Markdown rendering */
+.chat-markdown { position: relative; }
+.chat-markdown h1, .chat-markdown h2, .chat-markdown h3 {
+  color: #fff; margin: 8px 0 4px; font-size: 15px;
+}
+.chat-markdown h2 { font-size: 14px; }
+.chat-markdown h3 { font-size: 13px; }
+.chat-markdown p { margin: 4px 0; }
+.chat-markdown ul, .chat-markdown ol { margin: 4px 0; padding-left: 20px; }
+.chat-markdown li { margin: 2px 0; }
+.chat-markdown strong { color: #fff; }
+.chat-markdown a { color: #4da6ff; text-decoration: none; }
+.chat-markdown a:hover { text-decoration: underline; }
+
+/* Code */
+.chat-inline-code {
+  background: #1a1a2e; padding: 2px 6px; border-radius: 4px;
+  font-family: 'SF Mono', Monaco, monospace; font-size: 12px;
+  color: #f0c674;
+}
+.chat-code-block {
+  margin: 8px 0; border-radius: 8px; overflow: hidden;
+  border: 1px solid #3a3a5a;
+}
+.chat-code-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 12px; background: #1a1a2e;
+  font-size: 11px; color: #888; text-transform: uppercase;
+}
+.chat-code-block pre {
+  margin: 0; padding: 12px; background: #0d0d1a;
+  overflow-x: auto; font-size: 12px;
+}
+.chat-code-block code { color: #e0e0e0; font-family: 'SF Mono', Monaco, monospace; }
+
+/* Tables */
+.chat-table-wrapper { overflow-x: auto; margin: 8px 0; }
+.chat-markdown table {
+  border-collapse: collapse; width: 100%; font-size: 12px;
+}
+.chat-markdown th, .chat-markdown td {
+  padding: 6px 10px; border: 1px solid #3a3a5a; text-align: left;
+}
+.chat-markdown th { background: #1a1a2e; color: #aaa; font-weight: 600; }
+
+/* Copy button */
+.chat-copy-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: transparent; border: 1px solid #3a3a5a;
+  color: #888; cursor: pointer; font-size: 11px;
+  padding: 3px 8px; border-radius: 4px;
+  transition: all 0.2s; margin-top: 4px;
+}
+.chat-copy-btn:hover { background: #3a3a5a; color: #ddd; }
+
+/* Collapsible */
+.chat-collapsible { margin: 8px 0; border: 1px solid #3a3a5a; border-radius: 8px; overflow: hidden; }
+.chat-collapsible-header {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 12px; background: #1a1a2e; border: none;
+  color: #aaa; cursor: pointer; font-size: 12px; width: 100%;
+  text-align: left; transition: background 0.2s;
+}
+.chat-collapsible-header:hover { background: #2a2a4a; }
+.chat-collapsible-body { padding: 8px 12px; }
+
+/* Actions badges */
+.chat-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.chat-action-badge {
+  font-size: 11px; padding: 2px 8px; border-radius: 10px;
+  background: #1a1a2e; border: 1px solid #3a3a5a;
+}
+
+/* Timestamp */
+.chat-timestamp {
+  font-size: 11px; opacity: 0.5; margin-top: 6px;
+  display: flex; align-items: center; gap: 4px;
+}
+
+/* Typing indicator */
+.chat-typing { display: flex; gap: 4px; padding: 4px 0; }
+.chat-typing span {
+  width: 8px; height: 8px; background: #666; border-radius: 50%;
+  animation: typing 1.4s ease-in-out infinite;
+}
+.chat-typing span:nth-child(2) { animation-delay: 0.2s; }
+.chat-typing span:nth-child(3) { animation-delay: 0.4s; }
+
+/* Input area */
+.chat-input-area {
+  padding: 10px 14px 14px; border-top: 1px solid #2a2a4a;
+  background: #1a1a2e; flex-shrink: 0;
+}
+.chat-input-row { display: flex; gap: 8px; align-items: flex-end; }
+.chat-input {
+  flex: 1; padding: 10px 12px; background: #2a2a4a; color: white;
+  border: 1px solid #3a3a5a; border-radius: 12px;
+  font-size: 14px; outline: none; resize: none;
+  font-family: inherit; line-height: 1.4;
+  max-height: 120px; min-height: 40px;
+  transition: border-color 0.2s;
+}
+.chat-input:focus { border-color: #00b341; }
+.chat-input::placeholder { color: #666; }
+.chat-send-btn {
+  padding: 10px 12px; background: #00b341; color: white;
+  border: none; border-radius: 12px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  min-width: 44px; min-height: 40px;
+  transition: all 0.2s;
+}
+.chat-send-btn:hover:not(:disabled) { background: #00cc4a; }
+.chat-send-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* Suggestions dropdown */
+.chat-suggestions {
+  position: absolute; bottom: 100%; left: 0; right: 0;
+  background: #2a2a4a; border-radius: 12px 12px 0 0;
+  border: 1px solid #3a3a5a; border-bottom: none;
+  max-height: 240px; overflow-y: auto; z-index: 10;
+}
+.chat-suggestion-item {
+  width: 100%; padding: 10px 14px; background: transparent;
+  color: #ccc; border: none; text-align: left; cursor: pointer;
+  font-size: 13px; display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px solid #3a3a5a;
+  transition: background 0.15s;
+}
+.chat-suggestion-item:last-child { border-bottom: none; }
+.chat-suggestion-item:hover { background: #3a3a5a; color: white; }
+
+/* Animations */
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.15); }
+}
+@keyframes typing {
+  0%, 100% { opacity: 0.3; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-4px); }
+}
+@keyframes sparkle {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+@keyframes fadeInOut {
+  0% { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+  15%, 85% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+}
+
+/* Mobile responsive */
+@media (max-width: 640px) {
+  .chat-panel {
+    bottom: 0 !important; right: 0 !important; left: 0 !important;
+    width: 100% !important; height: 100vh !important;
+    border-radius: 0 !important;
+  }
+  .chat-bubble-btn { bottom: 12px; right: 12px; }
+  .chat-resize-handle { display: none; }
+}
+`;
 
 export default ChatWidget;
