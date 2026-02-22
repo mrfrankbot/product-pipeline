@@ -23,10 +23,29 @@ import {
 } from '../services/draft-service.js';
 
 // ---------------------------------------------------------------------------
-// OpenAI client (lazy singleton)
+// OpenAI client (lazy singleton) + retry helper
 // ---------------------------------------------------------------------------
 
 let openaiClient: OpenAI | null = null;
+
+/** Retry an async fn up to `attempts` times with exponential backoff (1s, 2s, 4s). */
+async function withRetry<T>(fn: () => Promise<T>, attempts = 3, label = 'OpenAI'): Promise<T> {
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      const isLast = i === attempts;
+      const status = err?.status ?? err?.response?.status;
+      // Don't retry auth errors or bad requests
+      if (status === 401 || status === 400) throw err;
+      if (isLast) throw err;
+      const delayMs = 1000 * Math.pow(2, i - 1);
+      warn(`[${label}] Attempt ${i}/${attempts} failed (${err?.message ?? err}), retrying in ${delayMs}ms...`);
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+  throw new Error(`${label}: exhausted ${attempts} retries`);
+}
 
 function getOpenAI(): OpenAI {
   if (!openaiClient) {
@@ -180,25 +199,23 @@ async function generateDescription(
       userContent += `\n\nProduct condition notes (MUST be mentioned in the description): ${productNotes.trim()}`;
     }
 
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: systemPrompt,
-        },
-        {
-          role: 'user',
-          content: userContent,
-        },
-      ],
-      max_tokens: 1000,
-      temperature: 0.7,
-    });
+    const response = await withRetry(
+      () => openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userContent },
+        ],
+        max_tokens: 1000,
+        temperature: 0.7,
+      }),
+      3,
+      'AutoList/Description',
+    );
 
     return response.choices[0]?.message?.content?.trim() || '';
   } catch (err) {
-    logError(`[AutoList] Description generation failed: ${err}`);
+    logError(`[AutoList] Description generation failed after retries: ${err}`);
     return '';
   }
 }
@@ -209,24 +226,27 @@ async function suggestCategory(
   vendor: string,
 ): Promise<string> {
   try {
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'user',
-          content: `Given this camera product: ${title} by ${vendor}, what is the most appropriate eBay category ID? Common camera categories: Digital Cameras (31388), Camera Lenses (3323), Camera Flashes (48515), Tripods (30090), Camera Bags (15700), Camcorders (11724), Film Cameras (15230), Camera Drones (179697). Return ONLY the numeric category ID.`,
-        },
-      ],
-      max_tokens: 20,
-      temperature: 0,
-    });
+    const response = await withRetry(
+      () => openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'user',
+            content: `Given this camera product: ${title} by ${vendor}, what is the most appropriate eBay category ID? Common camera categories: Digital Cameras (31388), Camera Lenses (3323), Camera Flashes (48515), Tripods (30090), Camera Bags (15700), Camcorders (11724), Film Cameras (15230), Camera Drones (179697). Return ONLY the numeric category ID.`,
+          },
+        ],
+        max_tokens: 20,
+        temperature: 0,
+      }),
+      3,
+      'AutoList/Category',
+    );
 
     const raw = response.choices[0]?.message?.content?.trim() || '';
-    // Extract just the numeric ID (strip any extra text)
     const match = raw.match(/\d+/);
     return match ? match[0] : '';
   } catch (err) {
-    logError(`[AutoList] Category suggestion failed: ${err}`);
+    logError(`[AutoList] Category suggestion failed after retries: ${err}`);
     return '';
   }
 }
