@@ -845,6 +845,18 @@ const migrateHelpCategoryCase = (sqlite: InstanceType<typeof Database>) => {
   `);
 };
 
+const migrateNotificationLog = (sqlite: InstanceType<typeof Database>) => {
+  const cols = sqlite.prepare(`PRAGMA table_info(notification_log)`).all() as any[];
+  const colNames = new Set(cols.map((c: any) => c.name));
+
+  if (!colNames.has('topic')) {
+    sqlite.exec(`ALTER TABLE notification_log ADD COLUMN topic TEXT`);
+  }
+  if (!colNames.has('processed_at')) {
+    sqlite.exec(`ALTER TABLE notification_log ADD COLUMN processed_at INTEGER`);
+  }
+};
+
 export const getDb = async () => {
   if (!dbInstance) {
     const filePath = await ensureDbPath();
@@ -856,6 +868,7 @@ export const getDb = async () => {
     migrateProductDraftsEbay(rawSqlite);
     migrateHelpQuestions(rawSqlite);
     migrateHelpCategoryCase(rawSqlite);
+    migrateNotificationLog(rawSqlite);
     await seedDefaultMappings(rawSqlite);
     seedHelpContent(rawSqlite);
     seedGettingStartedContent(rawSqlite);
