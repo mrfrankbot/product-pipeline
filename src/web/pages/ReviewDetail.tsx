@@ -17,6 +17,7 @@ import {
   Banner,
   Tooltip,
   Icon,
+  Modal,
 } from '@shopify/polaris';
 import {
   ArrowLeftIcon,
@@ -52,6 +53,30 @@ interface Draft {
   reviewed_by: string | null;
   draftImages: string[];
   originalImages: string[];
+  ebay_listing_id?: string | null;
+  ebay_offer_id?: string | null;
+}
+
+interface EbayListingPreview {
+  sku: string;
+  title: string;
+  description: string;
+  condition: string;
+  conditionDescription?: string;
+  categoryId: string;
+  price: string;
+  currency: string;
+  quantity: number;
+  imageUrls: string[];
+  brand: string;
+  mpn: string;
+  aspects: Record<string, string[]>;
+  policies: {
+    fulfillmentPolicyId: string;
+    paymentPolicyId: string;
+    returnPolicyId: string;
+  };
+  merchantLocationKey: string;
 }
 
 interface DraftListResponse {
@@ -85,6 +110,8 @@ const statusBadge = (status: string) => {
       return <Badge tone="critical">Rejected</Badge>;
     case 'partial':
       return <Badge tone="warning">Partially Approved</Badge>;
+    case 'listed':
+      return <Badge tone="success">Listed on eBay</Badge>;
     default:
       return <Badge>{status}</Badge>;
   }
@@ -143,6 +170,11 @@ const ReviewDetail: React.FC = () => {
   // Photo editor state
   const [editingPhotoIndex, setEditingPhotoIndex] = useState<number | null>(null);
 
+  // eBay listing modal state
+  const [ebayModalOpen, setEbayModalOpen] = useState(false);
+  const [ebayPreviewData, setEbayPreviewData] = useState<EbayListingPreview | null>(null);
+  const [ebayListingResult, setEbayListingResult] = useState<{ listingId: string; ebayUrl: string } | null>(null);
+
   // ── Fetch queue list for prev/next navigation ──────────────────────
 
   const { data: queueData } = useQuery({
@@ -185,6 +217,9 @@ const ReviewDetail: React.FC = () => {
     setNotesInit(false);
     setLocalNotes('');
     setIsEditing(false);
+    setEbayModalOpen(false);
+    setEbayPreviewData(null);
+    setEbayListingResult(null);
   }, [draftId]);
 
   // ── Mutations ──────────────────────────────────────────────────────
@@ -230,6 +265,44 @@ const ReviewDetail: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['draft-detail', draftId] });
       setIsEditing(false);
       addNotification({ type: 'success', title: 'Draft updated', autoClose: 3000 });
+    },
+  });
+
+  const previewEbayMutation = useMutation({
+    mutationFn: () =>
+      apiClient.post<{ success: boolean; preview?: EbayListingPreview; error?: string }>(
+        `/drafts/${draftId}/preview-ebay-listing`,
+      ),
+    onSuccess: (data) => {
+      if (data.preview) {
+        setEbayPreviewData(data.preview);
+      } else {
+        addNotification({ type: 'error', title: 'Preview failed', message: data.error || 'Unknown error', autoClose: 8000 });
+      }
+    },
+    onError: (err) => {
+      addNotification({ type: 'error', title: 'Preview failed', message: err instanceof Error ? err.message : 'Unknown error', autoClose: 8000 });
+    },
+  });
+
+  const listOnEbayMutation = useMutation({
+    mutationFn: () =>
+      apiClient.post<{ success: boolean; listingId?: string; ebayUrl?: string; error?: string }>(
+        `/drafts/${draftId}/list-on-ebay`,
+      ),
+    onSuccess: (data) => {
+      if (data.success && data.listingId) {
+        setEbayListingResult({ listingId: data.listingId, ebayUrl: data.ebayUrl || `https://www.ebay.com/itm/${data.listingId}` });
+        setEbayModalOpen(false);
+        queryClient.invalidateQueries({ queryKey: ['draft-detail', draftId] });
+        queryClient.invalidateQueries({ queryKey: ['drafts'] });
+        addNotification({ type: 'success', title: '🎉 Listed on eBay!', message: `Listing ID: ${data.listingId}`, autoClose: 10000 });
+      } else {
+        addNotification({ type: 'error', title: 'Listing failed', message: data.error || 'Unknown error', autoClose: 10000 });
+      }
+    },
+    onError: (err) => {
+      addNotification({ type: 'error', title: 'Listing failed', message: err instanceof Error ? err.message : 'Unknown error', autoClose: 10000 });
     },
   });
 
@@ -566,6 +639,20 @@ const ReviewDetail: React.FC = () => {
                     </div>
                   </InlineStack>
                   <Divider />
+                  {/* eBay Listing Button */}
+                  <Button
+                    variant="primary"
+                    size="large"
+                    fullWidth
+                    onClick={() => {
+                      setEbayPreviewData(null);
+                      setEbayModalOpen(true);
+                    }}
+                    disabled={listOnEbayMutation.isPending}
+                  >
+                    🛍️ Approve &amp; List on eBay
+                  </Button>
+                  <Divider />
                   <Button fullWidth onClick={handleSkip}>
                     Skip →
                   </Button>
@@ -593,6 +680,36 @@ const ReviewDetail: React.FC = () => {
                   )}
                 </BlockStack>
               </Card>
+            )}
+
+            {/* eBay Listing result (after listing) */}
+            {(ebayListingResult || draft.ebay_listing_id) && (
+              <div style={{ marginTop: '16px' }}>
+                <Card>
+                  <BlockStack gap="300">
+                    <InlineStack align="space-between" blockAlign="center">
+                      <Text variant="headingMd" as="h2">eBay Listing</Text>
+                      <Badge tone="success">Live</Badge>
+                    </InlineStack>
+                    <InlineStack gap="200" blockAlign="center">
+                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e' }} />
+                      <Text variant="bodySm" as="span">
+                        Listing #{ebayListingResult?.listingId || draft.ebay_listing_id}
+                      </Text>
+                    </InlineStack>
+                    <a
+                      href={ebayListingResult?.ebayUrl || `https://www.ebay.com/itm/${draft.ebay_listing_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ textDecoration: 'none' }}
+                    >
+                      <Button fullWidth icon={ExternalIcon} size="slim">
+                        View on eBay
+                      </Button>
+                    </a>
+                  </BlockStack>
+                </Card>
+              </div>
             )}
 
             <div style={{ marginTop: '16px' }} />
@@ -677,9 +794,15 @@ const ReviewDetail: React.FC = () => {
                     </Text>
                   </InlineStack>
                   <InlineStack gap="200" blockAlign="center">
-                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: draft.status === 'approved' ? '#22c55e' : draft.status === 'rejected' ? '#ef4444' : '#f59e0b' }} />
+                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: draft.status === 'approved' || draft.status === 'listed' ? '#22c55e' : draft.status === 'rejected' ? '#ef4444' : '#f59e0b' }} />
                     <Text variant="bodySm" as="span">
                       Review: {draft.status}
+                    </Text>
+                  </InlineStack>
+                  <InlineStack gap="200" blockAlign="center">
+                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: (ebayListingResult?.listingId || draft.ebay_listing_id) ? '#22c55e' : '#d1d5db' }} />
+                    <Text variant="bodySm" as="span">
+                      eBay {(ebayListingResult?.listingId || draft.ebay_listing_id) ? `listed (#${ebayListingResult?.listingId || draft.ebay_listing_id})` : 'not listed'}
                     </Text>
                   </InlineStack>
                 </BlockStack>
@@ -690,6 +813,115 @@ const ReviewDetail: React.FC = () => {
 
         <div style={{ height: '2rem' }} />
       </Page>
+
+      {/* eBay Listing Confirmation Modal */}
+      <Modal
+        open={ebayModalOpen}
+        onClose={() => setEbayModalOpen(false)}
+        title="List on eBay"
+        primaryAction={{
+          content: listOnEbayMutation.isPending ? 'Listing…' : '🛍️ List on eBay Now',
+          onAction: () => listOnEbayMutation.mutate(),
+          loading: listOnEbayMutation.isPending,
+          destructive: false,
+        }}
+        secondaryActions={[
+          {
+            content: previewEbayMutation.isPending ? 'Loading preview…' : '👁 Preview Listing',
+            onAction: () => previewEbayMutation.mutate(),
+            loading: previewEbayMutation.isPending,
+            disabled: listOnEbayMutation.isPending,
+          },
+          {
+            content: 'Cancel',
+            onAction: () => setEbayModalOpen(false),
+          },
+        ]}
+      >
+        <Modal.Section>
+          <BlockStack gap="400">
+            <Banner tone="warning">
+              <p>
+                This will create a <strong>live listing on eBay</strong> using the draft content.
+                The product will be publicly visible and purchasable. This action cannot be undone automatically.
+              </p>
+            </Banner>
+
+            <BlockStack gap="200">
+              <InlineStack align="space-between">
+                <Text variant="bodySm" as="span" tone="subdued">Product</Text>
+                <Text variant="bodySm" as="span">{draft?.draft_title || draft?.original_title}</Text>
+              </InlineStack>
+              <InlineStack align="space-between">
+                <Text variant="bodySm" as="span" tone="subdued">Shopify ID</Text>
+                <Text variant="bodySm" as="span">{draft?.shopify_product_id}</Text>
+              </InlineStack>
+              <InlineStack align="space-between">
+                <Text variant="bodySm" as="span" tone="subdued">Photos</Text>
+                <Text variant="bodySm" as="span">{draftImages.length > 0 ? `${draftImages.length} draft photo${draftImages.length > 1 ? 's' : ''}` : liveImages.length > 0 ? `${liveImages.length} live photo${liveImages.length > 1 ? 's' : ''}` : 'None'}</Text>
+              </InlineStack>
+            </BlockStack>
+
+            {/* Preview panel */}
+            {ebayPreviewData && (
+              <BlockStack gap="300">
+                <Divider />
+                <Text variant="headingSm" as="h3">Listing Preview</Text>
+                <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '16px', border: '1px solid #e3e5e7' }}>
+                  <BlockStack gap="200">
+                    <InlineStack align="space-between">
+                      <Text variant="bodySm" as="span" tone="subdued">Title</Text>
+                      <Text variant="bodySm" as="span">{ebayPreviewData.title}</Text>
+                    </InlineStack>
+                    <InlineStack align="space-between">
+                      <Text variant="bodySm" as="span" tone="subdued">SKU</Text>
+                      <Text variant="bodySm" as="span">{ebayPreviewData.sku}</Text>
+                    </InlineStack>
+                    <InlineStack align="space-between">
+                      <Text variant="bodySm" as="span" tone="subdued">Price</Text>
+                      <Text variant="bodySm" as="span">${ebayPreviewData.price} {ebayPreviewData.currency}</Text>
+                    </InlineStack>
+                    <InlineStack align="space-between">
+                      <Text variant="bodySm" as="span" tone="subdued">Condition</Text>
+                      <Text variant="bodySm" as="span">{ebayPreviewData.condition}</Text>
+                    </InlineStack>
+                    <InlineStack align="space-between">
+                      <Text variant="bodySm" as="span" tone="subdued">Category ID</Text>
+                      <Text variant="bodySm" as="span">{ebayPreviewData.categoryId}</Text>
+                    </InlineStack>
+                    <InlineStack align="space-between">
+                      <Text variant="bodySm" as="span" tone="subdued">Quantity</Text>
+                      <Text variant="bodySm" as="span">{ebayPreviewData.quantity}</Text>
+                    </InlineStack>
+                    <InlineStack align="space-between">
+                      <Text variant="bodySm" as="span" tone="subdued">Images</Text>
+                      <Text variant="bodySm" as="span">{ebayPreviewData.imageUrls.length} image{ebayPreviewData.imageUrls.length !== 1 ? 's' : ''}</Text>
+                    </InlineStack>
+                    {ebayPreviewData.conditionDescription && (
+                      <InlineStack align="space-between">
+                        <Text variant="bodySm" as="span" tone="subdued">Condition Note</Text>
+                        <Text variant="bodySm" as="span">{ebayPreviewData.conditionDescription}</Text>
+                      </InlineStack>
+                    )}
+                    {Object.keys(ebayPreviewData.aspects).length > 0 && (
+                      <>
+                        <Divider />
+                        <Text variant="bodySm" as="p" tone="subdued">Item Specifics</Text>
+                        {Object.entries(ebayPreviewData.aspects).slice(0, 6).map(([key, vals]) => (
+                          <InlineStack key={key} align="space-between">
+                            <Text variant="bodySm" as="span" tone="subdued">{key}</Text>
+                            <Text variant="bodySm" as="span">{Array.isArray(vals) ? vals.join(', ') : String(vals)}</Text>
+                          </InlineStack>
+                        ))}
+                      </>
+                    )}
+                  </BlockStack>
+                </div>
+              </BlockStack>
+            )}
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
 
       {/* Photo Editor Modal */}
       {editingPhotoIndex !== null && (

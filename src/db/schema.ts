@@ -124,12 +124,14 @@ export const productDrafts = sqliteTable('product_drafts', {
   originalTitle: text('original_title'),
   originalDescription: text('original_description'),
   originalImagesJson: text('original_images_json'),     // JSON array of original Shopify image URLs
-  status: text('status').notNull().default('pending'),  // pending, approved, rejected, partial
+  status: text('status').notNull().default('pending'),  // pending, approved, rejected, partial, listed
   autoPublish: integer('auto_publish', { mode: 'boolean' }).default(false),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
   reviewedAt: integer('reviewed_at', { mode: 'timestamp' }),
   reviewedBy: text('reviewed_by'),
+  ebayListingId: text('ebay_listing_id'),               // eBay listing ID after successful publish
+  ebayOfferId: text('ebay_offer_id'),                   // eBay offer ID
 });
 
 export const autoPublishSettings = sqliteTable('auto_publish_settings', {

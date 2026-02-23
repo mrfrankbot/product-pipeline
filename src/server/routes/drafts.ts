@@ -19,6 +19,7 @@ import {
   updateGlobalAutoPublishSettings,
   checkExistingContent,
 } from '../../services/draft-service.js';
+import { listDraftOnEbay, previewEbayListing } from '../../services/ebay-draft-lister.js';
 import { info, error as logError } from '../../utils/logger.js';
 
 const router = Router();
@@ -286,6 +287,62 @@ router.post('/api/drafts/approve-all', async (req: Request, res: Response) => {
   } catch (err) {
     logError(`[DraftsAPI] Bulk approve error: ${err}`);
     res.status(500).json({ error: 'Failed to bulk approve drafts' });
+  }
+});
+
+// ── POST /api/drafts/:id/preview-ebay-listing — Dry run ───────────────
+
+router.post('/api/drafts/:id/preview-ebay-listing', async (req: Request, res: Response) => {
+  try {
+    const draftId = parseInt(req.params.id as string);
+    if (isNaN(draftId)) {
+      res.status(400).json({ error: 'Invalid draft ID' });
+      return;
+    }
+
+    info(`[DraftsAPI] Preview eBay listing for draft ${draftId}`);
+    const result = await previewEbayListing(draftId);
+
+    if (result.success) {
+      res.json({ success: true, preview: result.preview });
+    } else {
+      res.status(400).json({ success: false, error: result.error });
+    }
+  } catch (err) {
+    logError(`[DraftsAPI] Preview eBay listing error: ${err}`);
+    res.status(500).json({ error: 'Failed to preview eBay listing' });
+  }
+});
+
+// ── POST /api/drafts/:id/list-on-ebay — Create live eBay listing ──────
+
+router.post('/api/drafts/:id/list-on-ebay', async (req: Request, res: Response) => {
+  try {
+    const draftId = parseInt(req.params.id as string);
+    if (isNaN(draftId)) {
+      res.status(400).json({ error: 'Invalid draft ID' });
+      return;
+    }
+
+    info(`[DraftsAPI] List draft ${draftId} on eBay (explicit user action)`);
+    const result = await listDraftOnEbay(draftId);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        listingId: result.listingId,
+        offerId: result.offerId,
+        sku: result.sku,
+        ebayUrl: result.listingId
+          ? `https://www.ebay.com/itm/${result.listingId}`
+          : undefined,
+      });
+    } else {
+      res.status(400).json({ success: false, error: result.error });
+    }
+  } catch (err) {
+    logError(`[DraftsAPI] List on eBay error: ${err}`);
+    res.status(500).json({ error: 'Failed to list on eBay' });
   }
 });
 

@@ -223,8 +223,22 @@ const EbayOrders: React.FC = () => {
   return (
     <Page title="eBay Orders" fullWidth>
       <BlockStack gap="500">
-        <Banner tone="info">
-          Orders imported from eBay. Shopify sync is disabled — review orders here first.
+        {/* ─── CRITICAL SAFETY BANNER ─────────────────────────────────────── */}
+        <Banner tone="critical" title="⚠️ Lightspeed POS Impact — Read Before Syncing">
+          <BlockStack gap="200">
+            <Text as="p">
+              <strong>Every Shopify order created here flows into Lightspeed POS automatically.</strong>{' '}
+              Duplicate orders caused hours of manual cleanup in February 2026.
+            </Text>
+            <Text as="p">
+              The <strong>Import from eBay</strong> button is safe — it only stores orders to the local database.
+              Syncing to Shopify requires explicit confirmation and is rate-limited to 5 orders/hour.
+            </Text>
+            <Text as="p" tone="critical">
+              If you suspect duplicates already exist in Shopify, <strong>stop immediately</strong> and
+              contact the developer before proceeding. Do not bulk-sync without verifying.
+            </Text>
+          </BlockStack>
         </Banner>
 
         <Layout>

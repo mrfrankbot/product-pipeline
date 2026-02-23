@@ -1,6 +1,6 @@
 # ProductPipeline — PROJECT.md
 
-> **Last updated: 2026-02-18. Any agent working on this project MUST update this file before finishing.**
+> **Last updated: 2026-02-23. Any agent working on this project MUST update this file before finishing.**
 
 ## 1. Project Overview
 
@@ -120,6 +120,7 @@ DB location: `src/db/product-pipeline.db` (dev), `~/.clawdbot/ebaysync.db` (prod
 | **Draft/Review System** | ✅ Working | Full approval workflow with review queue UI |
 | **eBay Order Import** | ✅ Working | eBay → Shopify with dedup (DB + tag-based) |
 | **Product Sync (→ eBay)** | ✅ Working | Shopify → eBay listing creation |
+| **Draft → eBay Listing** | ✅ Working | Approve draft → create live eBay listing from review queue |
 | **Inventory Sync** | ✅ Working | Shopify → eBay quantity sync |
 | **Price Sync** | ✅ Working | Shopify → eBay price sync |
 | **Fulfillment Sync** | ✅ Working | Shopify → eBay shipping updates |
@@ -220,6 +221,7 @@ All stored in `~/.clawdbot/credentials/`:
 | `EBAY_RU_NAME` | eBay Redirect URI Name | From file |
 | `SHOPIFY_CLIENT_ID` | Shopify Client ID | From file |
 | `SHOPIFY_CLIENT_SECRET` | Shopify Client Secret | From file |
+| `SAFETY_MODE` | Order sync safety: `safe` (rate-limited) or `off` | `safe` |
 
 ### Deployment (Railway)
 
@@ -316,6 +318,34 @@ Test files: `src/services/__tests__/`
 10. **Auth hardening** — Current API key auth is basic; consider proper session auth for web UI
 
 ## Recent Changes
+
+### 2026-02-23: Approve Draft → Create eBay Listing Flow
+
+Built the end-to-end "list on eBay" workflow from the draft review queue:
+
+**Backend:**
+- New service: `src/services/ebay-draft-lister.ts` — single-product eBay lister
+  - Builds eBay inventory item from draft content (title, description, images) with Shopify fallback
+  - Ensures Pictureline inventory location exists (idempotent)
+  - Fetches business policies, maps condition/category/aspects using existing mappers
+  - Creates eBay inventory item → offer → publishes → saves `product_mappings` record
+  - Updates `product_drafts.status` to `'listed'`, saves `ebay_listing_id` + `ebay_offer_id`
+  - Logs success/failure to `sync_log`
+  - Dry-run preview mode: builds full payload without calling eBay publish
+- Two new API routes in `src/server/routes/drafts.ts`:
+  - `POST /api/drafts/:id/list-on-ebay` — creates live eBay listing (single product, explicit click only)
+  - `POST /api/drafts/:id/preview-ebay-listing` — dry run preview of what would be sent to eBay
+- DB schema: added `ebay_listing_id` and `ebay_offer_id` columns to `product_drafts` table (auto-migrated on startup)
+
+**Frontend (`ReviewDetail.tsx`):**
+- "🛍️ Approve & List on eBay" button in the Actions sidebar card
+- Confirmation modal with safety warning before listing goes live
+- "Preview Listing" option loads dry-run payload inline in the modal
+- Shows live eBay listing badge + "View on eBay" link after success
+- Pipeline Status card updated with eBay listing step (green when listed)
+- `statusBadge()` handles new `'listed'` status
+
+**Safety:** NO batch, NO auto-publish. Single product, explicit user action required.
 
 ### 2026-02-18: Product Detail Page Redesign
 Redesigned `ShopifyProductDetail` in `src/web/pages/ShopifyProducts.tsx` to match ReviewDetail quality:

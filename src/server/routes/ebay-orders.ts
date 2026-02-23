@@ -92,7 +92,16 @@ router.get('/api/ebay/orders/:id', async (req: Request, res: Response) => {
   }
 });
 
-/** POST /api/ebay/orders/import — fetch from eBay API and upsert */
+/**
+ * POST /api/ebay/orders/import — Fetch orders from eBay API and store to LOCAL DB only.
+ *
+ * ✅ SAFE: This endpoint writes to the local `ebay_orders` table ONLY.
+ *          It does NOT create Shopify orders.
+ *          Shopify order creation happens via POST /api/sync/trigger?confirm=true
+ *
+ * ⚠️  WARNING: Shopify order creation cascades into Lightspeed POS.
+ *              See AGENTS.md for full safety rules.
+ */
 router.post('/api/ebay/orders/import', async (req: Request, res: Response) => {
   try {
     const { days = 30, limit, fulfillmentStatus } = req.body || {};
@@ -163,6 +172,57 @@ router.post('/api/ebay/orders/import', async (req: Request, res: Response) => {
   } catch (err) {
     logError(`[EbayOrders] Import failed: ${err}`);
     res.status(500).json({ error: 'Import failed', detail: String(err) });
+  }
+});
+
+/**
+ * POST /api/ebay/orders/sync-to-shopify — Sync specific eBay orders to Shopify.
+ *
+ * ⚠️  DANGER ZONE: Creates REAL Shopify orders which cascade into Lightspeed POS.
+ *
+ * Body:
+ *   confirm: boolean  — MUST be true to create real orders; omit for dry run
+ *   ebayOrderIds: string[]  — Specific eBay order IDs to sync (optional; defaults to all unsynced)
+ *   since: string     — ISO date; only sync orders after this date
+ *
+ * All three layers of duplicate detection are applied before any creation:
+ *   1. order_mappings DB check
+ *   2. Shopify tag search (eBay-{orderId})
+ *   3. Total + date + buyer matching
+ */
+router.post('/api/ebay/orders/sync-to-shopify', async (req: Request, res: Response) => {
+  try {
+    const { confirm, since } = req.body || {};
+
+    if (confirm !== true) {
+      // Return preview/dry-run without creating anything
+      info('[EbayOrders] Sync-to-Shopify called without confirm=true — returning dry-run preview');
+      res.json({
+        dryRun: true,
+        message: '⚠️ DRY RUN — no Shopify orders created. Send { confirm: true } to create real orders.',
+        warning: 'Creating Shopify orders cascades into Lightspeed POS. Duplicates require hours of manual cleanup.',
+      });
+      return;
+    }
+
+    info('[EbayOrders] ⚠️  LIVE sync-to-Shopify requested (confirm=true)');
+
+    const { runOrderSync } = await import('../sync-helper.js');
+    const result = await runOrderSync({
+      confirm: true,
+      since: since || undefined,
+    });
+
+    if (!result) {
+      res.status(503).json({ error: 'Sync unavailable — check eBay/Shopify tokens' });
+      return;
+    }
+
+    info(`[EbayOrders] Sync-to-Shopify complete: ${result.imported} created, ${result.skipped} skipped, ${result.failed} failed, ${result.safetyBlocks?.length ?? 0} safety blocks`);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    logError(`[EbayOrders] Sync-to-Shopify failed: ${err}`);
+    res.status(500).json({ error: 'Sync to Shopify failed', detail: String(err) });
   }
 });
 

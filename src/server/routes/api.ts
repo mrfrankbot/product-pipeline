@@ -936,23 +936,59 @@ router.put('/api/product-overrides/:shopifyProductId', async (req: Request, res:
   }
 });
 
-/** POST /api/sync/trigger — Manually trigger a full sync */
+/**
+ * POST /api/sync/trigger — Manually trigger an order sync
+ *
+ * ⚠️  DRY RUN BY DEFAULT — no Shopify orders will be created unless confirm=true.
+ *
+ * Query params:
+ *   since=<ISO date>   — Only sync orders after this date (max 7-day lookback enforced)
+ *   confirm=true       — REQUIRED to actually create Shopify orders; omit for dry run
+ *   dry=true           — Deprecated alias; use confirm=true instead
+ *
+ * WARNING: Creating Shopify orders cascades into Lightspeed POS.
+ * See AGENTS.md and PROJECT.md for the full incident history.
+ */
 router.post('/api/sync/trigger', async (req: Request, res: Response) => {
   const since = req.query.since as string;
-  const dryRun = req.query.dry === 'true';
-  
-  info(`[API] Manual sync triggered${since ? ` (since: ${since})` : ''}${dryRun ? ' (DRY RUN)' : ''}`);
-  res.json({ ok: true, message: 'Sync triggered', since, dryRun });
+  // confirm=true is required to create real orders. Everything else is a dry run.
+  const confirm = req.query.confirm === 'true';
+  const legacyDryRunFlag = req.query.dry as string | undefined;
+
+  // Backward compat: if ?dry=false was explicitly passed treat as live (but confirm is preferred)
+  const isLiveRun = confirm || legacyDryRunFlag === 'false';
+
+  if (!isLiveRun) {
+    info(`[API] Sync triggered in DRY RUN mode${since ? ` (since: ${since})` : ''}. Pass ?confirm=true to create real orders.`);
+  } else {
+    info(`[API] ⚠️  LIVE sync triggered${since ? ` (since: ${since})` : ''}. Will create real Shopify orders.`);
+  }
+
+  res.json({
+    ok: true,
+    message: isLiveRun ? 'Live sync triggered — Shopify orders WILL be created' : 'Dry-run sync triggered — no Shopify orders will be created',
+    since: since || null,
+    dryRun: !isLiveRun,
+    confirm: isLiveRun,
+    warning: isLiveRun
+      ? '⚠️ Creating Shopify orders cascades into Lightspeed POS. Duplicates require manual cleanup.'
+      : undefined,
+  });
 
   try {
     const { runOrderSync } = await import('../sync-helper.js');
-    const result = await runOrderSync({ 
-      dryRun, 
-      since: since || undefined  // Use since param or fall back to default 24h
+    const result = await runOrderSync({
+      confirm: isLiveRun,
+      since: since || undefined,
     });
-    info(`[API] Manual sync complete: ${result?.imported ?? 0} orders imported, ${result?.skipped ?? 0} skipped, ${result?.failed ?? 0} failed`);
+    info(
+      `[API] Sync complete (${isLiveRun ? 'LIVE' : 'DRY RUN'}): ` +
+        `${result?.imported ?? 0} orders ${isLiveRun ? 'created' : 'would-create'}, ` +
+        `${result?.skipped ?? 0} skipped, ${result?.failed ?? 0} failed, ` +
+        `${result?.safetyBlocks?.length ?? 0} safety blocks`,
+    );
   } catch (err) {
-    info(`[API] Manual sync error: ${err}`);
+    info(`[API] Sync error: ${err}`);
   }
 });
 

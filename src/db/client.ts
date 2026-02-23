@@ -663,6 +663,21 @@ const migrateProductMappings = (sqlite: InstanceType<typeof Database>) => {
 };
 
 /**
+ * Migrate product_drafts table — add eBay listing/offer ID columns if missing.
+ */
+const migrateProductDraftsEbay = (sqlite: InstanceType<typeof Database>) => {
+  const cols = sqlite.prepare(`PRAGMA table_info(product_drafts)`).all() as any[];
+  const colNames = new Set(cols.map((c: any) => c.name));
+
+  if (!colNames.has('ebay_listing_id')) {
+    sqlite.exec(`ALTER TABLE product_drafts ADD COLUMN ebay_listing_id TEXT`);
+  }
+  if (!colNames.has('ebay_offer_id')) {
+    sqlite.exec(`ALTER TABLE product_drafts ADD COLUMN ebay_offer_id TEXT`);
+  }
+};
+
+/**
  * Migrate product_mappings table — add product_notes column if missing.
  */
 const migrateProductNotes = (sqlite: InstanceType<typeof Database>) => {
@@ -836,6 +851,7 @@ export const getDb = async () => {
     initExtraTables(rawSqlite);
     migrateProductMappings(rawSqlite);
     migrateProductNotes(rawSqlite);
+    migrateProductDraftsEbay(rawSqlite);
     migrateHelpQuestions(rawSqlite);
     migrateHelpCategoryCase(rawSqlite);
     await seedDefaultMappings(rawSqlite);
