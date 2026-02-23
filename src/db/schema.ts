@@ -10,6 +10,7 @@ export const productMappings = sqliteTable('product_mappings', {
   shopifyTitle: text('shopify_title'),                 // Cached Shopify product title
   shopifyPrice: real('shopify_price'),                 // Cached Shopify price
   shopifySku: text('shopify_sku'),                     // Cached Shopify SKU
+  productNotes: text('product_notes'),                 // User notes about the product
   lastRepublishedAt: integer('last_republished_at', { mode: 'timestamp' }),
   promotedAt: integer('promoted_at', { mode: 'timestamp' }),
   adRate: real('ad_rate'),                              // Promoted listings ad rate %

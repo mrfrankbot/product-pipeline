@@ -143,6 +143,9 @@ const ReviewDetail: React.FC = () => {
   // Photo editor state
   const [editingPhotoIndex, setEditingPhotoIndex] = useState<number | null>(null);
 
+  // eBay listing confirmation state
+  const [showEbayConfirm, setShowEbayConfirm] = useState(false);
+
   // ── Fetch queue list for prev/next navigation ──────────────────────
 
   const { data: queueData } = useQuery({
@@ -230,6 +233,55 @@ const ReviewDetail: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['draft-detail', draftId] });
       setIsEditing(false);
       addNotification({ type: 'success', title: 'Draft updated', autoClose: 3000 });
+    },
+  });
+
+  const previewEbayMutation = useMutation({
+    mutationFn: () => apiClient.post(`/drafts/${draftId}/preview-ebay-listing`),
+    onSuccess: (data) => {
+      addNotification({ 
+        type: 'info', 
+        title: 'eBay Preview Generated', 
+        message: `Would create: ${data.preview.title} - $${data.preview.price}`,
+        autoClose: 6000 
+      });
+    },
+    onError: (err) => {
+      addNotification({ 
+        type: 'error', 
+        title: 'Preview failed', 
+        message: err instanceof Error ? err.message : 'Unknown error',
+        autoClose: 8000 
+      });
+    },
+  });
+
+  const listOnEbayMutation = useMutation({
+    mutationFn: () => apiClient.post(`/drafts/${draftId}/list-on-ebay`),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['drafts'] });
+      queryClient.invalidateQueries({ queryKey: ['drafts-count'] });
+      queryClient.invalidateQueries({ queryKey: ['draft-detail'] });
+      addNotification({ 
+        type: 'success', 
+        title: '🎉 Listed on eBay!', 
+        message: `Created listing ${data.listingId} - $${data.price}`,
+        autoClose: 8000 
+      });
+      // Auto-advance to next
+      if (nextId) {
+        navigate(`/review/${nextId}`, { replace: true });
+      } else {
+        navigate('/review', { replace: true });
+      }
+    },
+    onError: (err) => {
+      addNotification({ 
+        type: 'error', 
+        title: 'eBay listing failed', 
+        message: err instanceof Error ? err.message : 'Unknown error',
+        autoClose: 10000 
+      });
     },
   });
 
@@ -535,9 +587,68 @@ const ReviewDetail: React.FC = () => {
               <Card>
                 <BlockStack gap="300">
                   <Text variant="headingMd" as="h2">Actions</Text>
+                  
+                  {/* eBay Listing Section */}
+                  <div style={{ padding: '12px', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #0ea5e9' }}>
+                    <BlockStack gap="200">
+                      <Text variant="headingSm" as="h3">🚀 List on eBay</Text>
+                      {showEbayConfirm ? (
+                        <BlockStack gap="200">
+                          <Text variant="bodySm" as="p" tone="subdued">
+                            This will create a live eBay listing immediately. Make sure the description and photos are ready.
+                          </Text>
+                          <InlineStack gap="200">
+                            <Button
+                              variant="primary" 
+                              tone="success"
+                              onClick={() => {
+                                setShowEbayConfirm(false);
+                                listOnEbayMutation.mutate();
+                              }}
+                              loading={listOnEbayMutation.isPending}
+                              size="slim"
+                            >
+                              ✓ Create Listing
+                            </Button>
+                            <Button 
+                              onClick={() => setShowEbayConfirm(false)}
+                              size="slim"
+                            >
+                              Cancel
+                            </Button>
+                          </InlineStack>
+                        </BlockStack>
+                      ) : (
+                        <InlineStack gap="200">
+                          <Button
+                            fullWidth
+                            variant="primary"
+                            tone="success"
+                            onClick={() => setShowEbayConfirm(true)}
+                            disabled={listOnEbayMutation.isPending || previewEbayMutation.isPending}
+                          >
+                            🎯 Approve & List on eBay
+                          </Button>
+                          <Tooltip content="See what would be created">
+                            <Button
+                              onClick={() => previewEbayMutation.mutate()}
+                              loading={previewEbayMutation.isPending}
+                              size="slim"
+                            >
+                              👁 Preview
+                            </Button>
+                          </Tooltip>
+                        </InlineStack>
+                      )}
+                    </BlockStack>
+                  </div>
+
+                  <Divider />
+
+                  {/* Standard Shopify Approval */}
+                  <Text variant="headingSm" as="h3" tone="subdued">Shopify Only</Text>
                   <Button
                     variant="primary"
-                    tone="success"
                     size="large"
                     fullWidth
                     onClick={() => approveMutation.mutate({ photos: true, description: true })}
@@ -565,7 +676,9 @@ const ReviewDetail: React.FC = () => {
                       </Button>
                     </div>
                   </InlineStack>
+                  
                   <Divider />
+                  
                   <Button fullWidth onClick={handleSkip}>
                     Skip →
                   </Button>

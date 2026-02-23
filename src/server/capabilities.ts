@@ -63,12 +63,18 @@ registerCapability({
 
 registerCapability({
   id: 'order-sync',
-  name: 'Order Sync',
-  description: 'Import eBay orders into Shopify for unified fulfilment.',
+  name: 'Order Sync (Safety Guards)',
+  description: 'Import eBay orders into Shopify with comprehensive safety guards. DRY RUN by default, enhanced duplicate detection, rate limiting in safe mode.',
   category: 'ebay',
-  examplePrompts: ['sync orders', 'import ebay orders'],
+  examplePrompts: [
+    'sync orders (dry run)', 
+    'sync orders confirm=true (live)', 
+    'import ebay orders',
+    'check for duplicate orders'
+  ],
   apiEndpoints: ['POST /api/sync/trigger'],
-  addedAt: '2025-12-01',
+  addedAt: '2026-02-23',
+  isNew: true,
 });
 
 registerCapability({
@@ -298,4 +304,36 @@ registerCapability({
     'POST /api/products/:id/images/reprocess-all',
   ],
   addedAt: '2026-02-16',
+});
+
+registerCapability({
+  id: 'draft-ebay-listing',
+  name: 'Approve Draft → Create eBay Listing',
+  description: 'Approve a product draft and immediately create a live eBay listing with the draft content.',
+  category: 'ebay',
+  examplePrompts: [
+    'approve and list on ebay',
+    'create ebay listing from draft',
+    'publish draft to ebay'
+  ],
+  apiEndpoints: [
+    'POST /api/drafts/:id/list-on-ebay'
+  ],
+  addedAt: '2026-02-23',
+});
+
+registerCapability({
+  id: 'draft-ebay-preview',
+  name: 'Preview eBay Listing (Dry Run)',
+  description: 'Preview what would be created on eBay from a draft without actually creating the listing.',
+  category: 'ebay',
+  examplePrompts: [
+    'preview ebay listing',
+    'show what would be created on ebay',
+    'dry run ebay listing'
+  ],
+  apiEndpoints: [
+    'POST /api/drafts/:id/preview-ebay-listing'
+  ],
+  addedAt: '2026-02-23',
 });
