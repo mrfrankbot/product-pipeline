@@ -319,6 +319,18 @@ Test files: `src/services/__tests__/`
 
 ## Recent Changes
 
+### 2026-02-23: Order Sync Safety Guards
+
+Added multiple layers of protection to prevent duplicate Shopify orders from cascading into Lightspeed POS (repeat of the 2026-02-11 incident):
+
+- **`src/sync/order-safety.ts`** (new): Central safety module — `SAFETY_MODE` rate limiter (default `"safe"`: max 5/hr, min 10s between creations), `findDuplicateByTotalDateBuyer()` third-layer duplicate detection, custom error types.
+- **`src/sync/order-sync.ts`**: Dry-run is now the default (`confirm=true` required to create real orders). Three duplicate-detection layers applied before any creation. `SyncResult` now includes `dryRun` flag and `safetyBlocks[]` array.
+- **`src/server/sync-helper.ts`**: `confirm` parameter added; dry run documented as default.
+- **`src/server/routes/api.ts`**: `POST /api/sync/trigger` requires `?confirm=true` for live runs.
+- **`src/server/routes/ebay-orders.ts`**: Safety comments on import endpoint; new `POST /api/ebay/orders/sync-to-shopify` requires `{ confirm: true }`.
+- **`src/web/pages/EbayOrders.tsx`**: Critical warning banner about Lightspeed POS downstream impact.
+- **`AGENTS.md`** (new at project root): Complete rules for agents/developers working on this codebase.
+
 ### 2026-02-23: Approve Draft → Create eBay Listing Flow
 
 Built the end-to-end "list on eBay" workflow from the draft review queue:
