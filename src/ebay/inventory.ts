@@ -203,7 +203,14 @@ export const getOffersBySku = async (
  */
 export const getBusinessPolicies = async (
   accessToken: string,
-): Promise<{ fulfillmentPolicyId: string; paymentPolicyId: string; returnPolicyId: string }> => {
+): Promise<{
+  fulfillmentPolicyId: string;
+  fulfillmentPolicyName: string;
+  paymentPolicyId: string;
+  paymentPolicyName: string;
+  returnPolicyId: string;
+  returnPolicyName: string;
+}> => {
   const [fulfillment, payment, returnPolicy] = await Promise.all([
     ebayRequest<{ fulfillmentPolicies?: Array<{ fulfillmentPolicyId: string; name: string }> }>({
       path: '/sell/account/v1/fulfillment_policy?marketplace_id=EBAY_US',
@@ -227,7 +234,14 @@ export const getBusinessPolicies = async (
     throw new Error(`Missing eBay business policies: fulfillment=${fpId}, payment=${ppId}, return=${rpId}. Set up policies in eBay Seller Hub.`);
   }
 
-  return { fulfillmentPolicyId: fpId, paymentPolicyId: ppId, returnPolicyId: rpId };
+  return {
+    fulfillmentPolicyId: fpId,
+    fulfillmentPolicyName: fulfillment.fulfillmentPolicies?.[0]?.name || fpId,
+    paymentPolicyId: ppId,
+    paymentPolicyName: payment.paymentPolicies?.[0]?.name || ppId,
+    returnPolicyId: rpId,
+    returnPolicyName: returnPolicy.returnPolicies?.[0]?.name || rpId,
+  };
 };
 
 /**

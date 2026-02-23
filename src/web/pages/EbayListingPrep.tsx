@@ -51,6 +51,7 @@ interface EbayListingPreview {
   condition: string;
   conditionDescription?: string;
   categoryId: string;
+  categoryName: string;
   price: string;
   currency: string;
   quantity: number;
@@ -60,8 +61,11 @@ interface EbayListingPreview {
   aspects: Record<string, string[]>;
   policies: {
     fulfillmentPolicyId: string;
+    fulfillmentPolicyName: string;
     paymentPolicyId: string;
+    paymentPolicyName: string;
     returnPolicyId: string;
+    returnPolicyName: string;
   };
   merchantLocationKey: string;
 }
@@ -147,9 +151,10 @@ interface EditState {
 
 // ── eBay-style preview component ───────────────────────────────────────
 
-const EbayPreview: React.FC<{ state: EditState; brand: string; policies?: EbayListingPreview['policies'] }> = ({
+const EbayPreview: React.FC<{ state: EditState; brand: string; categoryName?: string; policies?: EbayListingPreview['policies'] }> = ({
   state,
   brand,
+  categoryName,
   policies,
 }) => {
   const [activeImg, setActiveImg] = useState(0);
@@ -300,7 +305,7 @@ const EbayPreview: React.FC<{ state: EditState; brand: string; policies?: EbayLi
                 <div>✓ Returns accepted</div>
                 <div>✓ Secure payments</div>
                 <div style={{ color: '#888', marginTop: '4px', fontSize: '11px' }}>
-                  Category ID: {state.categoryId}
+                  {categoryName ? `${categoryName} (${state.categoryId})` : `Category ID: ${state.categoryId}`}
                 </div>
               </div>
             )}
@@ -590,6 +595,7 @@ const EbayListingPrep: React.FC = () => {
 
   const [editState, setEditState] = useState<EditState | null>(null);
   const [brand, setBrand] = useState('');
+  const [categoryName, setCategoryName] = useState('');
   const [policies, setPolicies] = useState<EbayListingPreview['policies'] | undefined>(undefined);
   const [showPreview, setShowPreview] = useState(false);
   const [hasSavedOverrides, setHasSavedOverrides] = useState(false);
@@ -615,6 +621,7 @@ const EbayListingPrep: React.FC = () => {
       if (data.preview) {
         const preview = data.preview;
         setBrand(preview.brand);
+        setCategoryName(preview.categoryName || '');
         setPolicies(preview.policies);
 
         // Convert aspects from Record to array
@@ -860,10 +867,10 @@ const EbayListingPrep: React.FC = () => {
                   <FormLayout.Group>
                     {/* Category ID */}
                     <TextField
-                      label="eBay Category ID"
+                      label="eBay Category"
                       value={editState.categoryId}
                       onChange={(val) => update('categoryId', val)}
-                      helpText="Auto-suggested from product type"
+                      helpText={categoryName ? `${categoryName} — auto-suggested from product type` : 'Auto-suggested from product type'}
                       autoComplete="off"
                     />
 
@@ -934,27 +941,36 @@ const EbayListingPrep: React.FC = () => {
                     <BlockStack gap="200">
                       <InlineStack align="space-between">
                         <Text variant="bodySm" as="span" tone="subdued">Fulfillment / Shipping</Text>
-                        <Text variant="bodySm" as="span">
-                          <code style={{ fontSize: '12px', background: '#f3f4f6', padding: '2px 6px', borderRadius: '4px' }}>
-                            {policies.fulfillmentPolicyId}
-                          </code>
-                        </Text>
+                        <BlockStack gap="100">
+                          <Text variant="bodySm" as="span" fontWeight="semibold">{policies.fulfillmentPolicyName}</Text>
+                          <Text variant="bodySm" as="span" tone="subdued">
+                            <code style={{ fontSize: '11px', background: '#f3f4f6', padding: '1px 4px', borderRadius: '3px' }}>
+                              {policies.fulfillmentPolicyId}
+                            </code>
+                          </Text>
+                        </BlockStack>
                       </InlineStack>
                       <InlineStack align="space-between">
                         <Text variant="bodySm" as="span" tone="subdued">Returns</Text>
-                        <Text variant="bodySm" as="span">
-                          <code style={{ fontSize: '12px', background: '#f3f4f6', padding: '2px 6px', borderRadius: '4px' }}>
-                            {policies.returnPolicyId}
-                          </code>
-                        </Text>
+                        <BlockStack gap="100">
+                          <Text variant="bodySm" as="span" fontWeight="semibold">{policies.returnPolicyName}</Text>
+                          <Text variant="bodySm" as="span" tone="subdued">
+                            <code style={{ fontSize: '11px', background: '#f3f4f6', padding: '1px 4px', borderRadius: '3px' }}>
+                              {policies.returnPolicyId}
+                            </code>
+                          </Text>
+                        </BlockStack>
                       </InlineStack>
                       <InlineStack align="space-between">
                         <Text variant="bodySm" as="span" tone="subdued">Payment</Text>
-                        <Text variant="bodySm" as="span">
-                          <code style={{ fontSize: '12px', background: '#f3f4f6', padding: '2px 6px', borderRadius: '4px' }}>
-                            {policies.paymentPolicyId}
-                          </code>
-                        </Text>
+                        <BlockStack gap="100">
+                          <Text variant="bodySm" as="span" fontWeight="semibold">{policies.paymentPolicyName}</Text>
+                          <Text variant="bodySm" as="span" tone="subdued">
+                            <code style={{ fontSize: '11px', background: '#f3f4f6', padding: '1px 4px', borderRadius: '3px' }}>
+                              {policies.paymentPolicyId}
+                            </code>
+                          </Text>
+                        </BlockStack>
                       </InlineStack>
                     </BlockStack>
                   </div>
@@ -1044,7 +1060,7 @@ const EbayListingPrep: React.FC = () => {
 
             {showPreview && (
               <div style={{ marginTop: '12px' }}>
-                <EbayPreview state={editState} brand={brand} policies={policies} />
+                <EbayPreview state={editState} brand={brand} categoryName={categoryName} policies={policies} />
               </div>
             )}
 
@@ -1094,8 +1110,10 @@ const EbayListingPrep: React.FC = () => {
                       <Text variant="bodySm" as="span">{editState.imageUrls.length} image{editState.imageUrls.length !== 1 ? 's' : ''}</Text>
                     </InlineStack>
                     <InlineStack align="space-between">
-                      <Text variant="bodySm" as="span" tone="subdued">Category ID</Text>
-                      <Text variant="bodySm" as="span">{editState.categoryId}</Text>
+                      <Text variant="bodySm" as="span" tone="subdued">Category</Text>
+                      <Text variant="bodySm" as="span">
+                        {categoryName ? `${categoryName} (${editState.categoryId})` : editState.categoryId}
+                      </Text>
                     </InlineStack>
                     <InlineStack align="space-between">
                       <Text variant="bodySm" as="span" tone="subdued">Item Specifics</Text>
@@ -1149,7 +1167,7 @@ const EbayListingPrep: React.FC = () => {
                     <Text variant="headingMd" as="h2">Preview</Text>
                     <Badge tone="info">Live</Badge>
                   </InlineStack>
-                  <EbayPreview state={editState} brand={brand} policies={policies} />
+                  <EbayPreview state={editState} brand={brand} categoryName={categoryName} policies={policies} />
                 </BlockStack>
               </Card>
             </div>

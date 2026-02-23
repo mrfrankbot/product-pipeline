@@ -25,7 +25,7 @@ import {
   getOffersBySku,
   getBusinessPolicies,
 } from '../ebay/inventory.js';
-import { getCategoryId } from '../sync/category-mapper.js';
+import { getCategoryId, getCategoryName } from '../sync/category-mapper.js';
 import { getAspects } from '../sync/aspect-mapper.js';
 import { getEbayCondition, resolveMapping, getMapping } from '../sync/attribute-mapping-service.js';
 import { cleanTitle, parsePrice } from '../sync/mapper.js';
@@ -41,6 +41,7 @@ export interface EbayListingPreview {
   condition: string;
   conditionDescription?: string;
   categoryId: string;
+  categoryName: string;
   price: string;
   currency: string;
   quantity: number;
@@ -50,8 +51,11 @@ export interface EbayListingPreview {
   aspects: Record<string, string[]>;
   policies: {
     fulfillmentPolicyId: string;
+    fulfillmentPolicyName: string;
     paymentPolicyId: string;
+    paymentPolicyName: string;
     returnPolicyId: string;
+    returnPolicyName: string;
   };
   merchantLocationKey: string;
 }
@@ -260,6 +264,7 @@ export const previewEbayListing = async (
       condition: conditionText,
       conditionDescription: conditionDesc,
       categoryId,
+      categoryName: getCategoryName(data.productType),
       price: data.price.toFixed(2),
       currency: 'USD',
       quantity: data.quantity,
