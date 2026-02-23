@@ -32,8 +32,8 @@ router.post('/webhooks/ebay/notifications', async (req: Request, res: Response) 
 
     const db = await getRawDb();
     db.prepare(
-      `INSERT INTO notification_log (source, topic, payload, status, createdAt) VALUES (?, ?, ?, ?, datetime('now'))`
-    ).run('ebay', notificationType || 'unknown', rawBody.substring(0, 10000), 'received');
+      `INSERT INTO notification_log (source, topic, message) VALUES (?, ?, ?)`
+    ).run('ebay', notificationType || 'unknown', rawBody.substring(0, 10000));
 
     if (notificationType) {
       await handleNotification(notificationType, parsed, rawBody);
@@ -76,9 +76,9 @@ async function handleNotification(type: string, _parsed: any, _raw: string): Pro
 
   const db = await getRawDb();
   db.prepare(
-    `UPDATE notification_log SET status = 'processed', processedAt = datetime('now')
-     WHERE source = 'ebay' AND topic = ? AND status = 'received' ORDER BY id DESC LIMIT 1`
-  ).run(type);
+    `UPDATE notification_log SET processed_at = unixepoch()
+     WHERE source = 'ebay' AND topic = ? AND id = (SELECT id FROM notification_log WHERE source = 'ebay' AND topic = ? ORDER BY id DESC LIMIT 1)`
+  ).run(type, type);
 }
 
 export default router;

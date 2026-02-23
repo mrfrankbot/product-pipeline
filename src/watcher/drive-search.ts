@@ -322,6 +322,17 @@ export async function resolveImagePath(imagePath: string): Promise<string> {
 }
 
 /**
+ * Get public (non-signed) GCS URLs for image paths.
+ * These are shorter and don't expire, making them suitable for eBay.
+ * Requires the GCS bucket to have public read access.
+ * Cloud mode only — local mode returns paths as-is.
+ */
+export function getPublicUrls(imagePaths: string[]): string[] {
+  if (DRIVE_MODE !== 'cloud') return imagePaths;
+  return imagePaths.map((p) => gcsPublicUrl(p));
+}
+
+/**
  * Get accessible URLs for image paths.
  * Cloud mode: generates signed URLs (valid 7 days).
  * Local mode: returns paths as-is.

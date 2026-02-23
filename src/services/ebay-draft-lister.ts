@@ -86,6 +86,42 @@ export interface ListingOverrides {
 
 const LOCATION_KEY = 'pictureline-slc';
 
+// eBay URL limits: each URL < 500 chars, total < 3975 chars
+const EBAY_MAX_SINGLE_URL_LENGTH = 500;
+const EBAY_MAX_TOTAL_URL_LENGTH = 3975;
+
+/**
+ * Trim image URL list to fit within eBay's URL length limits.
+ * eBay requires each URL < 500 chars and total URL length < 3975 chars.
+ * If URLs exceed limits, drops images from the end (least important) until within limits.
+ */
+const shortenImageUrls = (urls: string[]): string[] => {
+  // Filter out individual URLs that are too long
+  const validUrls: string[] = [];
+  for (const url of urls) {
+    if (url.length >= EBAY_MAX_SINGLE_URL_LENGTH) {
+      warn(`[EbayDraftLister] Dropping image URL (too long: ${url.length} chars): ${url.substring(0, 80)}...`);
+    } else {
+      validUrls.push(url);
+    }
+  }
+
+  // Trim to fit within total length limit (URLs joined by commas internally by eBay API)
+  const result: string[] = [];
+  let totalLength = 0;
+  for (const url of validUrls) {
+    const separator = result.length > 0 ? 1 : 0; // comma separator between URLs
+    if (totalLength + separator + url.length > EBAY_MAX_TOTAL_URL_LENGTH) {
+      warn(`[EbayDraftLister] Dropping ${validUrls.length - result.length} image(s) — eBay total URL limit reached (${totalLength} chars used)`);
+      break;
+    }
+    result.push(url);
+    totalLength += separator + url.length;
+  }
+
+  return result;
+};
+
 const mapConditionIdToText = (conditionId: string): string => {
   switch (conditionId) {
     case '1000': return 'NEW';
@@ -344,9 +380,12 @@ export const listDraftOnEbay = async (
   const data = buildListingData(draft, shopifyProduct);
 
   // Apply overrides to image list (overrides take full precedence)
-  const effectiveImageUrls = (overrides.imageUrls && overrides.imageUrls.length > 0)
+  const rawImageUrls = (overrides.imageUrls && overrides.imageUrls.length > 0)
     ? overrides.imageUrls
     : data.imageUrls;
+
+  // Trim URLs to fit within eBay's length limits (each < 500 chars, total < 3975 chars)
+  const effectiveImageUrls = shortenImageUrls(rawImageUrls);
 
   // eBay requires at least one image
   if (effectiveImageUrls.length === 0) {

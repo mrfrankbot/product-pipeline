@@ -52,18 +52,18 @@ async function getTokens(db: any): Promise<{
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function markProcessed(db: any, topic: string, source = 'shopify') {
   db.prepare(
-    `UPDATE notification_log SET processedAt = datetime('now'), status = 'processed'
+    `UPDATE notification_log SET processed_at = unixepoch()
      WHERE id = (SELECT id FROM notification_log WHERE source = ? AND topic = ? ORDER BY id DESC LIMIT 1)`
   ).run(source, topic);
 }
 
 /** Mark a notification_log entry as errored with detail. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function markError(db: any, topic: string, errorMsg: string, source = 'shopify') {
+function markError(db: any, topic: string, _errorMsg: string, source = 'shopify') {
   db.prepare(
-    `UPDATE notification_log SET processedAt = datetime('now'), status = 'error', error = ?
+    `UPDATE notification_log SET processed_at = unixepoch()
      WHERE id = (SELECT id FROM notification_log WHERE source = ? AND topic = ? ORDER BY id DESC LIMIT 1)`
-  ).run(errorMsg.substring(0, 2000), source, topic);
+  ).run(source, topic);
 }
 
 /** Resolve a Shopify inventory_item_id to its SKU via REST API. */
@@ -106,8 +106,8 @@ router.post('/webhooks/shopify/:topic', async (req: Request, res: Response) => {
   try {
     const db = await getRawDb();
     db.prepare(
-      `INSERT INTO notification_log (source, topic, payload, status, createdAt) VALUES (?, ?, ?, ?, datetime('now'))`
-    ).run('shopify', topic, payload.substring(0, 10000), 'received');
+      `INSERT INTO notification_log (source, topic, message) VALUES (?, ?, ?)`
+    ).run('shopify', topic, payload.substring(0, 10000));
   } catch (err) {
     logError(`[Shopify Webhook] Log error: ${err}`);
   }
