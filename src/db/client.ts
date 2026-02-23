@@ -91,7 +91,9 @@ const initExtraTables = (sqlite: InstanceType<typeof Database>) => {
     CREATE TABLE IF NOT EXISTS notification_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       source TEXT NOT NULL,
+      topic TEXT,
       message TEXT NOT NULL,
+      processed_at INTEGER,
       created_at TEXT DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS product_mapping_overrides (
