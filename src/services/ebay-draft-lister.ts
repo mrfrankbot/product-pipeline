@@ -89,34 +89,84 @@ const LOCATION_KEY = 'pictureline-slc';
 // eBay URL limits: each URL < 500 chars, total < 3975 chars
 const EBAY_MAX_SINGLE_URL_LENGTH = 500;
 const EBAY_MAX_TOTAL_URL_LENGTH = 3975;
+const GCS_BUCKET_NAME = 'pictureline-product-photos';
 
 /**
- * Trim image URL list to fit within eBay's URL length limits.
- * eBay requires each URL < 500 chars and total URL length < 3975 chars.
- * If URLs exceed limits, drops images from the end (least important) until within limits.
+ * Convert a GCS signed URL to a short public URL.
+ * Signed: https://storage.googleapis.com/pictureline-product-photos/path?X-Goog-Algorithm=...
+ * Public: https://storage.googleapis.com/pictureline-product-photos/path
+ *
+ * NOTE: Requires the GCS bucket/objects to have public read access (allUsers: objectViewer).
+ * If not configured yet, the images will 403 — but we try public first and fall back to Shopify images.
  */
-const shortenImageUrls = (urls: string[]): string[] => {
-  // Filter out individual URLs that are too long
-  const validUrls: string[] = [];
-  for (const url of urls) {
+const toPublicGcsUrl = (url: string): string | null => {
+  try {
+    const parsed = new URL(url);
+    // Match storage.googleapis.com/BUCKET/path pattern
+    if (parsed.hostname === 'storage.googleapis.com' && parsed.pathname.includes(GCS_BUCKET_NAME)) {
+      return `https://storage.googleapis.com${parsed.pathname}`;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Prepare image URLs for eBay, ensuring they fit within length limits.
+ * Strategy:
+ *   1. Convert GCS signed URLs to short public URLs (strips query params)
+ *   2. If any URL is still > 500 chars, drop it
+ *   3. Trim total to fit under 3975 chars
+ *   4. If no valid URLs remain, fall back to Shopify product images
+ */
+const prepareImageUrlsForEbay = (urls: string[], shopifyImages: string[]): string[] => {
+  // Step 1: Convert GCS signed URLs to public URLs
+  const shortened = urls.map((url) => {
     if (url.length >= EBAY_MAX_SINGLE_URL_LENGTH) {
-      warn(`[EbayDraftLister] Dropping image URL (too long: ${url.length} chars): ${url.substring(0, 80)}...`);
+      const publicUrl = toPublicGcsUrl(url);
+      if (publicUrl && publicUrl.length < EBAY_MAX_SINGLE_URL_LENGTH) {
+        info(`[EbayDraftLister] Converted GCS signed URL to public URL (${url.length} → ${publicUrl.length} chars)`);
+        return publicUrl;
+      }
+    }
+    return url;
+  });
+
+  // Step 2: Filter out still-too-long URLs
+  const validUrls: string[] = [];
+  for (const url of shortened) {
+    if (url.length >= EBAY_MAX_SINGLE_URL_LENGTH) {
+      warn(`[EbayDraftLister] Dropping image URL (still too long after conversion: ${url.length} chars)`);
     } else {
       validUrls.push(url);
     }
   }
 
-  // Trim to fit within total length limit (URLs joined by commas internally by eBay API)
+  // Step 3: Trim to total length limit
   const result: string[] = [];
   let totalLength = 0;
   for (const url of validUrls) {
-    const separator = result.length > 0 ? 1 : 0; // comma separator between URLs
-    if (totalLength + separator + url.length > EBAY_MAX_TOTAL_URL_LENGTH) {
+    if (totalLength + url.length > EBAY_MAX_TOTAL_URL_LENGTH) {
       warn(`[EbayDraftLister] Dropping ${validUrls.length - result.length} image(s) — eBay total URL limit reached (${totalLength} chars used)`);
       break;
     }
     result.push(url);
-    totalLength += separator + url.length;
+    totalLength += url.length;
+  }
+
+  // Step 4: Fall back to Shopify images if nothing survived
+  if (result.length === 0 && shopifyImages.length > 0) {
+    warn(`[EbayDraftLister] All GCS URLs too long — falling back to ${shopifyImages.length} Shopify image(s)`);
+    const fallback: string[] = [];
+    let fbTotal = 0;
+    for (const url of shopifyImages) {
+      if (url.length >= EBAY_MAX_SINGLE_URL_LENGTH) continue;
+      if (fbTotal + url.length > EBAY_MAX_TOTAL_URL_LENGTH) break;
+      fallback.push(url);
+      fbTotal += url.length;
+    }
+    return fallback;
   }
 
   return result;
@@ -384,8 +434,12 @@ export const listDraftOnEbay = async (
     ? overrides.imageUrls
     : data.imageUrls;
 
-  // Trim URLs to fit within eBay's length limits (each < 500 chars, total < 3975 chars)
-  const effectiveImageUrls = shortenImageUrls(rawImageUrls);
+  // Prepare URLs for eBay (convert GCS signed → public, trim to length limits, fall back to Shopify)
+  const shopifyImageUrls = (shopifyProduct.images ?? [])
+    .slice(0, 12)
+    .map((img: any) => (img.src || img.url || '').replace(/^http:/, 'https:'))
+    .filter((u: string) => u.length > 0);
+  const effectiveImageUrls = prepareImageUrlsForEbay(rawImageUrls, shopifyImageUrls);
 
   // eBay requires at least one image
   if (effectiveImageUrls.length === 0) {
