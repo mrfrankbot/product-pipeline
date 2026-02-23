@@ -20,7 +20,7 @@ import {
   TextField,
   Tooltip,
 } from '@shopify/polaris';
-import { SearchIcon } from '@shopify/polaris-icons';
+import { SearchIcon, AlertTriangleIcon } from '@shopify/polaris-icons';
 import {
   useEbayOrders,
   useEbayOrderStats,
@@ -223,8 +223,25 @@ const EbayOrders: React.FC = () => {
   return (
     <Page title="eBay Orders" fullWidth>
       <BlockStack gap="500">
-        <Banner tone="info">
-          Orders imported from eBay. Shopify sync is disabled — review orders here first.
+        <Banner 
+          tone="critical" 
+          title="⚠️ CRITICAL: Lightspeed POS Downstream Impact"
+          icon={AlertTriangleIcon}
+        >
+          <Text as="p">
+            <strong>Order imports cascade to Lightspeed POS!</strong> Past duplicate imports caused hours of cleanup. 
+            All order sync now requires explicit confirmation and runs in DRY RUN mode by default.
+          </Text>
+          <br />
+          <Text as="p">
+            <strong>Safety Guards Active:</strong>
+          </Text>
+          <ul>
+            <li>Enhanced duplicate detection (DB + Shopify + fuzzy matching)</li>
+            <li>DRY RUN by default - must pass <code>confirm=true</code> to create orders</li>
+            <li>SAFETY_MODE={process.env.SAFETY_MODE || 'safe'} - rate limiting active</li>
+            <li>Maximum 7-day lookback enforced</li>
+          </ul>
         </Banner>
 
         <Layout>

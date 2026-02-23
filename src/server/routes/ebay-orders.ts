@@ -95,15 +95,35 @@ router.get('/api/ebay/orders/:id', async (req: Request, res: Response) => {
 /** POST /api/ebay/orders/import — fetch from eBay API and upsert */
 router.post('/api/ebay/orders/import', async (req: Request, res: Response) => {
   try {
-    const { days = 30, limit, fulfillmentStatus } = req.body || {};
+    const { days = 30, limit, fulfillmentStatus, confirm = false } = req.body || {};
+    const dryRun = !confirm; // DRY RUN by default
+    
     const token = await getValidEbayToken();
     if (!token) {
       res.status(401).json({ error: 'No valid eBay token. Please authenticate first.' });
       return;
     }
 
-    const createdAfter = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-    info(`[EbayOrders] Importing orders from last ${days} days (since ${createdAfter})`);
+    // SAFETY GUARD: Limit historical lookback
+    const maxDays = 30;
+    const safeDays = Math.min(days, maxDays);
+    if (days > maxDays) {
+      info(`[EbayOrders] SAFETY: Limiting lookback from ${days} to ${maxDays} days`);
+    }
+
+    const createdAfter = new Date(Date.now() - safeDays * 24 * 60 * 60 * 1000).toISOString();
+    info(`[EbayOrders] Importing orders from last ${safeDays} days (since ${createdAfter}) | Mode: ${dryRun ? 'DRY RUN' : 'LIVE'}`);
+
+    if (dryRun) {
+      res.json({ 
+        success: true, 
+        message: 'DRY RUN: Would import orders. Pass confirm=true in request body to actually import.',
+        dryRun: true,
+        days: safeDays,
+        createdAfter
+      });
+      return;
+    }
 
     const orders = await fetchAllEbayOrders(token, { createdAfter });
     const db = await getRawDb();

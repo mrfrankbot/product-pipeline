@@ -269,6 +269,7 @@ All stored in `~/.clawdbot/credentials/`:
 | `IMAGE_PROCESSOR` / `IMAGE_SERVICE` | Image provider: `self-hosted`, `photoroom`, `auto` | `auto` |
 | `IMAGE_SERVICE_URL` | Self-hosted image service URL | `http://localhost:8100` |
 | `GCS_SERVICE_ACCOUNT_KEY` | Google Cloud Storage credentials | Required for photo storage |
+| `SAFETY_MODE` | Order sync safety: `safe` (rate limits + confirmation) or `normal` | `safe` |
 | `EBAY_APP_ID` | eBay App ID | From file |
 | `EBAY_DEV_ID` | eBay Dev ID | From file |
 | `EBAY_CERT_ID` | eBay Cert ID | From file |
@@ -376,6 +377,14 @@ npm run test:watch    # vitest watch mode
   - Registered new capabilities in capabilities registry
   - Added product_notes field to database schema
   - Safety: Single product, explicit click only - no batch operations or auto-publish
+- **CRITICAL: Order Sync Safety Guards** — After 2026-02-11 duplicate cascade incident
+  - **DRY RUN by default:** All order imports now DRY RUN unless `confirm=true` is explicitly passed
+  - **Enhanced duplicate detection:** Check order_mappings DB + Shopify tag search + fuzzy matching (total + date + buyer)
+  - **SAFETY_MODE env var:** Default "safe" mode enforces rate limiting (max 1 order per 10 seconds, 5 per hour)
+  - **UI warning banner:** Prominent critical banner in EbayOrders.tsx about Lightspeed POS downstream impact
+  - **API endpoint guards:** Both /api/sync/trigger and /api/ebay/orders/import respect safety guards
+  - **Enhanced logging:** All safety actions logged with context and warnings array in SyncResult
+  - **Updated capabilities:** Order sync capability updated to reflect new safety features
 
 ### 2026-02-21
 - OpenAI `withRetry()` helper with exponential backoff (commit c7c3076)

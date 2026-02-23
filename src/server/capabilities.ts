@@ -78,6 +78,21 @@ registerCapability({
 });
 
 registerCapability({
+  id: 'order-safety-mode',
+  name: 'Order Safety Mode',
+  description: 'SAFETY_MODE environment controls: safe mode enforces rate limiting (max 1 order per 10 seconds, 5 per hour), enhanced duplicate detection, and requires confirmation for all imports.',
+  category: 'settings',
+  examplePrompts: [
+    'what is safety mode',
+    'check safety settings',
+    'how does rate limiting work'
+  ],
+  apiEndpoints: ['POST /api/sync/trigger', 'POST /api/ebay/orders/import'],
+  addedAt: '2026-02-23',
+  isNew: true,
+});
+
+registerCapability({
   id: 'listings-browse',
   name: 'Browse Listings',
   description: 'View all eBay listings with search, filtering and pagination.',
