@@ -19,7 +19,7 @@ import {
   updateGlobalAutoPublishSettings,
   checkExistingContent,
 } from '../../services/draft-service.js';
-import { listDraftOnEbay, previewEbayListing } from '../../services/ebay-draft-lister.js';
+import { listDraftOnEbay, previewEbayListing, type ListingOverrides } from '../../services/ebay-draft-lister.js';
 import { info, error as logError } from '../../utils/logger.js';
 
 const router = Router();
@@ -324,8 +324,19 @@ router.post('/api/drafts/:id/list-on-ebay', async (req: Request, res: Response) 
       return;
     }
 
-    info(`[DraftsAPI] List draft ${draftId} on eBay (explicit user action)`);
-    const result = await listDraftOnEbay(draftId);
+    // Extract optional overrides from the request body (from the prep page)
+    const { title, price, categoryId, condition, aspects, description, imageUrls } = req.body || {};
+    const overrides: ListingOverrides = {};
+    if (typeof title === 'string' && title.trim()) overrides.title = title.trim();
+    if (typeof price === 'number' && price > 0) overrides.price = price;
+    if (typeof categoryId === 'string' && categoryId.trim()) overrides.categoryId = categoryId.trim();
+    if (typeof condition === 'string' && condition.trim()) overrides.condition = condition.trim();
+    if (aspects && typeof aspects === 'object') overrides.aspects = aspects;
+    if (typeof description === 'string') overrides.description = description;
+    if (Array.isArray(imageUrls) && imageUrls.length > 0) overrides.imageUrls = imageUrls;
+
+    info(`[DraftsAPI] List draft ${draftId} on eBay (explicit user action, overrides: ${JSON.stringify(Object.keys(overrides))})`);
+    const result = await listDraftOnEbay(draftId, overrides);
 
     if (result.success) {
       res.json({

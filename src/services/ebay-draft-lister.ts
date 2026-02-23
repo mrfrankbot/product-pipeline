@@ -64,6 +64,20 @@ export interface ListOnEbayResult {
   error?: string;
 }
 
+/**
+ * Optional overrides passed from the eBay listing prep page.
+ * Any field here takes precedence over system-generated values.
+ */
+export interface ListingOverrides {
+  title?: string;
+  price?: number;
+  categoryId?: string;
+  condition?: string;
+  aspects?: Record<string, string[]>;
+  description?: string;
+  imageUrls?: string[];
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────
 
 const LOCATION_KEY = 'pictureline-slc';
@@ -272,8 +286,13 @@ export const previewEbayListing = async (
  * Updates the draft with the eBay listing ID and logs to sync_log.
  *
  * SAFETY: Single product only. No auto-trigger. Must be called explicitly.
+ *
+ * @param overrides  Optional values from the listing prep UI that override system defaults.
  */
-export const listDraftOnEbay = async (draftId: number): Promise<ListOnEbayResult> => {
+export const listDraftOnEbay = async (
+  draftId: number,
+  overrides: ListingOverrides = {},
+): Promise<ListOnEbayResult> => {
   const db = await getRawDb();
   const now = Math.floor(Date.now() / 1000);
 
@@ -319,8 +338,13 @@ export const listDraftOnEbay = async (draftId: number): Promise<ListOnEbayResult
 
   const data = buildListingData(draft, shopifyProduct);
 
+  // Apply overrides to image list (overrides take full precedence)
+  const effectiveImageUrls = (overrides.imageUrls && overrides.imageUrls.length > 0)
+    ? overrides.imageUrls
+    : data.imageUrls;
+
   // eBay requires at least one image
-  if (data.imageUrls.length === 0) {
+  if (effectiveImageUrls.length === 0) {
     return { success: false, error: 'No images available — eBay requires at least one image. Approve photos or add images to Shopify.' };
   }
 
@@ -331,12 +355,19 @@ export const listDraftOnEbay = async (draftId: number): Promise<ListOnEbayResult
     // Get business policies
     const policies = await getBusinessPolicies(ebayToken);
 
-    // Build eBay data
+    // Build eBay data (system defaults, then apply overrides)
     const conditionId = await getEbayCondition(shopifyProduct);
-    const conditionText = mapConditionIdToText(conditionId);
+    const systemConditionText = mapConditionIdToText(conditionId);
+    const conditionText = overrides.condition ?? systemConditionText;
     const conditionDesc = await getConditionDescription(conditionId, shopifyProduct);
-    const categoryId = getCategoryId(data.productType);
-    const aspects = getAspects(categoryId, shopifyProduct, shopifyProduct.variants?.[0] ?? {});
+    const systemCategoryId = getCategoryId(data.productType);
+    const categoryId = overrides.categoryId ?? systemCategoryId;
+    const systemAspects = getAspects(systemCategoryId, shopifyProduct, shopifyProduct.variants?.[0] ?? {});
+    const aspects = overrides.aspects ?? systemAspects;
+
+    const effectivePrice = overrides.price ?? data.price;
+    const effectiveTitle = overrides.title ? overrides.title : cleanTitle(data.title);
+    const effectiveDescription = overrides.description ?? data.description;
 
     const mpn = data.sku.replace(/-U\d+$/, '') || 'Does Not Apply';
     const effectiveUpc =
@@ -344,17 +375,17 @@ export const listDraftOnEbay = async (draftId: number): Promise<ListOnEbayResult
         ? [data.barcode]
         : ['Does Not Apply'];
 
-    const finalDescription = data.description.length > 2000
-      ? data.description.slice(0, 1997) + '...'
-      : data.description;
+    const finalDescription = effectiveDescription.length > 500000
+      ? effectiveDescription.slice(0, 499997) + '...'
+      : effectiveDescription;
 
     // ── Step 1: Create/replace inventory item ──────────────────────
     info(`[EbayDraftLister] Creating inventory item for draft ${draftId} (SKU: ${data.sku})`);
     await createOrReplaceInventoryItem(ebayToken, data.sku, {
       product: {
-        title: cleanTitle(data.title),
+        title: effectiveTitle,
         description: finalDescription,
-        imageUrls: data.imageUrls,
+        imageUrls: effectiveImageUrls,
         aspects,
         brand: data.vendor,
         mpn,
@@ -390,7 +421,7 @@ export const listDraftOnEbay = async (draftId: number): Promise<ListOnEbayResult
         format: 'FIXED_PRICE',
         availableQuantity: data.quantity,
         pricingSummary: {
-          price: { value: data.price.toFixed(2), currency: 'USD' },
+          price: { value: effectivePrice.toFixed(2), currency: 'USD' },
         },
         listingPolicies: {
           fulfillmentPolicyId: policies.fulfillmentPolicyId,
@@ -428,8 +459,8 @@ export const listDraftOnEbay = async (draftId: number): Promise<ListOnEbayResult
         draft.shopify_product_id,
         listingId,
         data.sku,
-        data.title,
-        data.price,
+        effectiveTitle,
+        effectivePrice,
         data.sku,
         now,
         now,
@@ -453,7 +484,7 @@ export const listDraftOnEbay = async (draftId: number): Promise<ListOnEbayResult
         sku: data.sku,
         listingId,
         offerId,
-        title: cleanTitle(data.title),
+        title: effectiveTitle,
       }),
       now,
     );

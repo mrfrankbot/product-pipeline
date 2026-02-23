@@ -319,6 +319,29 @@ Test files: `src/services/__tests__/`
 
 ## Recent Changes
 
+### 2026-02-23: eBay Listing Prep Page — Full Visibility Before Listing
+
+Redesigned the "Approve & List on eBay" flow to give full visibility and control before creating a listing.
+
+**What changed:**
+- **`src/web/pages/EbayListingPrep.tsx`** (new): Full-page eBay listing preparation view.
+  - Fetches system-generated preview data on load (calls existing `preview-ebay-listing` endpoint)
+  - **All fields are editable before listing:** eBay title (with 80-char limit badge), price, category ID, condition dropdown (New/Like New/Excellent/Very Good/Good/Acceptable/For Parts), item specifics as key-value pairs (add/remove), condition description, photos (reorder with ↑↓, remove), description (textarea, HTML-aware)
+  - **Business policies** displayed with IDs (not editable here — managed in eBay seller account)
+  - **Real eBay-style preview:** Mimics the eBay listing page layout (title, price, photo gallery with thumbnail strip, condition badge, item specifics table, description, seller info)
+  - **Photo management:** Thumbnail grid with #1 marked as MAIN, reorder/remove controls
+  - **Sticky sidebar** with summary of all settings + two action buttons
+  - **"List on eBay"** (primary) — sends all edited values as overrides to the API
+  - **"Save as Draft"** — saves title/description to draft API + stores eBay-specific overrides (category, condition, aspects, price, image order) in localStorage, keyed by draftId; restored on next visit
+  - **"Reload from System"** secondary action — re-fetches system defaults, discarding manual edits
+  - Returns to review detail after listing or saving
+- **`src/web/pages/ReviewDetail.tsx`**: "Approve & List on eBay" button now navigates to `/review/:id/ebay-prep` (no more small modal). Removed old modal and preview mutation code.
+- **`src/web/App.tsx`**: Added route `/review/:id/ebay-prep` → `<EbayListingPrep />`
+- **`src/services/ebay-draft-lister.ts`**: `listDraftOnEbay()` now accepts optional `overrides: ListingOverrides` — any field supplied overrides the system-generated value. New `ListingOverrides` export type.
+- **`src/server/routes/drafts.ts`**: `POST /api/drafts/:id/list-on-ebay` now accepts optional body `{ title, price, categoryId, condition, aspects, description, imageUrls }` and passes them as overrides to the service.
+
+**Safety:** Still single product, explicit click only. No auto-publish. No batch.
+
 ### 2026-02-23: Order Sync Safety Guards
 
 Added multiple layers of protection to prevent duplicate Shopify orders from cascading into Lightspeed POS (repeat of the 2026-02-11 incident):

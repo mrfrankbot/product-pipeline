@@ -27,6 +27,7 @@ import ChatWidget from './components/ChatWidget';
 import PipelineToasts from './components/PipelineToasts';
 import ReviewQueue from './pages/ReviewQueue';
 import ReviewDetail from './pages/ReviewDetail';
+import EbayListingPrep from './pages/EbayListingPrep';
 import EbayOrders from './pages/EbayOrders';
 import { useAppStore } from './store';
 
@@ -128,6 +129,7 @@ const AppFrame: React.FC = () => {
           <Route path="/pipeline" element={<Pipeline />} />
           <Route path="/review" element={<ReviewQueue />} />
           <Route path="/review/:id" element={<ReviewDetail />} />
+          <Route path="/review/:id/ebay-prep" element={<EbayListingPrep />} />
           <Route path="/images" element={<ImageProcessor />} />
           <Route path="/category-mapping" element={<CategoryMapping />} />
           <Route path="/settings" element={<Settings />} />
