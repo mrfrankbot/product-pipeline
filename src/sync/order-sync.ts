@@ -14,7 +14,6 @@ export interface SyncResult {
   skipped: number;
   failed: number;
   errors: Array<{ ebayOrderId: string; error: string }>;
-  warnings: Array<{ ebayOrderId: string; warning: string; reason: string }>;
 }
 
 /**
@@ -68,135 +67,21 @@ const mapEbayOrderToShopify = (ebayOrder: EbayOrder): ShopifyOrderInput => {
 };
 
 /**
- * Enhanced duplicate detection - check multiple sources for existing orders.
- * Returns details about any found duplicate.
- */
-const checkForDuplicates = async (
-  ebayOrder: EbayOrder,
-  db: any,
-  shopifyAccessToken: string,
-): Promise<{ isDuplicate: true; reason: string; details: string } | { isDuplicate: false }> => {
-  // 1. Check order_mappings table for existing eBay order ID
-  const mappingExists = await db
-    .select()
-    .from(orderMappings)
-    .where(eq(orderMappings.ebayOrderId, ebayOrder.orderId))
-    .get();
-
-  if (mappingExists) {
-    return {
-      isDuplicate: true,
-      reason: 'order_mapping_exists',
-      details: `Already mapped to Shopify order ${mappingExists.shopifyOrderName} (ID: ${mappingExists.shopifyOrderId})`,
-    };
-  }
-
-  // 2. Check Shopify orders by eBay order ID tag
-  const shopifyExisting = await findExistingShopifyOrder(
-    shopifyAccessToken,
-    ebayOrder.orderId,
-  );
-  if (shopifyExisting) {
-    return {
-      isDuplicate: true,
-      reason: 'shopify_tag_match',
-      details: `Found in Shopify by tag search: ${shopifyExisting.name} (ID: ${shopifyExisting.id})`,
-    };
-  }
-
-  // 3. Check by matching total + date + buyer (fuzzy duplicate detection)
-  const orderTotal = parseFloat(ebayOrder.pricingSummary?.total?.value || '0');
-  const orderDate = new Date(ebayOrder.creationDate);
-  const buyerName = ebayOrder.buyer?.username || '';
-  
-  // Search recent Shopify orders with similar characteristics
-  const dayBefore = new Date(orderDate.getTime() - 24 * 60 * 60 * 1000).toISOString();
-  const dayAfter = new Date(orderDate.getTime() + 24 * 60 * 60 * 1000).toISOString();
-  
-  try {
-    const creds = await import('../config/credentials.js').then(m => m.loadShopifyCredentials());
-    const fuzzyUrl = `https://${creds.storeDomain}/admin/api/2024-01/orders.json?status=any&created_at_min=${dayBefore}&created_at_max=${dayAfter}&limit=250`;
-    
-    const fuzzyResponse = await fetch(fuzzyUrl, {
-      headers: { 'X-Shopify-Access-Token': shopifyAccessToken },
-    });
-    
-    if (fuzzyResponse.ok) {
-      const fuzzyData = (await fuzzyResponse.json()) as {
-        orders: Array<{
-          id: number;
-          name: string;
-          total_price: string;
-          note?: string;
-          source_name?: string;
-        }>;
-      };
-      
-      for (const shopifyOrder of fuzzyData.orders) {
-        const shopifyTotal = parseFloat(shopifyOrder.total_price || '0');
-        const totalMatch = Math.abs(orderTotal - shopifyTotal) < 0.01; // Within 1 cent
-        
-        // Check if buyer appears in order note
-        const noteContainsBuyer = shopifyOrder.note && 
-          buyerName && 
-          shopifyOrder.note.toLowerCase().includes(buyerName.toLowerCase());
-        
-        if (totalMatch && (shopifyOrder.source_name === 'ebay' || noteContainsBuyer)) {
-          return {
-            isDuplicate: true,
-            reason: 'fuzzy_match',
-            details: `Similar order found: ${shopifyOrder.name} ($${shopifyTotal} vs $${orderTotal}, buyer match: ${!!noteContainsBuyer})`,
-          };
-        }
-      }
-    }
-  } catch (err) {
-    warn(`[OrderSync] Fuzzy duplicate check failed for ${ebayOrder.orderId}: ${err}`);
-  }
-
-  return { isDuplicate: false };
-};
-
-/**
  * Sync eBay orders to Shopify.
  * Fetches orders from eBay, deduplicates against local DB + Shopify,
  * creates new Shopify orders for any that don't exist yet.
- * 
- * SAFETY GUARDS:
- * - DRY RUN by default - must explicitly pass confirm=true to create orders
- * - Enhanced duplicate detection (DB + Shopify tag + fuzzy matching)
- * - SAFETY_MODE env var support for additional restrictions
  */
 export const syncOrders = async (
   ebayAccessToken: string,
   shopifyAccessToken: string,
-  options: { 
-    createdAfter?: string; 
-    dryRun?: boolean;
-    confirm?: boolean; // Must be true to actually create orders
-  } = {},
+  options: { createdAfter?: string; dryRun?: boolean } = {},
 ): Promise<SyncResult> => {
   const result: SyncResult = {
     imported: 0,
     skipped: 0,
     failed: 0,
     errors: [],
-    warnings: [],
   };
-
-  // SAFETY GUARD 1: DRY RUN by default
-  // After 2026-02-11 duplicate cascade incident, all imports are DRY RUN unless explicitly confirmed
-  const isDryRun = options.dryRun !== false && options.confirm !== true;
-  
-  if (isDryRun) {
-    info('[OrderSync] SAFETY: Running in DRY RUN mode - no orders will be created. Pass confirm=true to create orders.');
-  }
-
-  // SAFETY GUARD 2: Check SAFETY_MODE environment variable
-  const safetyMode = process.env.SAFETY_MODE || 'safe';
-  if (safetyMode === 'safe' && !isDryRun) {
-    info('[OrderSync] SAFETY_MODE=safe: Enhanced safety checks active');
-  }
 
   // ╔══════════════════════════════════════════════════════════════════╗
   // ║ SAFETY GUARD: NEVER pull historical orders.                     ║
@@ -233,28 +118,43 @@ export const syncOrders = async (
   });
   info(`Found ${ebayOrders.length} eBay orders (since ${createdAfter})`);
 
-  // SAFETY GUARD 3: Rate limiting for SAFETY_MODE=safe
-  let lastImportTime = 0;
-  let importsThisHour = 0;
-  const hourlyResetTime = Date.now() + 60 * 60 * 1000;
-  
   for (const ebayOrder of ebayOrders) {
     try {
-      // ENHANCED DUPLICATE DETECTION
-      const duplicateCheck = await checkForDuplicates(ebayOrder, db, shopifyAccessToken);
-      
-      if (duplicateCheck.isDuplicate) {
-        info(`[OrderSync] DUPLICATE DETECTED: ${ebayOrder.orderId} - ${duplicateCheck.reason}: ${duplicateCheck.details}`);
-        result.warnings.push({
-          ebayOrderId: ebayOrder.orderId,
-          warning: 'Duplicate order detected',
-          reason: `${duplicateCheck.reason}: ${duplicateCheck.details}`,
-        });
+      // Check local DB first (fast dedup)
+      const existing = await db
+        .select()
+        .from(orderMappings)
+        .where(eq(orderMappings.ebayOrderId, ebayOrder.orderId))
+        .get();
+
+      if (existing) {
         result.skipped++;
         continue;
       }
 
-      if (isDryRun) {
+      // Check Shopify (belt + suspenders dedup)
+      const shopifyExisting = await findExistingShopifyOrder(
+        shopifyAccessToken,
+        ebayOrder.orderId,
+      );
+      if (shopifyExisting) {
+        // Save mapping for future fast lookups
+        await db
+          .insert(orderMappings)
+          .values({
+            ebayOrderId: ebayOrder.orderId,
+            shopifyOrderId: String(shopifyExisting.id),
+            shopifyOrderName: shopifyExisting.name,
+            status: 'synced',
+            syncedAt: new Date(),
+            createdAt: new Date(),
+          })
+          .run();
+        result.skipped++;
+        continue;
+      }
+
+      if (options.dryRun) {
         info(
           `[DRY RUN] Would import: ${ebayOrder.orderId} — $${ebayOrder.pricingSummary.total.value} ${ebayOrder.pricingSummary.total.currency}`,
         );
@@ -262,41 +162,6 @@ export const syncOrders = async (
         continue;
       }
 
-      // SAFETY GUARD 4: Rate limiting in safe mode
-      if (safetyMode === 'safe') {
-        const now = Date.now();
-        
-        // Reset hourly counter if needed
-        if (now > hourlyResetTime) {
-          importsThisHour = 0;
-        }
-        
-        // Check hourly limit (5 per hour)
-        if (importsThisHour >= 5) {
-          warn(`[OrderSync] SAFETY: Hourly limit reached (5 orders/hour in safe mode). Stopping import.`);
-          result.warnings.push({
-            ebayOrderId: ebayOrder.orderId,
-            warning: 'Rate limit reached',
-            reason: 'SAFETY_MODE=safe limits to 5 orders per hour',
-          });
-          break;
-        }
-        
-        // Check per-order delay (10 seconds between imports)
-        const timeSinceLastImport = now - lastImportTime;
-        if (timeSinceLastImport < 10000 && lastImportTime > 0) {
-          const waitTime = 10000 - timeSinceLastImport;
-          info(`[OrderSync] SAFETY: Waiting ${waitTime}ms between imports (safe mode)`);
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-        }
-        
-        lastImportTime = Date.now();
-        importsThisHour++;
-      }
-
-      // Final safety check before creation
-      info(`[OrderSync] Creating Shopify order for eBay ${ebayOrder.orderId} (${safetyMode} mode)`);
-      
       // Create in Shopify
       const shopifyInput = mapEbayOrderToShopify(ebayOrder);
       const shopifyOrder = await createShopifyOrder(
@@ -317,7 +182,7 @@ export const syncOrders = async (
         })
         .run();
 
-      // Log sync with safety context
+      // Log sync
       await db
         .insert(syncLog)
         .values({
@@ -325,12 +190,12 @@ export const syncOrders = async (
           entityType: 'order',
           entityId: ebayOrder.orderId,
           status: 'success',
-          detail: `Created Shopify order ${shopifyOrder.name} (SAFETY_MODE=${safetyMode})`,
+          detail: `Created Shopify order ${shopifyOrder.name}`,
           createdAt: new Date(),
         })
         .run();
 
-      info(`[OrderSync] IMPORTED: ${ebayOrder.orderId} → Shopify ${shopifyOrder.name}`);
+      info(`Imported: ${ebayOrder.orderId} → Shopify ${shopifyOrder.name}`);
       result.imported++;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

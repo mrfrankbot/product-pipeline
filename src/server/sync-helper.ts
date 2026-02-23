@@ -6,15 +6,10 @@ import type { SyncResult } from '../sync/order-sync.js';
 /**
  * Run order sync with automatic token retrieval.
  * Returns null if tokens aren't configured yet.
- * 
- * SAFETY GUARDS:
- * - DRY RUN by default unless confirm=true is passed
- * - Respects SAFETY_MODE environment variable
  */
 export async function runOrderSync(options: { 
   dryRun?: boolean; 
   since?: string;  // ISO date to sync from (defaults to 24h ago)
-  confirm?: boolean; // Must be true to actually create orders
 } = {}): Promise<SyncResult | null> {
   try {
     const ebayToken = await getValidEbayToken();

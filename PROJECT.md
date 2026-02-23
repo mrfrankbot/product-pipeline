@@ -1,40 +1,6 @@
 # ProductPipeline — PROJECT.md
 
-> **Any agent working on this project MUST read this file first and update it before finishing.**
-> **Last updated: 2026-02-23**
-
-## Vision & Roadmap
-
-### The Goal
-Replace Marketplace Connect (Codisto) with a fully automated product pipeline for Pictureline's used camera gear business. End-to-end: a product enters the system → gets professional photos → AI description → reviewed → listed on eBay → inventory stays in sync → sold item auto-delists.
-
-### Original Scope (Jan 2026)
-- Shopify ↔ eBay two-way sync (products, orders, inventory, prices, fulfillment)
-- Web dashboard to manage it all
-- Replace Codisto ($$/month, unreliable)
-
-### What We Added
-- **AI Pipeline:** GPT-generated descriptions using product data + TIM condition grades, category suggestions
-- **Photo Pipeline:** StyleShoots drive watcher → auto-upload → background removal → professional templates → GCS storage
-- **Self-Hosted Image Processing:** BiRefNet model to replace PhotoRoom API (cost savings)
-- **Photo Editor:** Rotate/reposition/scale products, ground shadows, cutout-based editing
-- **Draft/Review System:** Nothing goes live without approval. Review queue, bulk operations
-- **TIM Integration:** Trade-in condition data flows into descriptions and Shopify tags
-- **Real-Time Inventory Sync:** Product sold on Shopify → eBay listing auto-ends. Restocked → auto-relists
-- **eBay Order Import:** Pull eBay orders into the system
-- **Chat Assistant, Help Center, Feature Requests, Analytics, Full CLI**
-
-### What's Left to Complete
-1. ✅ **eBay listing creation** — COMPLETED. Draft approval flow now creates live eBay listings
-2. **Verify webhook registration** — Inventory sync code is built but need to confirm Shopify webhooks are active on Railway
-3. **Watch mode / polling fallback** — Continuous sync as backup to webhooks
-4. **Self-hosted image fine-tuning** — Needs GPU training to match PhotoRoom quality
-5. **Auto-pipeline trigger** — StyleShoots watcher should auto-kick the full pipeline, not just upload photos
-6. **Photo editor testing** — Rewritten, awaiting Chris's review
-7. **Domain/repo rename** — Still "ebay-sync-app" everywhere
-
-### The End State
-A product gets photographed on the StyleShoots machine. The system detects the photos, processes them, generates a description, stages a draft for review. Chris approves. It goes live on Shopify AND eBay simultaneously. When it sells on either platform, inventory updates everywhere and the listing ends on the other. Zero manual data entry. Zero Codisto.
+> **Last updated: 2026-02-18. Any agent working on this project MUST update this file before finishing.**
 
 ## 1. Project Overview
 
@@ -42,13 +8,12 @@ A product gets photographed on the StyleShoots machine. The system detects the p
 
 **What it does:**
 - Watches a StyleShoots network drive for new product photos → auto-uploads to Shopify
-- Generates AI product descriptions via OpenAI GPT (with retry/backoff)
+- Generates AI product descriptions via OpenAI GPT
 - Processes product images (background removal, templates) via self-hosted service or PhotoRoom API
 - Syncs products, inventory, prices, and orders between Shopify and eBay
 - Provides a web dashboard for review, approval, and management
 - Integrates TradeInManager condition data into listings
 - Draft/staging system with review queue before publishing
-- GCS-backed photo storage with signed URLs
 
 **Business context:** Pictureline photographs used camera gear on a StyleShoots machine. Products flow from Lightspeed POS → Shopify → need AI descriptions + processed photos → eBay listings. This app automates that entire pipeline.
 
@@ -66,7 +31,6 @@ A product gets photographed on the StyleShoots machine. The system detects the p
 | **Database** | SQLite via better-sqlite3 + Drizzle ORM |
 | **AI** | OpenAI API (GPT for descriptions, category suggestions) |
 | **Image Processing** | Self-hosted Python service (FastAPI) OR PhotoRoom API (factory pattern) |
-| **Photo Storage** | Google Cloud Storage (`pictureline-product-photos` bucket) |
 | **CLI** | Commander.js (`ebaysync` binary) |
 | **Deployment** | Railway |
 
@@ -111,20 +75,19 @@ src/
     ├── pages/      # Dashboard, Pipeline, ReviewQueue, ReviewDetail, Listings,
     │               # ShopifyProducts, EbayOrders, Orders, ImageProcessor,
     │               # CategoryMapping, Analytics, Settings, Help*, Feature*
-    ├── components/ # PhotoGallery, ChatWidget, TemplateManager, PhotoEditor, etc.
+    ├── components/ # PhotoGallery, ChatWidget, TemplateManager, etc.
     └── store/      # Zustand state management
 ```
 
 ### Self-Hosted Image Service
 
 Located at `~/projects/product-pipeline/image-service/` — a separate Python FastAPI app:
-- Background removal via BiRefNet ONNX (1024×1024) — upgraded from u2net
+- Background removal (rembg or similar)
 - Image processing (resize, pad, shadow)
 - Template rendering
 - Docker-based deployment
 - Concurrency-controlled with semaphores
 - Health/metrics endpoints
-- **Status:** Core complete, fine-tuning needs GPU (≥16GB VRAM)
 
 ### Database Schema (SQLite)
 
@@ -145,58 +108,49 @@ Located at `~/projects/product-pipeline/image-service/` — a separate Python Fa
 
 DB location: `src/db/product-pipeline.db` (dev), `~/.clawdbot/ebaysync.db` (production)
 
-## 3. Current State (Feb 2026)
+## 3. Current State
 
 ### Feature Status
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| **StyleShoots Watcher** | ✅ Working | Watches `/Volumes/StyleShootsDrive/UsedCameraGear/` |
-| **AI Descriptions** | ✅ Working | GPT with TIM condition data, retry with backoff |
+| **StyleShoots Watcher** | ✅ Working | Watches `/Volumes/StyleShootsDrive/UsedCameraGear/`, auto-uploads to Shopify |
+| **AI Descriptions** | ✅ Working | OpenAI GPT generates product descriptions with TIM condition data |
 | **Image Processing** | ✅ Working | Factory pattern: self-hosted (preferred) or PhotoRoom fallback |
-| **GCS Photo Storage** | ✅ Working | `pictureline-product-photos` bucket, signed URLs |
 | **Draft/Review System** | ✅ Working | Full approval workflow with review queue UI |
-| **Photo Editor** | 🔧 Testing | Full rewrite (raw HTML overlay), awaiting Chris's testing |
-| **eBay Order Import** | ✅ Working | eBay → Shopify with dedup |
-| **eBay Listing Creation** | ✅ Working | Draft approval → live eBay listing with confirmation modal |
+| **eBay Order Import** | ✅ Working | eBay → Shopify with dedup (DB + tag-based) |
 | **Product Sync (→ eBay)** | ✅ Working | Shopify → eBay listing creation |
 | **Inventory Sync** | ✅ Working | Shopify → eBay quantity sync |
 | **Price Sync** | ✅ Working | Shopify → eBay price sync |
 | **Fulfillment Sync** | ✅ Working | Shopify → eBay shipping updates |
-| **TIM Integration** | ✅ Working | Condition data, auto-tags, AI description injection |
+| **TIM Integration** | ✅ Working | Fetches condition data, auto-tags Shopify products |
 | **Photo Templates** | ✅ Working | Saveable processing presets per category |
+| **Chat Widget** | ✅ Working | AI-powered help chat with capability awareness |
 | **Category Mapping UI** | ✅ Working | StyleShoots preset → Shopify/eBay category mapping |
 | **Manual Pipeline Trigger** | ✅ Working | Drive search + draft product support |
-| **SSE Progress Streaming** | ✅ Working | Live pipeline progress with cancel button |
 | **Web Dashboard** | ✅ Working | Full React UI with Polaris components |
-| **Bulk Pipeline** | ✅ Working | Select multiple products, run pipeline in bulk |
-| **Chat Widget** | ✅ Working | Full-featured AI assistant with capability awareness |
-| **Comprehensive CLI** | ✅ Working | All web app features accessible via CLI |
-| **Help Center** | ✅ Working | Built-in help system |
+| **Help Center** | ✅ Working | Built-in help system with admin |
 | **Feature Requests** | ✅ Working | User-facing feature request/voting system |
+| **eBay Notifications** | ✅ Implemented | Webhook endpoint for eBay platform notifications |
 | **Analytics** | ✅ Basic | Recharts-based analytics page |
 
-### Deployment
+### Recent Work (git log)
 
-| Environment | URL | Status |
-|-------------|-----|--------|
-| **Railway** | ebay-sync-app-production.up.railway.app | ✅ RUNNING (verified 2026-02-23) |
-| **Local dev** | localhost:3000 | Standard dev setup |
-
-**Note:** Railway domain was never renamed from `ebay-sync-app`. The `product-pipeline-production` URL doesn't exist.
-**Auth:** API key via `API_KEY` env var on Railway, sent as `X-API-Key` header.
-**Shopify embedded:** App runs inside Shopify admin at usedcameragear.myshopify.com, not as a standalone site.
-
-### Git Remotes
-- `origin` → `mrfrankbot/product-pipeline` (Frank's fork)
-- `chris` → `chrisbachmaxwell/product-pipeline` (Chris's repo)
-- Branch: `main` only (no railway branch — that's the TIM repo)
+1. **Self-hosted image processing** — Factory pattern for local vs PhotoRoom (latest)
+2. **Manual pipeline trigger** — Drive search + draft product support
+3. **TIM condition tags** — Auto-tag Shopify products with trade-in condition data
+4. **TIM integration** — Fetch condition data from trades.pictureline.com
+5. **Review queue redesign** — Full-page Shopify-style review detail
+6. **Product dedup fix** — 105 duplicate products from Shopify API
+7. **eBay Orders import** — Browse + import eBay orders
+8. **Product Notes** — Notes feature for products
+9. **Pipeline review modal** — Inline approve description, photos, eBay listing
 
 ### Known Issues
-- CORS references `ebay-sync-app-production.up.railway.app` (this IS the live domain, but should be renamed)
-- Railway domain not yet renamed from ebay-sync-app
-- GitHub repo on Chris's account not yet renamed from original name
+
+- CORS still references old Railway domain (`ebay-sync-app-production.up.railway.app`)
 - Logs page disabled (`.tsx.bak`)
+- GitHub repo not yet renamed from original name
 
 ## 4. Key Integrations
 
@@ -213,39 +167,31 @@ DB location: `src/db/product-pipeline.db` (dev), `~/.clawdbot/ebaysync.db` (prod
 - **Seller:** usedcam-0
 - **Webhooks:** Platform notifications at `/webhooks/ebay`
 
-### Google Cloud Storage
-- **Bucket:** `pictureline-product-photos`
-- **Permissions:** objectAdmin + serviceAccountTokenCreator
-- **Usage:** Draft photo storage, processed images, cutout files (`_cutout.png`)
-- **Auth:** GCS service account key (env var or credential file)
-
 ### Image Processing
-- **Primary:** Self-hosted FastAPI service (`image-service/`) — BiRefNet ONNX background removal
+- **Primary:** Self-hosted FastAPI service (`image-service/`) — background removal, processing, templates
   - URL configurable via `IMAGE_SERVICE_URL` (default: `http://localhost:8100`)
   - Docker-based, concurrency-controlled
 - **Fallback:** PhotoRoom API (requires `PHOTOROOM_API_KEY`)
 - **Selection:** `IMAGE_PROCESSOR` env var: `self-hosted` | `photoroom` | `auto` (default)
 - **Factory:** `image-service-factory.ts` handles provider selection with health checks
-- **Pipeline:** 4000×4000 output canvas, 400px min padding, images resized to 2000px before processing, 60s/30s/5min timeouts, 3x retry with backoff
 
 ### StyleShoots Drive
 - **Watch path:** `/Volumes/StyleShootsDrive/UsedCameraGear/`
 - **Flow:** Folder appears → stabilize 30s → parse folder name → fuzzy match Shopify product → upload images
-- **Preset folders** map to product categories
+- **Preset folders** map to product categories (e.g. "Trade-Ins - Small Lenses")
 - **SMB mount** with reconnect handling
 
 ### TradeInManager (TIM)
 - **URL:** https://trades.pictureline.com
-- **Auth:** Session-based login (mrfrankbot@gmail.com)
+- **Auth:** Session-based login (mrfrankbot@gmail.com, password in `~/.clawdbot/credentials/tradeinmanager.txt`)
 - **Data:** Condition grades, grader notes, serial numbers, pricing
 - **Matching:** SKU-based matching between TIM items and Shopify products
-- **Auto-tagging:** Applies `condition-{value}` tags to Shopify products
+- **Auto-tagging:** Applies condition tags to Shopify products
 
 ### OpenAI
 - **Purpose:** Generate product descriptions, suggest eBay categories
 - **Model:** GPT (via `openai` npm package)
-- **Context:** Product title, vendor, TIM condition data, product notes
-- **Reliability:** `withRetry()` helper with exponential backoff (commit c7c3076)
+- **Context:** Includes product title, vendor, TIM condition data, product notes
 
 ## 5. Configuration & Environment
 
@@ -265,12 +211,10 @@ All stored in `~/.clawdbot/credentials/`:
 |----------|---------|---------|
 | `PORT` | Server port | `3000` |
 | `OPENAI_API_KEY` | OpenAI API for AI descriptions | Required |
-| `PHOTOROOM_API_KEY` | PhotoRoom API key (fallback) | Optional |
+| `PHOTOROOM_API_KEY` | PhotoRoom API key (fallback image processor) | Optional |
 | `IMAGE_PROCESSOR` / `IMAGE_SERVICE` | Image provider: `self-hosted`, `photoroom`, `auto` | `auto` |
 | `IMAGE_SERVICE_URL` | Self-hosted image service URL | `http://localhost:8100` |
-| `GCS_SERVICE_ACCOUNT_KEY` | Google Cloud Storage credentials | Required for photo storage |
-| `SAFETY_MODE` | Order sync safety: `safe` (rate limits + confirmation) or `normal` | `safe` |
-| `EBAY_APP_ID` | eBay App ID | From file |
+| `EBAY_APP_ID` | eBay App ID (overrides credential file) | From file |
 | `EBAY_DEV_ID` | eBay Dev ID | From file |
 | `EBAY_CERT_ID` | eBay Cert ID | From file |
 | `EBAY_RU_NAME` | eBay Redirect URI Name | From file |
@@ -282,7 +226,7 @@ All stored in `~/.clawdbot/credentials/`:
 - Server runs `npm run build && npm start`
 - Build: `tsc` (server) + `vite build` (frontend)
 - Static frontend served by Express from `dist/web/`
-- Domain: `ebay-sync-app-production.up.railway.app` (not yet renamed)
+- Domain: `ebay-sync-app-production.up.railway.app` (needs rename)
 - SQLite DB persists on Railway volume
 
 ## 6. How to Continue
@@ -339,6 +283,8 @@ npm test              # vitest run
 npm run test:watch    # vitest watch mode
 ```
 
+Test files: `src/services/__tests__/`
+
 ## 7. Decision Log
 
 | Decision | Rationale |
@@ -346,59 +292,40 @@ npm run test:watch    # vitest watch mode
 | **SQLite over Postgres** | Single-user app, Railway volume support, zero-config, fast |
 | **Drizzle ORM** | Type-safe, lightweight, great SQLite support |
 | **Express 5** | Familiar, async route support, serves both API + static frontend |
-| **Factory pattern for images** | Self-hosted saves PhotoRoom costs; factory enables seamless fallback |
-| **GCS for photo storage** | Reliable, signed URLs, integrates with pipeline |
-| **Draft/staging system** | Chris wanted to review AI descriptions before publishing |
-| **Capability registry** | Chat widget and UI auto-discover features |
-| **BiRefNet over u2net** | Higher quality background removal (1024×1024) |
-| **Rename from "ebay-sync-app"** | Scope grew far beyond eBay sync |
+| **Factory pattern for images** | Self-hosted service saves PhotoRoom API costs; factory enables seamless fallback |
+| **File-based credentials** | Predates env vars; supports both now (env overrides files) |
+| **Draft/staging system** | Chris wanted to review AI descriptions before publishing to Shopify |
+| **Capability registry** | Chat widget and UI auto-discover features; no manual prompt maintenance |
+| **Chokidar watcher** | Reliable cross-platform file watching with debounce/stabilization |
+| **Rename from "ebay-sync-app"** | Scope grew far beyond eBay sync; now a full product pipeline |
 | **TIM integration** | Condition data from trade-ins improves AI description quality |
 
-## 8. Next Steps (Prioritized)
+## 8. Next Steps
 
-1. **Verify Railway deployment is running** — Check if app is live and functional
-2. **Fix CORS domain** — Update from old `ebay-sync-app-production` domain
-3. **Rename Railway domain + GitHub repo** — Match ProductPipeline name
-4. **Photo editor testing** — Chris needs to test in Shopify admin
-5. **eBay listing creation** — Full automated Shopify → eBay listing push
-6. **Re-enable Logs page** — Currently `.tsx.bak`
-7. **Image service deployment** — Deploy self-hosted service to Railway
-8. **Auto-pipeline trigger** — Auto-run pipeline when StyleShoots watcher detects photos
-9. **Batch operations** — Process multiple products through pipeline at once
-10. **Self-hosted image fine-tuning** — Needs GPU rental (≥16GB VRAM)
+**Prioritized remaining work:**
 
-## Changelog
+1. **Rename Railway domain** — Still using `ebay-sync-app-production.up.railway.app`
+2. **Rename GitHub repo** — Match new ProductPipeline name
+3. **Re-enable Logs page** — Currently `.tsx.bak`, needs fix
+4. **eBay listing creation** — Full automated Shopify → eBay listing push (partially implemented in `listing-manager.ts`)
+5. **Image service deployment** — Deploy self-hosted image service to Railway alongside main app
+6. **Auto-pipeline trigger** — Automatically run pipeline when StyleShoots watcher detects + uploads photos
+7. **Batch operations** — Process multiple products through pipeline at once
+8. **eBay category mapping improvements** — Better auto-suggestion, more category coverage
+9. **Webhook reliability** — Retry/queue for failed Shopify/eBay webhooks
+10. **Auth hardening** — Current API key auth is basic; consider proper session auth for web UI
 
-### 2026-02-23
-- **eBay Listing Creation Flow** — Added "Approve Draft → Create eBay Listing" functionality
-  - New API endpoints: POST /api/drafts/:id/list-on-ebay and POST /api/drafts/:id/preview-ebay-listing
-  - Enhanced ReviewDetail.tsx with "Approve & List on eBay" button and confirmation modal
-  - Added eBay listing preview (dry run) functionality
-  - Registered new capabilities in capabilities registry
-  - Added product_notes field to database schema
-  - Safety: Single product, explicit click only - no batch operations or auto-publish
-- **CRITICAL: Order Sync Safety Guards** — After 2026-02-11 duplicate cascade incident
-  - **DRY RUN by default:** All order imports now DRY RUN unless `confirm=true` is explicitly passed
-  - **Enhanced duplicate detection:** Check order_mappings DB + Shopify tag search + fuzzy matching (total + date + buyer)
-  - **SAFETY_MODE env var:** Default "safe" mode enforces rate limiting (max 1 order per 10 seconds, 5 per hour)
-  - **UI warning banner:** Prominent critical banner in EbayOrders.tsx about Lightspeed POS downstream impact
-  - **API endpoint guards:** Both /api/sync/trigger and /api/ebay/orders/import respect safety guards
-  - **Enhanced logging:** All safety actions logged with context and warnings array in SyncResult
-  - **Updated capabilities:** Order sync capability updated to reflect new safety features
+## Recent Changes
 
-### 2026-02-21
-- OpenAI `withRetry()` helper with exponential backoff (commit c7c3076)
-
-### 2026-02-18
-- Photo editor full rewrite (raw HTML overlay, GCS cutouts, native sliders)
-- GCS photo storage (`pictureline-product-photos` bucket, signed URLs)
-- Pipeline overhaul: 4000×4000 canvas, 2000px resize, timeouts, SSE progress, cancel button
-- Product detail page redesign (commit 3ab5618)
-- AI description prompt rewritten (no hype)
-
-### 2026-02-17
-- Self-hosted image processing: BiRefNet ONNX, factory pattern (commit 630972f)
-- Training data collected (254 originals, 94 matched pairs, 1346 lines fine-tuning code)
-- TIM condition integration (tags, AI injection, manual pipeline trigger)
-- Category mapping UI (commit fe37a46)
-- Review queue nav fix, markdown→HTML, inline approval, rename to ProductPipeline
+### 2026-02-18: Product Detail Page Redesign
+Redesigned `ShopifyProductDetail` in `src/web/pages/ShopifyProducts.tsx` to match ReviewDetail quality:
+- **Single CTA**: "Run Pipeline" appears only in page header (removed from Quick Actions and sidebar)
+- **Removed Quick Actions card**: External links moved to page `secondaryActions`
+- **Status badges in title**: TIM Condition and eBay status shown as compact badges next to product title
+- **Pipeline as sidebar hero**: Pipeline progress tracker is now the top sidebar card
+- **Beautiful empty states**: Photos section shows a dashed drop-zone with Drive search CTA when empty
+- **Conditional cards**: TIM Condition and eBay cards only render when data exists (no empty cards)
+- **Consolidated Details card**: Merged product info into a single compact card, tags shown inline
+- **Subtle animations**: Fade-in animation on page load
+- **Consistent spacing**: `gap="400"` throughout, matching ReviewDetail patterns
+- **All functionality preserved**: No features removed, only visual reorganization

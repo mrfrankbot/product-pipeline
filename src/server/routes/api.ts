@@ -939,47 +939,18 @@ router.put('/api/product-overrides/:shopifyProductId', async (req: Request, res:
 /** POST /api/sync/trigger — Manually trigger a full sync */
 router.post('/api/sync/trigger', async (req: Request, res: Response) => {
   const since = req.query.since as string;
-  const dryRun = req.query.dry !== 'false'; // DRY RUN by default
-  const confirm = req.query.confirm === 'true'; // Must explicitly confirm
+  const dryRun = req.query.dry === 'true';
   
-  // SAFETY GUARD: Warn about DRY RUN default behavior
-  if (!confirm && !dryRun) {
-    // If they didn't pass confirm=true but tried to disable dry run, force dry run
-    info('[API] SAFETY: Forcing DRY RUN mode. Pass confirm=true to create orders.');
-  }
-  
-  const actualDryRun = dryRun || !confirm;
-  const safetyMode = process.env.SAFETY_MODE || 'safe';
-  
-  info(`[API] Manual sync triggered${since ? ` (since: ${since})` : ''} | Mode: ${actualDryRun ? 'DRY RUN' : 'LIVE'} | Safety: ${safetyMode} | Confirm: ${confirm}`);
-  
-  res.json({ 
-    ok: true, 
-    message: actualDryRun ? 'Sync triggered (DRY RUN)' : 'Sync triggered (LIVE)', 
-    since, 
-    dryRun: actualDryRun, 
-    confirm, 
-    safetyMode,
-    warning: actualDryRun ? 'No orders will be created. Pass confirm=true to create orders.' : undefined
-  });
+  info(`[API] Manual sync triggered${since ? ` (since: ${since})` : ''}${dryRun ? ' (DRY RUN)' : ''}`);
+  res.json({ ok: true, message: 'Sync triggered', since, dryRun });
 
   try {
     const { runOrderSync } = await import('../sync-helper.js');
     const result = await runOrderSync({ 
-      dryRun: actualDryRun, 
-      confirm,
+      dryRun, 
       since: since || undefined  // Use since param or fall back to default 24h
     });
-    
-    const warnings = result?.warnings?.length ? ` | ${result.warnings.length} warnings` : '';
-    info(`[API] Manual sync complete: ${result?.imported ?? 0} imported, ${result?.skipped ?? 0} skipped, ${result?.failed ?? 0} failed${warnings}`);
-    
-    // Log warnings if any
-    if (result?.warnings?.length) {
-      for (const warning of result.warnings) {
-        info(`[API] WARNING: ${warning.ebayOrderId} - ${warning.warning}: ${warning.reason}`);
-      }
-    }
+    info(`[API] Manual sync complete: ${result?.imported ?? 0} orders imported, ${result?.skipped ?? 0} skipped, ${result?.failed ?? 0} failed`);
   } catch (err) {
     info(`[API] Manual sync error: ${err}`);
   }
