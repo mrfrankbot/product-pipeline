@@ -367,12 +367,8 @@ const ReviewDetail: React.FC = () => {
                   <>
                     <Text variant="headingSm" as="h3" tone="subdued">Draft Photos (New)</Text>
                     <DraggablePhotoGrid
-                      images={draftImages}
-                      draftId={draftId}
-                      isPending={draft.status === 'pending'}
-                      onReorder={handleReorderPhotos}
-                      onEditPhoto={(i) => setEditingPhotoIndex(i)}
-                      onLightbox={(src) => setLightboxSrc(src)}
+                      imageUrls={draftImages}
+                      onChange={handleReorderPhotos}
                     />
                     <Divider />
                     <Text variant="headingSm" as="h3" tone="subdued">Current Live Photos</Text>
@@ -403,12 +399,8 @@ const ReviewDetail: React.FC = () => {
                   /* Only one set of images — draft (draggable) or live (static) */
                   draftImages.length > 0 ? (
                     <DraggablePhotoGrid
-                      images={draftImages}
-                      draftId={draftId}
-                      isPending={draft.status === 'pending'}
-                      onReorder={handleReorderPhotos}
-                      onEditPhoto={(i) => setEditingPhotoIndex(i)}
-                      onLightbox={(src) => setLightboxSrc(src)}
+                      imageUrls={draftImages}
+                      onChange={handleReorderPhotos}
                     />
                   ) : (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
