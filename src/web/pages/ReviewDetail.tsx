@@ -32,6 +32,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, useProductNotes, useSaveProductNotes } from '../hooks/useApi';
 import { useAppStore } from '../store';
 import ProductPhotoEditor from '../components/ProductPhotoEditor';
+import DraggablePhotoGrid from '../components/DraggablePhotoGrid';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -240,6 +241,30 @@ const ReviewDetail: React.FC = () => {
     },
   });
 
+  // Photo reorder mutation — called by DraggablePhotoGrid on drop or bulk transform
+  const reorderMutation = useMutation({
+    mutationFn: (newImages: string[]) =>
+      apiClient.put(`/drafts/${draftId}`, { images: newImages }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['draft-detail', draftId] });
+    },
+    onError: (err) => {
+      addNotification({
+        type: 'error',
+        title: 'Photo save failed',
+        message: err instanceof Error ? err.message : 'Unknown error',
+        autoClose: 6000,
+      });
+    },
+  });
+
+  const handleReorderPhotos = useCallback(
+    async (newImages: string[]): Promise<void> => {
+      await reorderMutation.mutateAsync(newImages);
+    },
+    [reorderMutation],
+  );
+
   // eBay listing is now handled by the full EbayListingPrep page
   // Navigate to /review/:id/ebay-prep for the full listing flow
 
@@ -341,51 +366,14 @@ const ReviewDetail: React.FC = () => {
                   /* Side-by-side before/after */
                   <>
                     <Text variant="headingSm" as="h3" tone="subdued">Draft Photos (New)</Text>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
-                      {draftImages.map((img, i) => (
-                        <div
-                          key={`draft-${i}`}
-                          style={{
-                            position: 'relative',
-                            borderRadius: '8px',
-                            overflow: 'hidden',
-                            border: '2px solid #e3e5e7',
-                            aspectRatio: '1',
-                          }}
-                        >
-                          <img
-                            src={img}
-                            alt={`Draft photo ${i + 1}`}
-                            onClick={() => setLightboxSrc(img)}
-                            style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'zoom-in' }}
-                          />
-                          {draft.status === 'pending' && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setEditingPhotoIndex(i); }}
-                              style={{
-                                position: 'absolute',
-                                bottom: '8px',
-                                right: '8px',
-                                background: 'rgba(0,0,0,0.7)',
-                                color: '#fff',
-                                border: 'none',
-                                borderRadius: '6px',
-                                padding: '4px 10px',
-                                fontSize: '12px',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                              }}
-                              title="Edit photo position/rotation"
-                            >
-                              ✏️ Edit
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
+                    <DraggablePhotoGrid
+                      images={draftImages}
+                      draftId={draftId}
+                      isPending={draft.status === 'pending'}
+                      onReorder={handleReorderPhotos}
+                      onEditPhoto={(i) => setEditingPhotoIndex(i)}
+                      onLightbox={(src) => setLightboxSrc(src)}
+                    />
                     <Divider />
                     <Text variant="headingSm" as="h3" tone="subdued">Current Live Photos</Text>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
@@ -412,49 +400,39 @@ const ReviewDetail: React.FC = () => {
                     </div>
                   </>
                 ) : (
-                  /* Only one set of images */
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
-                    {(draftImages.length > 0 ? draftImages : liveImages).map((img, i) => (
-                      <div
-                        key={i}
-                        style={{
-                          position: 'relative',
-                          borderRadius: '8px',
-                          overflow: 'hidden',
-                          border: '2px solid #e3e5e7',
-                          aspectRatio: '1',
-                        }}
-                      >
-                        <img
-                          src={img}
-                          alt={`Photo ${i + 1}`}
+                  /* Only one set of images — draft (draggable) or live (static) */
+                  draftImages.length > 0 ? (
+                    <DraggablePhotoGrid
+                      images={draftImages}
+                      draftId={draftId}
+                      isPending={draft.status === 'pending'}
+                      onReorder={handleReorderPhotos}
+                      onEditPhoto={(i) => setEditingPhotoIndex(i)}
+                      onLightbox={(src) => setLightboxSrc(src)}
+                    />
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
+                      {liveImages.map((img, i) => (
+                        <div
+                          key={i}
                           onClick={() => setLightboxSrc(img)}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'zoom-in' }}
-                        />
-                        {draft.status === 'pending' && draftImages.length > 0 && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setEditingPhotoIndex(i); }}
-                            style={{
-                              position: 'absolute',
-                              bottom: '8px',
-                              right: '8px',
-                              background: 'rgba(0,0,0,0.7)',
-                              color: '#fff',
-                              border: 'none',
-                              borderRadius: '6px',
-                              padding: '4px 10px',
-                              fontSize: '12px',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                            }}
-                            title="Edit photo position/rotation"
-                          >
-                            ✏️ Edit
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                          style={{
+                            cursor: 'zoom-in',
+                            borderRadius: '8px',
+                            overflow: 'hidden',
+                            border: '2px solid #e3e5e7',
+                            aspectRatio: '1',
+                          }}
+                        >
+                          <img
+                            src={img}
+                            alt={`Live photo ${i + 1}`}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )
                 )}
               </BlockStack>
             </Card>
