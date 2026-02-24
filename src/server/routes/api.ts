@@ -8,6 +8,29 @@ import { CATEGORY_RULES } from '../../sync/category-mapper.js';
 
 const router = Router();
 
+/** GET /api/image-proxy — Proxy external images to avoid CORS issues (for canvas editing) */
+router.get('/api/image-proxy', async (req: Request, res: Response) => {
+  try {
+    const url = req.query.url as string;
+    if (!url) return res.status(400).json({ error: 'url param required' });
+    // Only allow GCS and Shopify CDN URLs
+    const allowed = ['storage.googleapis.com', 'cdn.shopify.com'];
+    const parsed = new URL(url);
+    if (!allowed.some(h => parsed.hostname.endsWith(h))) {
+      return res.status(403).json({ error: 'URL not allowed' });
+    }
+    const response = await fetch(url);
+    if (!response.ok) return res.status(response.status).send('Upstream error');
+    const contentType = response.headers.get('content-type') || 'image/png';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    const buffer = Buffer.from(await response.arrayBuffer());
+    res.send(buffer);
+  } catch (err) {
+    res.status(500).json({ error: 'Proxy failed' });
+  }
+});
+
 /** GET /api/status — Sync status overview */
 router.get('/api/status', async (_req: Request, res: Response) => {
   try {

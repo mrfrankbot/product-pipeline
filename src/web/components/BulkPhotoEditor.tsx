@@ -19,13 +19,21 @@ interface BulkPhotoEditorProps {
   onCancel: () => void;
 }
 
+function proxyUrl(url: string): string {
+  // Route external URLs through our proxy to avoid CORS canvas tainting
+  if (url.includes('storage.googleapis.com') || url.includes('cdn.shopify.com')) {
+    return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+  }
+  return url;
+}
+
 async function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error(`Failed to load: ${url}`));
-    img.src = url;
+    img.src = proxyUrl(url);
   });
 }
 
