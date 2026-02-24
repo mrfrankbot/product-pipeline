@@ -176,4 +176,14 @@ Format:
 Description of what changed and why.
 ```
 
-This file was last updated: **2026-02-23**
+This file was last updated: **2026-02-24**
+
+---
+
+## Help Documentation Rule
+
+When shipping a new feature, you MUST add a help article for it:
+
+1. Add an INSERT/upsert to `src/server/seeds/help-articles.ts`
+2. Use the appropriate category (Getting Started, Products, eBay, Pipeline, Settings, etc.)
+3. Write the answer in clear, concise language. Include step-by-step instructions where relevant.

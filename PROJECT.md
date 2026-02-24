@@ -319,6 +319,22 @@ Test files: `src/services/__tests__/`
 
 ## Recent Changes
 
+### 2026-02-24: Help Center — Seed Articles for All Shipped Features
+
+Added a dedicated seed script for Help Center articles covering every shipped feature.
+
+**What changed:**
+- **`src/server/seeds/help-articles.ts`** (new): Standalone seed module with 16 articles across 5 categories (Getting Started, Products, eBay, Pipeline, Settings). Uses `INSERT OR IGNORE` so it's safe to run on every startup.
+- **`src/server/index.ts`**: Calls `seedHelpArticles(rawDb)` on startup after other seeds.
+- **`AGENTS.md`**: Added "Help Documentation Rule" — agents must add a help article whenever shipping a new feature.
+
+**Articles added:**
+- Getting Started: What is ProductPipeline?, How do I get started?
+- Products: Review Queue workflow, drag-and-drop photo reordering, bulk photo editing, photo editor, image processing pipeline trigger
+- eBay: List a product, change eBay category (searchable dropdown), condition descriptions (auto-populated from grades), eBay order sync + safety guards
+- Pipeline: Automated pipeline (StyleShoots → Shopify → eBay), AI descriptions, pipeline settings
+- Settings: Connect Shopify, connect eBay, edit condition descriptions
+
 ### 2026-02-23: eBay Listing Prep Page — Full Visibility Before Listing
 
 Redesigned the "Approve & List on eBay" flow to give full visibility and control before creating a listing.

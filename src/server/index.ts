@@ -27,6 +27,7 @@ import timRoutes from './routes/tim.js';
 import { apiKeyAuth, rateLimit } from './middleware/auth.js';
 import { getCapabilities, getNewCapabilities } from './capabilities.js';
 import { initPhotoTemplatesTable } from '../services/photo-templates.js';
+import { seedHelpArticles } from './seeds/help-articles.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -167,6 +168,9 @@ async function start() {
 
     // Seed default settings
     seedDefaultSettings(rawDb);
+
+    // Seed help articles (idempotent — skips existing articles)
+    seedHelpArticles(rawDb);
 
     // Seed default field mappings
     // seedDefaultMappings handled by db/client.ts using attribute_mappings table
