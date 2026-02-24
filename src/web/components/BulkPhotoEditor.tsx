@@ -19,22 +19,58 @@ interface BulkPhotoEditorProps {
   onCancel: () => void;
 }
 
-function proxyUrl(url: string): string {
-  // Route external URLs through our proxy to avoid CORS canvas tainting
-  if (url.includes('storage.googleapis.com') || url.includes('cdn.shopify.com')) {
-    return `/api/image-proxy?url=${encodeURIComponent(url)}`;
-  }
-  return url;
+/** Build proxy URL for GCS, trying cutout variant first */
+function proxyGcs(gcsPath: string): string {
+  return `/api/images/proxy?url=${encodeURIComponent(gcsPath)}`;
 }
 
-async function loadImage(url: string): Promise<HTMLImageElement> {
+/** Extract GCS base path + index from a draft image URL */
+function extractCutoutUrl(url: string): string | null {
+  // Match patterns like: .../processed/10130105925923_0.png (possibly with signature)
+  const match = url.match(/processed\/(\d{10,})_(\d+)\.png/);
+  if (!match) return null;
+  return `https://storage.googleapis.com/pictureline-product-photos/processed/${match[1]}_${match[2]}_cutout.png`;
+}
+
+/** Try loading an image from a list of URLs (first success wins) */
+function loadImageWithFallbacks(urls: string[]): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`Failed to load: ${url}`));
-    img.src = proxyUrl(url);
+    let idx = 0;
+    const tryNext = () => {
+      if (idx >= urls.length) {
+        reject(new Error('All image sources failed'));
+        return;
+      }
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => resolve(img);
+      img.onerror = () => { idx++; tryNext(); };
+      img.src = urls[idx];
+    };
+    tryNext();
   });
+}
+
+/** Load the cutout version of an image (transparent bg, no shadow/watermark) */
+async function loadCutoutImage(draftUrl: string): Promise<HTMLImageElement> {
+  const urls: string[] = [];
+  
+  // Try cutout first (transparent, product only)
+  const cutoutGcs = extractCutoutUrl(draftUrl);
+  if (cutoutGcs) {
+    urls.push(proxyGcs(cutoutGcs));
+    // Then try the clean version (white bg, no watermark)
+    urls.push(proxyGcs(cutoutGcs.replace('_cutout.png', '_clean.png')));
+  }
+  
+  // Fallback: proxy the original URL
+  if (draftUrl.includes('storage.googleapis.com')) {
+    urls.push(proxyGcs(draftUrl));
+  } else {
+    urls.push(draftUrl);
+  }
+  
+  return loadImageWithFallbacks(urls);
 }
 
 function renderToCanvas(
@@ -89,7 +125,7 @@ const PreviewCard: React.FC<{
 
   useEffect(() => {
     let cancelled = false;
-    loadImage(url).then((img) => {
+    loadCutoutImage(url).then((img) => {
       if (cancelled) return;
       imgRef.current = img;
       const preview = renderToCanvas(img, scale, rotation, PREVIEW_SIZE);
@@ -183,7 +219,7 @@ const BulkPhotoEditor: React.FC<BulkPhotoEditorProps> = ({
 
       for (let i = 0; i < selectedIndices.length; i++) {
         const idx = selectedIndices[i];
-        const img = await loadImage(allImageUrls[idx]);
+        const img = await loadCutoutImage(allImageUrls[idx]);
         const canvas = renderToCanvas(img, scale, rotation, CANVAS_SIZE);
         const blob = await new Promise<Blob>((resolve, reject) => {
           canvas.toBlob(b => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png');
