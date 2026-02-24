@@ -3,6 +3,8 @@ import { getRawDb } from '../../db/client.js';
 import { getValidEbayToken } from '../../ebay/token-manager.js';
 import { info } from '../../utils/logger.js';
 import { fetchAllShopifyProductsOverview, fetchDetailedShopifyProduct } from '../../shopify/products.js';
+import { GRADE_DESCRIPTIONS } from '../../config/condition-descriptions.js';
+import { CATEGORY_RULES } from '../../sync/category-mapper.js';
 
 const router = Router();
 
@@ -283,6 +285,84 @@ router.put('/api/settings', async (req: Request, res: Response) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update settings', detail: String(err) });
+  }
+});
+
+/** GET /api/settings/condition-descriptions — Get condition grade descriptions (DB or defaults) */
+router.get('/api/settings/condition-descriptions', async (_req: Request, res: Response) => {
+  try {
+    const db = await getRawDb();
+    const row = db.prepare(`SELECT value FROM settings WHERE key = 'condition_descriptions'`).get() as any;
+    if (row?.value) {
+      try {
+        res.json(JSON.parse(row.value));
+        return;
+      } catch {
+        // fall through to defaults
+      }
+    }
+    res.json(GRADE_DESCRIPTIONS);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch condition descriptions', detail: String(err) });
+  }
+});
+
+/** PUT /api/settings/condition-descriptions — Save condition grade descriptions to DB */
+router.put('/api/settings/condition-descriptions', async (req: Request, res: Response) => {
+  try {
+    const db = await getRawDb();
+    const descriptions = req.body as Record<string, string>;
+    if (typeof descriptions !== 'object' || Array.isArray(descriptions)) {
+      res.status(400).json({ error: 'Expected an object of grade → description' });
+      return;
+    }
+    db.prepare(
+      `INSERT INTO settings (key, value, updatedAt) VALUES (?, ?, datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updatedAt = excluded.updatedAt`
+    ).run('condition_descriptions', JSON.stringify(descriptions));
+    info('[API] Condition descriptions updated');
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to save condition descriptions', detail: String(err) });
+  }
+});
+
+/** GET /api/settings/ebay-categories — Get eBay category rules (DB or defaults) */
+router.get('/api/settings/ebay-categories', async (_req: Request, res: Response) => {
+  try {
+    const db = await getRawDb();
+    const row = db.prepare(`SELECT value FROM settings WHERE key = 'ebay_category_rules'`).get() as any;
+    if (row?.value) {
+      try {
+        res.json(JSON.parse(row.value));
+        return;
+      } catch {
+        // fall through to defaults
+      }
+    }
+    res.json(CATEGORY_RULES);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch eBay categories', detail: String(err) });
+  }
+});
+
+/** PUT /api/settings/ebay-categories — Save eBay category rules to DB */
+router.put('/api/settings/ebay-categories', async (req: Request, res: Response) => {
+  try {
+    const db = await getRawDb();
+    const rules = req.body;
+    if (!Array.isArray(rules)) {
+      res.status(400).json({ error: 'Expected an array of category rules' });
+      return;
+    }
+    db.prepare(
+      `INSERT INTO settings (key, value, updatedAt) VALUES (?, ?, datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updatedAt = excluded.updatedAt`
+    ).run('ebay_category_rules', JSON.stringify(rules));
+    info(`[API] eBay category rules updated (${rules.length} rules)`);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to save eBay categories', detail: String(err) });
   }
 });
 
