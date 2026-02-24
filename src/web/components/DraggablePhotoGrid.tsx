@@ -292,6 +292,7 @@ const DraggablePhotoGrid: React.FC<DraggablePhotoGridProps> = ({
 }) => {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
 
   const toggleSelect = useCallback((index: number) => {
     setSelectedIndices((prev) => {
@@ -306,12 +307,13 @@ const DraggablePhotoGrid: React.FC<DraggablePhotoGridProps> = ({
     (updatedImages: string[]) => {
       onChange(updatedImages);
       setSelectedIndices(new Set());
+      setBulkEditOpen(false);
     },
     [onChange],
   );
 
   const handleBulkCancel = useCallback(() => {
-    setSelectedIndices(new Set());
+    setBulkEditOpen(false);
   }, []);
 
   // Stable IDs — append original index so dupes get unique keys
@@ -404,15 +406,46 @@ const DraggablePhotoGrid: React.FC<DraggablePhotoGridProps> = ({
             {selectedIndices.size === imageUrls.length ? 'Deselect All' : 'Select All'}
           </button>
           {hasSelection && (
-            <span style={{ fontSize: '12px', color: '#666' }}>
-              {selectedIndices.size} selected — use toolbar below to resize/rotate
-            </span>
+            <>
+              <span style={{ fontSize: '12px', color: '#666' }}>
+                {selectedIndices.size} selected
+              </span>
+              <button
+                onClick={() => setBulkEditOpen(true)}
+                style={{
+                  background: '#0064d3',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '4px 14px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Edit Selected
+              </button>
+              <button
+                onClick={() => setSelectedIndices(new Set())}
+                style={{
+                  background: 'none',
+                  border: '1px solid #ccc',
+                  borderRadius: '4px',
+                  padding: '4px 10px',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  color: '#666',
+                }}
+              >
+                Clear
+              </button>
+            </>
           )}
         </div>
       )}
 
-      {/* Bulk editor panel */}
-      {hasSelection && (
+      {/* Bulk editor modal */}
+      {bulkEditOpen && hasSelection && (
         <BulkPhotoEditor
           selectedIndices={Array.from(selectedIndices).sort((a, b) => a - b)}
           allImageUrls={imageUrls}
