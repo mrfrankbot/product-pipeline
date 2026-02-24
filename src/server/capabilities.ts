@@ -152,6 +152,16 @@ registerCapability({
 });
 
 registerCapability({
+  id: 'ebay-listing-metadata',
+  name: 'eBay Listing Metadata',
+  description: 'Fetch eBay category options and condition grade descriptions for listing prep.',
+  category: 'ebay',
+  examplePrompts: ['show ebay categories', 'list condition descriptions', 'fetch listing metadata'],
+  apiEndpoints: ['GET /api/ebay/categories', 'GET /api/ebay/condition-descriptions'],
+  addedAt: '2026-02-24',
+});
+
+registerCapability({
   id: 'auto-list',
   name: 'Auto-Listing Pipeline',
   description: 'Automatically list new Shopify products on eBay with AI-generated titles and descriptions.',

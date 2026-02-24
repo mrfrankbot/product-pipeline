@@ -1641,4 +1641,8 @@ router.put('/api/products/:productId/notes', async (req: Request, res: Response)
   }
 });
 
+// Note: /api/ebay/categories and /api/ebay/condition-descriptions are
+// served by src/server/routes/ebay-metadata.ts (registered separately).
+
 export default router;
+

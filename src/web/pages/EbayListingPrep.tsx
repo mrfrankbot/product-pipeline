@@ -6,7 +6,7 @@
  * Includes a real eBay-style preview of how the listing will look.
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   Page,
   Layout,
@@ -27,20 +27,22 @@ import {
   Thumbnail,
   Tooltip,
   Icon,
+  Combobox,
+  Listbox,
 } from '@shopify/polaris';
 import {
   ArrowLeftIcon,
   ExternalIcon,
   DeleteIcon,
-  ChevronUpIcon,
-  ChevronDownIcon,
   PlusIcon,
   RefreshIcon,
 } from '@shopify/polaris-icons';
+import DraggablePhotoGrid from '../components/DraggablePhotoGrid';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../hooks/useApi';
 import { useAppStore } from '../store';
+import { getConditionDescription } from '../../config/condition-descriptions';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -111,6 +113,34 @@ const CONDITION_LABELS: Record<string, string> = {
   ACCEPTABLE: 'Acceptable',
   FOR_PARTS_OR_NOT_WORKING: 'For Parts / Not Working',
 };
+
+// ── eBay category options ──────────────────────────────────────────────
+
+interface EbayCategoryOption {
+  id: string;
+  name: string;
+  /** "Name (ID)" — displayed in dropdown */
+  label: string;
+}
+
+const EBAY_CATEGORIES: EbayCategoryOption[] = [
+  { id: '31388', name: 'Digital Cameras',              label: 'Digital Cameras (31388)' },
+  { id: '3323',  name: 'Camera Lenses',               label: 'Camera Lenses (3323)' },
+  { id: '4201',  name: 'Film Photography Film',        label: 'Film Photography Film (4201)' },
+  { id: '78997', name: 'Film Photography Cameras',     label: 'Film Photography Cameras (78997)' },
+  { id: '183331',name: 'Flashes & Flash Accessories',  label: 'Flashes & Flash Accessories (183331)' },
+  { id: '30090', name: 'Tripods & Monopods',           label: 'Tripods & Monopods (30090)' },
+  { id: '29982', name: 'Camera Bags & Cases',          label: 'Camera Bags & Cases (29982)' },
+  { id: '48446', name: 'Binoculars & Telescopes',      label: 'Binoculars & Telescopes (48446)' },
+  { id: '48528', name: 'Camera Filters',               label: 'Camera Filters (48528)' },
+  { id: '48444', name: 'Other Camera Accessories',     label: 'Other Camera Accessories (48444)' },
+];
+
+/** Given a category ID, return the matching label or the raw ID as fallback */
+function getCategoryLabel(categoryId: string): string {
+  const match = EBAY_CATEGORIES.find((c) => c.id === categoryId);
+  return match ? match.label : categoryId;
+}
 
 // ── localStorage helpers ───────────────────────────────────────────────
 
@@ -426,163 +456,10 @@ const AspectsEditor: React.FC<{
   );
 };
 
-// ── Photos Editor ──────────────────────────────────────────────────────
-
-const PhotosEditor: React.FC<{
-  imageUrls: string[];
-  onChange: (urls: string[]) => void;
-}> = ({ imageUrls, onChange }) => {
-  const moveUp = (idx: number) => {
-    if (idx === 0) return;
-    const next = [...imageUrls];
-    [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
-    onChange(next);
-  };
-
-  const moveDown = (idx: number) => {
-    if (idx >= imageUrls.length - 1) return;
-    const next = [...imageUrls];
-    [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
-    onChange(next);
-  };
-
-  const remove = (idx: number) => {
-    onChange(imageUrls.filter((_, i) => i !== idx));
-  };
-
-  if (imageUrls.length === 0) {
-    return (
-      <Banner tone="warning">
-        <p>No photos available. eBay requires at least one image.</p>
-      </Banner>
-    );
-  }
-
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '12px' }}>
-      {imageUrls.map((url, idx) => (
-        <div
-          key={idx}
-          style={{
-            borderRadius: '8px',
-            overflow: 'hidden',
-            border: '2px solid #e3e5e7',
-            position: 'relative',
-            background: '#f9fafb',
-          }}
-        >
-          <img
-            src={url}
-            alt={`Photo ${idx + 1}`}
-            style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' }}
-            onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3'; }}
-          />
-          {idx === 0 && (
-            <div
-              style={{
-                position: 'absolute',
-                top: '6px',
-                left: '6px',
-                background: '#0064d3',
-                color: '#fff',
-                fontSize: '10px',
-                fontWeight: 700,
-                padding: '2px 6px',
-                borderRadius: '4px',
-              }}
-            >
-              MAIN
-            </div>
-          )}
-          <div
-            style={{
-              position: 'absolute',
-              bottom: '4px',
-              right: '4px',
-              display: 'flex',
-              gap: '3px',
-            }}
-          >
-            <button
-              onClick={() => moveUp(idx)}
-              disabled={idx === 0}
-              title="Move up"
-              style={{
-                background: 'rgba(0,0,0,0.65)',
-                border: 'none',
-                borderRadius: '4px',
-                color: '#fff',
-                width: '24px',
-                height: '24px',
-                cursor: idx === 0 ? 'default' : 'pointer',
-                opacity: idx === 0 ? 0.4 : 1,
-                fontSize: '12px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              ↑
-            </button>
-            <button
-              onClick={() => moveDown(idx)}
-              disabled={idx >= imageUrls.length - 1}
-              title="Move down"
-              style={{
-                background: 'rgba(0,0,0,0.65)',
-                border: 'none',
-                borderRadius: '4px',
-                color: '#fff',
-                width: '24px',
-                height: '24px',
-                cursor: idx >= imageUrls.length - 1 ? 'default' : 'pointer',
-                opacity: idx >= imageUrls.length - 1 ? 0.4 : 1,
-                fontSize: '12px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              ↓
-            </button>
-            <button
-              onClick={() => remove(idx)}
-              title="Remove photo"
-              style={{
-                background: 'rgba(200,0,0,0.75)',
-                border: 'none',
-                borderRadius: '4px',
-                color: '#fff',
-                width: '24px',
-                height: '24px',
-                cursor: 'pointer',
-                fontSize: '12px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              ✕
-            </button>
-          </div>
-          <div
-            style={{
-              position: 'absolute',
-              bottom: '4px',
-              left: '6px',
-              color: 'rgba(255,255,255,0.9)',
-              fontSize: '11px',
-              fontWeight: 600,
-              textShadow: '0 1px 2px rgba(0,0,0,0.8)',
-            }}
-          >
-            #{idx + 1}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-};
+// ── Photos Editor (replaced by DraggablePhotoGrid) ────────────────────
+// PhotosEditor has been removed. DraggablePhotoGrid from
+// src/web/components/DraggablePhotoGrid.tsx is used directly in the
+// Photos card below. Drag to reorder; × to remove; first photo = MAIN.
 
 // ── Main Component ─────────────────────────────────────────────────────
 
@@ -599,6 +476,10 @@ const EbayListingPrep: React.FC = () => {
   const [policies, setPolicies] = useState<EbayListingPreview['policies'] | undefined>(undefined);
   const [showPreview, setShowPreview] = useState(false);
   const [hasSavedOverrides, setHasSavedOverrides] = useState(false);
+
+  // Category combobox state
+  const [categoryInputValue, setCategoryInputValue] = useState('');
+  const [categoryPopoverActive, setCategoryPopoverActive] = useState(false);
 
   // ── Load draft data ────────────────────────────────────────────────
 
@@ -647,12 +528,14 @@ const EbayListingPrep: React.FC = () => {
         setHasSavedOverrides(hasSaved);
 
         if (hasSaved) {
-          setEditState({
-            ...initial,
-            ...saved,
-          });
+          const merged = { ...initial, ...saved };
+          setEditState(merged);
+          // Sync category combobox display value
+          setCategoryInputValue(getCategoryLabel(merged.categoryId));
         } else {
           setEditState(initial);
+          // Sync category combobox display value
+          setCategoryInputValue(getCategoryLabel(initial.categoryId));
         }
       } else {
         addNotification({
@@ -769,6 +652,60 @@ const EbayListingPrep: React.FC = () => {
     setEditState((prev) => (prev ? { ...prev, [key]: value } : prev));
   }, []);
 
+  // ── Category combobox ──────────────────────────────────────────────
+
+  /** Options filtered by whatever the user has typed */
+  const filteredCategoryOptions = useMemo(() => {
+    const q = categoryInputValue.toLowerCase().trim();
+    if (!q) return EBAY_CATEGORIES;
+    return EBAY_CATEGORIES.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        c.id.includes(q) ||
+        c.label.toLowerCase().includes(q),
+    );
+  }, [categoryInputValue]);
+
+  /** User selects an option from the dropdown */
+  const handleCategorySelect = useCallback(
+    (selectedId: string) => {
+      update('categoryId', selectedId);
+      const match = EBAY_CATEGORIES.find((c) => c.id === selectedId);
+      const display = match ? match.label : selectedId;
+      setCategoryInputValue(display);
+      setCategoryName(match?.name ?? '');
+      setCategoryPopoverActive(false);
+    },
+    [update],
+  );
+
+  /** User types in the combobox text field */
+  const handleCategoryInputChange = useCallback(
+    (value: string) => {
+      setCategoryInputValue(value);
+      setCategoryPopoverActive(true);
+      // If the typed value looks like a bare numeric ID, store it directly
+      if (/^\d+$/.test(value.trim())) {
+        update('categoryId', value.trim());
+        const match = EBAY_CATEGORIES.find((c) => c.id === value.trim());
+        setCategoryName(match?.name ?? '');
+      }
+    },
+    [update],
+  );
+
+  // ── Condition auto-populate ────────────────────────────────────────
+
+  /** When condition changes, auto-populate conditionDescription from config */
+  const handleConditionChange = useCallback(
+    (val: string) => {
+      update('condition', val);
+      const desc = getConditionDescription(val);
+      if (desc) update('conditionDescription', desc);
+    },
+    [update],
+  );
+
   // ── Loading / Error states ─────────────────────────────────────────
 
   if (draftLoading) {
@@ -865,31 +802,65 @@ const EbayListingPrep: React.FC = () => {
                   />
 
                   <FormLayout.Group>
-                    {/* Category ID */}
-                    <TextField
-                      label="eBay Category"
-                      value={editState.categoryId}
-                      onChange={(val) => update('categoryId', val)}
-                      helpText={categoryName ? `${categoryName} — auto-suggested from product type` : 'Auto-suggested from product type'}
-                      autoComplete="off"
-                    />
+                    {/* eBay Category — searchable combobox */}
+                    <div>
+                      <Combobox
+                        activator={
+                          <Combobox.TextField
+                            label="eBay Category"
+                            value={categoryInputValue}
+                            onChange={handleCategoryInputChange}
+                            onFocus={() => setCategoryPopoverActive(true)}
+                            onBlur={() => {
+                              // Short delay so a click on an option registers first
+                              setTimeout(() => setCategoryPopoverActive(false), 150);
+                            }}
+                            placeholder="Search or enter category ID…"
+                            helpText={
+                              categoryName
+                                ? `Auto-suggested · type to search, or enter a numeric ID`
+                                : 'Type to search categories, or enter a numeric ID'
+                            }
+                            autoComplete="off"
+                          />
+                        }
+                        allowMultiple={false}
+                      >
+                        {categoryPopoverActive && filteredCategoryOptions.length > 0 ? (
+                          <Listbox onSelect={handleCategorySelect}>
+                            {filteredCategoryOptions.map((cat) => (
+                              <Listbox.Option
+                                key={cat.id}
+                                value={cat.id}
+                                selected={editState.categoryId === cat.id}
+                                accessibilityLabel={cat.label}
+                              >
+                                <Listbox.TextOption selected={editState.categoryId === cat.id}>
+                                  {cat.label}
+                                </Listbox.TextOption>
+                              </Listbox.Option>
+                            ))}
+                          </Listbox>
+                        ) : null}
+                      </Combobox>
+                    </div>
 
                     {/* Condition */}
                     <Select
                       label="Condition"
                       options={CONDITION_OPTIONS}
                       value={editState.condition}
-                      onChange={(val) => update('condition', val)}
-                      helpText="Mapped from TIM condition data"
+                      onChange={handleConditionChange}
+                      helpText="Changes auto-populate the condition description below"
                     />
                   </FormLayout.Group>
 
-                  {/* Condition description */}
+                  {/* Condition description — auto-populated, still editable */}
                   <TextField
                     label="Condition Description"
                     value={editState.conditionDescription}
                     onChange={(val) => update('conditionDescription', val)}
-                    helpText="Optional note about condition (shown to buyers on eBay)"
+                    helpText="Auto-filled from Pictureline grade; edit freely. Shown to buyers on eBay."
                     maxLength={1000}
                     multiline={2}
                     autoComplete="off"
@@ -999,7 +970,7 @@ const EbayListingPrep: React.FC = () => {
                   <BlockStack gap="100">
                     <Text variant="headingMd" as="h2">Photos</Text>
                     <Text variant="bodySm" as="p" tone="subdued">
-                      Reorder by using the ↑↓ arrows. Remove with ✕. First photo is the main listing image.
+                      Drag to reorder. First photo (MAIN) is the hero image on eBay. Click ✕ to remove.
                     </Text>
                   </BlockStack>
                   <Badge tone={editState.imageUrls.length === 0 ? 'critical' : 'success'}>
@@ -1007,7 +978,7 @@ const EbayListingPrep: React.FC = () => {
                   </Badge>
                 </InlineStack>
 
-                <PhotosEditor
+                <DraggablePhotoGrid
                   imageUrls={editState.imageUrls}
                   onChange={(urls) => update('imageUrls', urls)}
                 />

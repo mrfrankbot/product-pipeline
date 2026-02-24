@@ -21,7 +21,7 @@ export interface CategoryRule {
  * Category rules ordered by specificity.  Higher-priority rules are checked
  * first so that "digital camera" beats the generic "camera" catch-all.
  */
-const CATEGORY_RULES: CategoryRule[] = [
+export const CATEGORY_RULES: CategoryRule[] = [
   // ── Cameras ────────────────────────────────────────────────────
   {
     categoryId: '31388',
@@ -35,9 +35,9 @@ const CATEGORY_RULES: CategoryRule[] = [
       'point and shoot',
       'camera body',
       'camera bodies',
-      'medium format camera',
-      'rangefinder',
       'slr camera',
+      'camera',
+      'cameras',
     ],
     priority: 100,
   },
@@ -65,7 +65,7 @@ const CATEGORY_RULES: CategoryRule[] = [
   // ── Film ───────────────────────────────────────────────────────
   {
     categoryId: '4201',
-    name: 'Film Photography — Film',
+    name: 'Film Photography Film',
     keywords: [
       'camera film',
       'instant film',
@@ -73,6 +73,7 @@ const CATEGORY_RULES: CategoryRule[] = [
       '35mm film',
       'medium format film',
       '120 film',
+      '110 film',
       'instant',
       'polaroid film',
       'instax',
@@ -80,9 +81,25 @@ const CATEGORY_RULES: CategoryRule[] = [
     priority: 85,
   },
 
-  // ── Flashes ────────────────────────────────────────────────────
+  // ── Film Cameras ───────────────────────────────────────────────
   {
     categoryId: '78997',
+    name: 'Film Photography Cameras',
+    keywords: [
+      'film camera',
+      'film cameras',
+      'film slr',
+      '35mm camera',
+      'rangefinder',
+      'medium format camera',
+      'film photography camera',
+    ],
+    priority: 80,
+  },
+
+  // ── Flashes ────────────────────────────────────────────────────
+  {
+    categoryId: '183331',
     name: 'Flashes & Flash Accessories',
     keywords: [
       'flash',
@@ -90,22 +107,7 @@ const CATEGORY_RULES: CategoryRule[] = [
       'speedlite',
       'strobe',
       'flash unit',
-    ],
-    priority: 80,
-  },
-
-  // ── Lighting ───────────────────────────────────────────────────
-  {
-    categoryId: '183331',
-    name: 'Lighting & Studio',
-    keywords: [
-      'lighting',
-      'studio light',
-      'led light',
-      'light panel',
-      'softbox',
-      'umbrella',
-      'continuous light',
+      'flash accessories',
     ],
     priority: 75,
   },
@@ -129,7 +131,7 @@ const CATEGORY_RULES: CategoryRule[] = [
   // ── Bags & Cases ───────────────────────────────────────────────
   {
     categoryId: '29982',
-    name: 'Camera Cases, Bags & Covers',
+    name: 'Camera Bags & Cases',
     keywords: [
       'bag',
       'case',
@@ -144,17 +146,16 @@ const CATEGORY_RULES: CategoryRule[] = [
     priority: 65,
   },
 
-  // ── Batteries & Chargers ───────────────────────────────────────
+  // ── Binoculars & Telescopes ────────────────────────────────────
   {
     categoryId: '48446',
-    name: 'Batteries & Chargers',
+    name: 'Binoculars & Telescopes',
     keywords: [
-      'battery',
-      'charger',
-      'power supply',
-      'ac adapter',
-      'battery grip',
-      'power bank',
+      'binocular',
+      'binoculars',
+      'telescope',
+      'spotting scope',
+      'monocular',
     ],
     priority: 60,
   },
@@ -174,33 +175,33 @@ const CATEGORY_RULES: CategoryRule[] = [
     priority: 55,
   },
 
-  // ── Memory Cards ───────────────────────────────────────────────
+  // ── Other Camera Accessories ───────────────────────────────────
   {
     categoryId: '48444',
-    name: 'Memory Cards',
+    name: 'Other Camera Accessories',
     keywords: [
+      'accessory',
+      'accessories',
+      'camera accessory',
+      'strap',
+      'remote',
+      'adapter',
       'memory card',
       'sd card',
       'cf card',
       'xqd',
       'cfexpress',
       'microsd',
-      'storage',
+      'battery',
+      'charger',
+      'power supply',
     ],
     priority: 50,
-  },
-
-  // ── Catch-all: generic "camera" that didn't match above ────────
-  {
-    categoryId: '31388',
-    name: 'Digital Cameras (fallback)',
-    keywords: ['camera', 'cameras'],
-    priority: 10,
   },
 ];
 
 /** Default eBay category when nothing matches */
-const DEFAULT_CATEGORY_ID = '48519';
+const DEFAULT_CATEGORY_ID = '48444';
 const DEFAULT_CATEGORY_NAME = 'Other Camera Accessories';
 
 /**
