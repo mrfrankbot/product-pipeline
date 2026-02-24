@@ -370,6 +370,8 @@ const ReviewDetail: React.FC = () => {
                       imageUrls={draftImages}
                       onChange={handleReorderPhotos}
                       onEditPhoto={(i) => setEditingPhotoIndex(i)}
+                      enableBulkEdit
+                      draftId={draftId}
                     />
                     <Divider />
                     <Text variant="headingSm" as="h3" tone="subdued">Current Live Photos</Text>
@@ -403,6 +405,8 @@ const ReviewDetail: React.FC = () => {
                       imageUrls={draftImages}
                       onChange={handleReorderPhotos}
                       onEditPhoto={(i) => setEditingPhotoIndex(i)}
+                      enableBulkEdit
+                      draftId={draftId}
                     />
                   ) : (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
