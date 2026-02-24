@@ -1,14 +1,12 @@
 /**
  * BulkPhotoEditor — fullscreen modal for batch resize/rotate with live preview.
  *
- * Shows a grid of selected photos that update in real-time as you adjust
- * scale and rotation. Processing happens on Apply:
- *   1. Render each image onto a 4000×4000 canvas with transforms
- *   2. POST transparent PNG to /api/images/reprocess-edited
- *   3. Update draft with new URLs
+ * Uses a portal to render outside the normal DOM tree, ensuring proper
+ * z-index and centering regardless of parent layout.
  */
 
-import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 const CANVAS_SIZE = 4000;
 const PREVIEW_SIZE = 280;
@@ -42,12 +40,12 @@ function renderToCanvas(
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
 
-  // Checkerboard background for preview (shows transparency)
+  // Checkerboard for preview
   if (size <= PREVIEW_SIZE * 2) {
     const sq = 12;
     for (let y = 0; y < size; y += sq) {
       for (let x = 0; x < size; x += sq) {
-        ctx.fillStyle = ((x / sq + y / sq) % 2 === 0) ? '#f0f0f0' : '#e0e0e0';
+        ctx.fillStyle = ((x / sq + y / sq) % 2 === 0) ? '#f5f5f5' : '#eaeaea';
         ctx.fillRect(x, y, sq, sq);
       }
     }
@@ -70,7 +68,7 @@ function renderToCanvas(
   return canvas;
 }
 
-// ── Live preview card for a single photo ───────────────────────────────
+// ── Live preview card ──────────────────────────────────────────────────
 
 const PreviewCard: React.FC<{
   url: string;
@@ -96,7 +94,6 @@ const PreviewCard: React.FC<{
     return () => { cancelled = true; };
   }, [url]);
 
-  // Re-render on transform change (no re-load)
   useEffect(() => {
     const img = imgRef.current;
     if (!img) return;
@@ -120,7 +117,7 @@ const PreviewCard: React.FC<{
         ref={canvasRef}
         width={PREVIEW_SIZE}
         height={PREVIEW_SIZE}
-        style={{ display: 'block', width: '100%', height: 'auto' }}
+        style={{ display: 'block', width: '100%', aspectRatio: '1' }}
       />
       <div style={{
         position: 'absolute',
@@ -139,7 +136,7 @@ const PreviewCard: React.FC<{
   );
 };
 
-// ── Main modal ─────────────────────────────────────────────────────────
+// ── Main modal (portaled to document.body) ─────────────────────────────
 
 const BulkPhotoEditor: React.FC<BulkPhotoEditorProps> = ({
   selectedIndices,
@@ -154,13 +151,12 @@ const BulkPhotoEditor: React.FC<BulkPhotoEditorProps> = ({
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  // Lock body scroll when modal is open
   useEffect(() => {
+    const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
+    return () => { document.body.style.overflow = prev; };
   }, []);
 
-  // Escape key to close
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !processing) onCancel();
@@ -176,9 +172,8 @@ const BulkPhotoEditor: React.FC<BulkPhotoEditorProps> = ({
 
     try {
       const updatedImages = [...allImageUrls];
-      const total = selectedIndices.length;
 
-      for (let i = 0; i < total; i++) {
+      for (let i = 0; i < selectedIndices.length; i++) {
         const idx = selectedIndices[i];
         const img = await loadImage(allImageUrls[idx]);
         const canvas = renderToCanvas(img, scale, rotation, CANVAS_SIZE);
@@ -231,86 +226,93 @@ const BulkPhotoEditor: React.FC<BulkPhotoEditorProps> = ({
     { label: '130%', value: 1.3 },
   ];
 
-  return (
-    <div style={{
-      position: 'fixed',
-      inset: 0,
-      zIndex: 999999,
-      background: 'rgba(0,0,0,0.7)',
-      backdropFilter: 'blur(4px)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '24px',
-    }}>
-      <div style={{
-        background: '#fff',
-        borderRadius: '16px',
-        width: '100%',
-        maxWidth: '900px',
-        maxHeight: '90vh',
+  const modal = (
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget && !processing) onCancel(); }}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 2147483646,
+        background: 'rgba(0,0,0,0.65)',
+        backdropFilter: 'blur(6px)',
+        WebkitBackdropFilter: 'blur(6px)',
         display: 'flex',
-        flexDirection: 'column',
-        boxShadow: '0 24px 80px rgba(0,0,0,0.3)',
-        overflow: 'hidden',
-      }}>
-        {/* Header */}
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '20px',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#fff',
+          borderRadius: '16px',
+          width: '100%',
+          maxWidth: '880px',
+          height: 'min(85vh, 720px)',
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: '0 24px 80px rgba(0,0,0,0.35)',
+        }}
+      >
+        {/* ── Header ─────────────────────────────────────── */}
         <div style={{
-          padding: '20px 24px 16px',
+          padding: '18px 24px 14px',
           borderBottom: '1px solid #eee',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
+          flexShrink: 0,
         }}>
           <div>
             <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#1a1a1a' }}>
               Bulk Photo Edit
             </h2>
-            <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#888' }}>
-              {selectedIndices.length} photo{selectedIndices.length !== 1 ? 's' : ''} selected — adjustments preview live
+            <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#888' }}>
+              {selectedIndices.length} photo{selectedIndices.length !== 1 ? 's' : ''} — drag slider to preview changes live
             </p>
           </div>
           <button
-            onClick={onCancel}
-            disabled={processing}
+            onClick={() => !processing && onCancel()}
             style={{
               background: 'none',
               border: 'none',
-              fontSize: '24px',
+              fontSize: '22px',
               color: '#999',
               cursor: processing ? 'not-allowed' : 'pointer',
               lineHeight: 1,
-              padding: '4px',
+              padding: '4px 8px',
+              borderRadius: '6px',
             }}
           >
             ✕
           </button>
         </div>
 
-        {/* Controls */}
+        {/* ── Controls ───────────────────────────────────── */}
         <div style={{
-          padding: '16px 24px',
+          padding: '14px 24px 16px',
           borderBottom: '1px solid #f0f0f0',
-          background: '#fafafa',
+          background: '#fafbfc',
+          flexShrink: 0,
         }}>
-          {/* Size control */}
-          <div style={{ marginBottom: '14px' }}>
+          {/* Size */}
+          <div style={{ marginBottom: '12px' }}>
             <div style={{
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              marginBottom: '8px',
+              marginBottom: '6px',
             }}>
-              <label style={{ fontSize: '13px', fontWeight: 600, color: '#333' }}>
-                Size
-              </label>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: '#333' }}>Size</span>
               <span style={{
-                fontSize: '14px',
+                fontSize: '15px',
                 fontWeight: 700,
                 color: scale === 1 ? '#999' : '#0064d3',
                 fontVariantNumeric: 'tabular-nums',
-                minWidth: '42px',
-                textAlign: 'right',
               }}>
                 {Math.round(scale * 100)}%
               </span>
@@ -323,23 +325,9 @@ const BulkPhotoEditor: React.FC<BulkPhotoEditorProps> = ({
               value={scale}
               onChange={(e) => setScale(parseFloat(e.target.value))}
               disabled={processing}
-              style={{
-                width: '100%',
-                height: '6px',
-                appearance: 'none',
-                WebkitAppearance: 'none',
-                background: `linear-gradient(to right, #0064d3 ${((scale - 0.4) / 1.1) * 100}%, #ddd ${((scale - 0.4) / 1.1) * 100}%)`,
-                borderRadius: '3px',
-                outline: 'none',
-                cursor: 'pointer',
-              }}
+              style={{ width: '100%', accentColor: '#0064d3' }}
             />
-            <div style={{
-              display: 'flex',
-              gap: '6px',
-              marginTop: '8px',
-              flexWrap: 'wrap',
-            }}>
+            <div style={{ display: 'flex', gap: '5px', marginTop: '6px', flexWrap: 'wrap' }}>
               {presetScales.map(({ label, value }) => (
                 <button
                   key={value}
@@ -348,13 +336,12 @@ const BulkPhotoEditor: React.FC<BulkPhotoEditorProps> = ({
                   style={{
                     background: Math.abs(scale - value) < 0.01 ? '#0064d3' : '#fff',
                     color: Math.abs(scale - value) < 0.01 ? '#fff' : '#555',
-                    border: '1px solid #ddd',
+                    border: `1px solid ${Math.abs(scale - value) < 0.01 ? '#0064d3' : '#ddd'}`,
                     borderRadius: '6px',
-                    padding: '4px 10px',
+                    padding: '3px 10px',
                     fontSize: '12px',
                     fontWeight: 500,
                     cursor: 'pointer',
-                    transition: 'all 0.15s ease',
                   }}
                 >
                   {label}
@@ -363,70 +350,65 @@ const BulkPhotoEditor: React.FC<BulkPhotoEditorProps> = ({
             </div>
           </div>
 
-          {/* Rotation control */}
-          <div>
-            <label style={{ fontSize: '13px', fontWeight: 600, color: '#333', display: 'block', marginBottom: '8px' }}>
-              Rotation {rotation !== 0 && <span style={{ color: '#0064d3', fontWeight: 400 }}>({rotation}°)</span>}
-            </label>
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-              {[
-                { label: '↺ 90°', deg: -90 },
-                { label: '↺ 15°', deg: -15 },
-                { label: '↺ 5°', deg: -5 },
-                { label: '↻ 5°', deg: 5 },
-                { label: '↻ 15°', deg: 15 },
-                { label: '↻ 90°', deg: 90 },
-              ].map(({ label, deg }) => (
-                <button
-                  key={deg}
-                  onClick={() => setRotation((r) => r + deg)}
-                  disabled={processing}
-                  style={{
-                    background: '#fff',
-                    border: '1px solid #ddd',
-                    borderRadius: '6px',
-                    padding: '4px 10px',
-                    fontSize: '12px',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    color: '#555',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-              {rotation !== 0 && (
-                <button
-                  onClick={() => setRotation(0)}
-                  disabled={processing}
-                  style={{
-                    background: '#fff',
-                    border: '1px solid #e0c0c0',
-                    borderRadius: '6px',
-                    padding: '4px 10px',
-                    fontSize: '12px',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    color: '#c00',
-                  }}
-                >
-                  Reset
-                </button>
-              )}
-            </div>
+          {/* Rotation */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: '#333', marginRight: '2px' }}>
+              Rotate{rotation !== 0 ? ` (${rotation}°)` : ''}
+            </span>
+            {[
+              { label: '↺90', deg: -90 },
+              { label: '↺15', deg: -15 },
+              { label: '↺5', deg: -5 },
+              { label: '↻5', deg: 5 },
+              { label: '↻15', deg: 15 },
+              { label: '↻90', deg: 90 },
+            ].map(({ label, deg }) => (
+              <button
+                key={deg}
+                onClick={() => setRotation((r) => r + deg)}
+                disabled={processing}
+                style={{
+                  background: '#fff',
+                  border: '1px solid #ddd',
+                  borderRadius: '6px',
+                  padding: '3px 8px',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  color: '#555',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+            {rotation !== 0 && (
+              <button
+                onClick={() => setRotation(0)}
+                style={{
+                  background: '#fff',
+                  border: '1px solid #e0c0c0',
+                  borderRadius: '6px',
+                  padding: '3px 8px',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  color: '#c00',
+                }}
+              >
+                Reset
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Preview grid — scrollable */}
+        {/* ── Preview grid (scrollable) ──────────────────── */}
         <div style={{
-          flex: 1,
-          overflow: 'auto',
-          padding: '20px 24px',
+          flex: '1 1 0',
+          minHeight: 0,
+          overflowY: 'auto',
+          padding: '16px 24px',
         }}>
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
             gap: '12px',
           }}>
             {selectedIndices.map((idx) => (
@@ -441,23 +423,23 @@ const BulkPhotoEditor: React.FC<BulkPhotoEditorProps> = ({
           </div>
         </div>
 
-        {/* Footer */}
+        {/* ── Footer ─────────────────────────────────────── */}
         <div style={{
-          padding: '16px 24px',
+          padding: '14px 24px',
           borderTop: '1px solid #eee',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          background: '#fafafa',
+          background: '#fafbfc',
+          flexShrink: 0,
+          borderRadius: '0 0 16px 16px',
         }}>
-          <div>
-            {error && (
-              <span style={{ color: '#c00', fontSize: '13px' }}>{error}</span>
-            )}
+          <div style={{ minHeight: '24px' }}>
+            {error && <span style={{ color: '#c00', fontSize: '13px' }}>{error}</span>}
             {processing && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div style={{
-                  width: '160px',
+                  width: '140px',
                   height: '6px',
                   background: '#e0e0e0',
                   borderRadius: '3px',
@@ -472,14 +454,14 @@ const BulkPhotoEditor: React.FC<BulkPhotoEditorProps> = ({
                   }} />
                 </div>
                 <span style={{ fontSize: '13px', color: '#666' }}>
-                  {progress}/{selectedIndices.length} processed
+                  {progress}/{selectedIndices.length}
                 </span>
               </div>
             )}
           </div>
           <div style={{ display: 'flex', gap: '10px' }}>
             <button
-              onClick={onCancel}
+              onClick={() => !processing && onCancel()}
               disabled={processing}
               style={{
                 background: '#fff',
@@ -498,7 +480,7 @@ const BulkPhotoEditor: React.FC<BulkPhotoEditorProps> = ({
               onClick={handleApply}
               disabled={processing || noChange}
               style={{
-                background: noChange ? '#ccc' : '#0064d3',
+                background: (noChange || processing) ? '#ccc' : '#0064d3',
                 color: '#fff',
                 border: 'none',
                 borderRadius: '8px',
@@ -506,16 +488,19 @@ const BulkPhotoEditor: React.FC<BulkPhotoEditorProps> = ({
                 fontSize: '14px',
                 fontWeight: 600,
                 cursor: (noChange || processing) ? 'not-allowed' : 'pointer',
-                transition: 'all 0.15s ease',
               }}
             >
-              {processing ? 'Processing...' : `Apply to ${selectedIndices.length} Photo${selectedIndices.length !== 1 ? 's' : ''}`}
+              {processing
+                ? 'Processing...'
+                : `Apply to ${selectedIndices.length} Photo${selectedIndices.length !== 1 ? 's' : ''}`}
             </button>
           </div>
         </div>
       </div>
     </div>
   );
+
+  return createPortal(modal, document.body);
 };
 
 export default BulkPhotoEditor;
