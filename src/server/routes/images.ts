@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { getRawDb } from '../../db/client.js';
 import { getImageService, timedImageCall } from '../../services/image-service-factory.js';
 import { info, error as logError, warn } from '../../utils/logger.js';
+import { uploadProcessedImage } from '../../watcher/drive-search.js';
 
 const router = Router();
 
@@ -563,7 +564,6 @@ router.post('/api/images/reprocess-edited', upload.single('image'), async (req: 
     const buffer = Buffer.from(arrayBuffer);
 
     // Upload to GCS and return a signed URL (not a data URL — those are too large for draft storage)
-    const { uploadProcessedImage } = await import('../../watcher/drive-search.js');
     const draftId = req.body?.draftId || 'unknown';
     const imageIndex = req.body?.imageIndex || '0';
     const filename = `reprocessed-draft${draftId}-img${imageIndex}-${Date.now()}.png`;
