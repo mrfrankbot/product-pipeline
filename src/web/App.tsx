@@ -1,35 +1,46 @@
-import React from 'react';
-import { AppProvider, Frame, TopBar } from '@shopify/polaris';
+import React, { Suspense } from 'react';
+import { AppProvider, Frame, TopBar, Spinner } from '@shopify/polaris';
 import enTranslations from '@shopify/polaris/locales/en.json';
 import { BrowserRouter, Route, Routes, useLocation, Link } from 'react-router-dom';
 import { NavMenu } from '@shopify/app-bridge-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+// Main app shell components — always in the main chunk
 import Dashboard from './pages/Dashboard';
-import Listings, { ListingDetail } from './pages/Listings';
-import ShopifyProducts, { ShopifyProductDetail } from './pages/ShopifyProducts';
-import Orders from './pages/Orders';
-import Settings from './pages/Settings';
-import Analytics from './pages/Analytics';
-import Mappings from './pages/Mappings';
-import ImageProcessor from './pages/ImageProcessor';
-import Pipeline from './pages/Pipeline';
-import CategoryMapping from './pages/CategoryMapping';
-import Help from './pages/Help';
-import HelpCenter from './pages/HelpCenter';
-import HelpArticlePage from './pages/HelpArticle';
-import HelpCategoryPage from './pages/HelpCategory';
-import HelpAsk from './pages/HelpAsk';
-import HelpAdmin from './pages/HelpAdmin';
-import FeatureRequests from './pages/FeatureRequests';
-import FeatureAdmin from './pages/FeatureAdmin';
 import AppNavigation from './components/AppNavigation';
 import ChatWidget from './components/ChatWidget';
 import PipelineToasts from './components/PipelineToasts';
-import ReviewQueue from './pages/ReviewQueue';
-import ReviewDetail from './pages/ReviewDetail';
-import EbayListingPrep from './pages/EbayListingPrep';
-import EbayOrders from './pages/EbayOrders';
 import { useAppStore } from './store';
+
+// Lazy-loaded route pages — split into separate chunks
+const Listings = React.lazy(() => import('./pages/Listings'));
+const ShopifyProducts = React.lazy(() => import('./pages/ShopifyProducts'));
+const Orders = React.lazy(() => import('./pages/Orders'));
+const Settings = React.lazy(() => import('./pages/Settings'));
+const Analytics = React.lazy(() => import('./pages/Analytics'));
+const Mappings = React.lazy(() => import('./pages/Mappings'));
+const ImageProcessor = React.lazy(() => import('./pages/ImageProcessor'));
+const Pipeline = React.lazy(() => import('./pages/Pipeline'));
+const CategoryMapping = React.lazy(() => import('./pages/CategoryMapping'));
+const HelpCenter = React.lazy(() => import('./pages/HelpCenter'));
+const HelpArticlePage = React.lazy(() => import('./pages/HelpArticle'));
+const HelpCategoryPage = React.lazy(() => import('./pages/HelpCategory'));
+const HelpAsk = React.lazy(() => import('./pages/HelpAsk'));
+const HelpAdmin = React.lazy(() => import('./pages/HelpAdmin'));
+const FeatureRequests = React.lazy(() => import('./pages/FeatureRequests'));
+const FeatureAdmin = React.lazy(() => import('./pages/FeatureAdmin'));
+const ReviewQueue = React.lazy(() => import('./pages/ReviewQueue'));
+const ReviewDetail = React.lazy(() => import('./pages/ReviewDetail'));
+// EbayListingPrep is the largest page — always lazy-load it
+const EbayListingPrep = React.lazy(() => import('./pages/EbayListingPrep'));
+const EbayOrders = React.lazy(() => import('./pages/EbayOrders'));
+
+// Lazy wrappers that re-export named exports as default
+const ListingDetail = React.lazy(() =>
+  import('./pages/Listings').then((m) => ({ default: m.ListingDetail }))
+);
+const ShopifyProductDetail = React.lazy(() =>
+  import('./pages/ShopifyProducts').then((m) => ({ default: m.ShopifyProductDetail }))
+);
 
 // Create React Query client
 const queryClient = new QueryClient({
@@ -49,6 +60,13 @@ const isEmbedded = (): boolean => {
     return true; // cross-origin iframe = embedded
   }
 };
+
+/** Full-page loading fallback shown while lazy chunks download */
+const PageLoader: React.FC = () => (
+  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+    <Spinner size="large" />
+  </div>
+);
 
 /**
  * Shopify App Bridge NavMenu — renders navigation items in Shopify's sidebar.
@@ -117,32 +135,34 @@ const AppFrame: React.FC = () => {
         onNavigationDismiss={toggleSidebar}
       >
         <ErrorBoundary>
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/listings" element={<ShopifyProducts />} />
-          <Route path="/listings/:id" element={<ShopifyProductDetail />} />
-          <Route path="/ebay/listings" element={<Listings />} />
-          <Route path="/ebay/listings/:id" element={<ListingDetail />} />
-          <Route path="/orders" element={<Orders />} />
-          <Route path="/ebay-orders" element={<EbayOrders />} />
-          <Route path="/mappings" element={<Mappings />} />
-          <Route path="/pipeline" element={<Pipeline />} />
-          <Route path="/review" element={<ReviewQueue />} />
-          <Route path="/review/:id" element={<ReviewDetail />} />
-          <Route path="/review/:id/ebay-prep" element={<EbayListingPrep />} />
-          <Route path="/images" element={<ImageProcessor />} />
-          <Route path="/category-mapping" element={<CategoryMapping />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/logs" element={<Analytics />} />
-          <Route path="/help" element={<HelpCenter />}>
-            <Route path="article/:id" element={<HelpArticlePage />} />
-            <Route path="category/:category" element={<HelpCategoryPage />} />
-            <Route path="ask" element={<HelpAsk />} />
-          </Route>
-          <Route path="/help/admin" element={<HelpAdmin />} />
-          <Route path="/features" element={<FeatureRequests />} />
-          <Route path="/features/admin" element={<FeatureAdmin />} />
-        </Routes>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/listings" element={<ShopifyProducts />} />
+              <Route path="/listings/:id" element={<ShopifyProductDetail />} />
+              <Route path="/ebay/listings" element={<Listings />} />
+              <Route path="/ebay/listings/:id" element={<ListingDetail />} />
+              <Route path="/orders" element={<Orders />} />
+              <Route path="/ebay-orders" element={<EbayOrders />} />
+              <Route path="/mappings" element={<Mappings />} />
+              <Route path="/pipeline" element={<Pipeline />} />
+              <Route path="/review" element={<ReviewQueue />} />
+              <Route path="/review/:id" element={<ReviewDetail />} />
+              <Route path="/review/:id/ebay-prep" element={<EbayListingPrep />} />
+              <Route path="/images" element={<ImageProcessor />} />
+              <Route path="/category-mapping" element={<CategoryMapping />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/logs" element={<Analytics />} />
+              <Route path="/help" element={<HelpCenter />}>
+                <Route path="article/:id" element={<HelpArticlePage />} />
+                <Route path="category/:category" element={<HelpCategoryPage />} />
+                <Route path="ask" element={<HelpAsk />} />
+              </Route>
+              <Route path="/help/admin" element={<HelpAdmin />} />
+              <Route path="/features" element={<FeatureRequests />} />
+              <Route path="/features/admin" element={<FeatureAdmin />} />
+            </Routes>
+          </Suspense>
         </ErrorBoundary>
 
         <ChatWidget />

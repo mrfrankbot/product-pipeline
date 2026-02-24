@@ -7,6 +7,30 @@ export default defineConfig({
   build: {
     outDir: '../../dist/web',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          // Polaris UI library
+          if (id.includes('@shopify/polaris')) {
+            return 'vendor-polaris';
+          }
+          // React core + router
+          if (
+            id.includes('node_modules/react/') ||
+            id.includes('node_modules/react-dom/') ||
+            id.includes('node_modules/react-router-dom/') ||
+            id.includes('node_modules/react-router/') ||
+            id.includes('node_modules/scheduler/')
+          ) {
+            return 'vendor-react';
+          }
+          // TanStack Query
+          if (id.includes('@tanstack/react-query') || id.includes('@tanstack/query-core')) {
+            return 'vendor-query';
+          }
+        },
+      },
+    },
   },
   server: {
     port: 5173,
