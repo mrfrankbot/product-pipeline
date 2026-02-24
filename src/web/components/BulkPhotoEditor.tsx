@@ -8,7 +8,9 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
-const CANVAS_SIZE = 4000;
+// Use 2000px for export — PhotoRoom upscales to 4000x4000 with outputSize param
+// Keeps upload size manageable (~2-4MB vs 10-15MB at 4000px)
+const CANVAS_SIZE = 2000;
 const PREVIEW_SIZE = 280;
 
 interface BulkPhotoEditorProps {
@@ -221,25 +223,34 @@ const BulkPhotoEditor: React.FC<BulkPhotoEditorProps> = ({
         const idx = selectedIndices[i];
         const img = await loadCutoutImage(allImageUrls[idx]);
         const canvas = renderToCanvas(img, scale, rotation, CANVAS_SIZE);
+        // Use PNG to preserve transparency (cutout has transparent bg)
         const blob = await new Promise<Blob>((resolve, reject) => {
           canvas.toBlob(b => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png');
         });
+        console.log(`[BulkEdit] Photo ${idx}: blob size = ${(blob.size / 1024).toFixed(0)}KB`);
 
         const formData = new FormData();
         formData.append('image', blob, `bulk-${draftId}-${idx}-${Date.now()}.png`);
         formData.append('draftId', String(draftId || 'unknown'));
         formData.append('imageIndex', String(idx));
-        const res = await fetch('/api/images/reprocess-edited', {
-          method: 'POST',
-          body: formData,
-        });
+        let data: any;
+        try {
+          const res = await fetch('/api/images/reprocess-edited', {
+            method: 'POST',
+            body: formData,
+          });
 
-        if (!res.ok) {
-          const d = await res.json().catch(() => ({ error: 'Reprocess failed' }));
-          throw new Error(d.error || `Failed on photo ${idx + 1}`);
+          if (!res.ok) {
+            const d = await res.json().catch(() => ({ error: 'Reprocess failed' }));
+            throw new Error(d.error || `Failed on photo ${idx + 1}`);
+          }
+
+          data = await res.json();
+        } catch (fetchErr) {
+          // Network error or timeout
+          const msg = fetchErr instanceof Error ? fetchErr.message : 'Network error';
+          throw new Error(`Photo ${idx + 1}: ${msg}. The image may be too large or the server timed out.`);
         }
-
-        const data = await res.json();
         // Prefer GCS URL over data URL (data URLs are too large for draft storage)
         updatedImages[idx] = data.gcsUrl || data.dataUrl;
         setProgress(i + 1);
