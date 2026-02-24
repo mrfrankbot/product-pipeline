@@ -31,6 +31,7 @@ import { getEbayCondition, resolveMapping, getMapping } from '../sync/attribute-
 import { cleanTitle, parsePrice } from '../sync/mapper.js';
 import { info, warn, error as logError } from '../utils/logger.js';
 import { loadShopifyCredentials } from '../config/credentials.js';
+import { getConditionDescription as getGradeDescription } from '../config/condition-descriptions.js';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -189,11 +190,12 @@ const getConditionDescription = async (conditionId: string, shopifyProduct: any)
     if (mapped) return mapped;
   } catch { /* non-fatal */ }
 
-  switch (conditionId) {
-    case '3000': return 'Used item in good working condition';
-    case '1500': return 'New item with minor cosmetic imperfections';
-    default: return undefined;
-  }
+  // Fall back to Pictureline grade descriptions from config
+  const ebayCondition = mapConditionIdToText(conditionId);
+  const gradeDesc = getGradeDescription(ebayCondition);
+  if (gradeDesc) return gradeDesc;
+
+  return undefined;
 };
 
 /** Ensure the Pictureline eBay location exists (idempotent). */
