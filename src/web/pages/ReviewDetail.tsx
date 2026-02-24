@@ -369,6 +369,7 @@ const ReviewDetail: React.FC = () => {
                     <DraggablePhotoGrid
                       imageUrls={draftImages}
                       onChange={handleReorderPhotos}
+                      onEditPhoto={(i) => setEditingPhotoIndex(i)}
                     />
                     <Divider />
                     <Text variant="headingSm" as="h3" tone="subdued">Current Live Photos</Text>
@@ -401,6 +402,7 @@ const ReviewDetail: React.FC = () => {
                     <DraggablePhotoGrid
                       imageUrls={draftImages}
                       onChange={handleReorderPhotos}
+                      onEditPhoto={(i) => setEditingPhotoIndex(i)}
                     />
                   ) : (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>

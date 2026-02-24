@@ -38,6 +38,8 @@ export interface DraggablePhotoGridProps {
   imageUrls: string[];
   /** Called with the new URL order after any reorder or removal */
   onChange: (urls: string[]) => void;
+  /** Called when user clicks edit on a photo — receives the photo index */
+  onEditPhoto?: (index: number) => void;
 }
 
 // ── Stable per-photo item ID ───────────────────────────────────────────
@@ -61,6 +63,7 @@ interface SortablePhotoProps {
   total: number;
   isOverlay?: boolean;
   onRemove: () => void;
+  onEdit?: () => void;
 }
 
 const SortablePhoto: React.FC<SortablePhotoProps> = ({
@@ -69,6 +72,7 @@ const SortablePhoto: React.FC<SortablePhotoProps> = ({
   index,
   isOverlay = false,
   onRemove,
+  onEdit,
 }) => {
   const {
     attributes,
@@ -171,6 +175,36 @@ const SortablePhoto: React.FC<SortablePhotoProps> = ({
         #{index + 1}
       </div>
 
+      {/* Edit button — outside drag listeners */}
+      {!isOverlay && onEdit && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit();
+          }}
+          title="Edit photo"
+          style={{
+            position: 'absolute',
+            bottom: '4px',
+            left: '4px',
+            background: 'rgba(0,100,211,0.85)',
+            border: 'none',
+            borderRadius: '4px',
+            color: '#fff',
+            width: '24px',
+            height: '24px',
+            cursor: 'pointer',
+            fontSize: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            lineHeight: 1,
+          }}
+        >
+          ✎
+        </button>
+      )}
+
       {/* Remove button — outside drag listeners */}
       {!isOverlay && (
         <button
@@ -209,6 +243,7 @@ const SortablePhoto: React.FC<SortablePhotoProps> = ({
 const DraggablePhotoGrid: React.FC<DraggablePhotoGridProps> = ({
   imageUrls,
   onChange,
+  onEditPhoto,
 }) => {
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -299,6 +334,7 @@ const DraggablePhotoGrid: React.FC<DraggablePhotoGridProps> = ({
               index={index}
               total={imageUrls.length}
               onRemove={() => handleRemove(index)}
+              onEdit={onEditPhoto ? () => onEditPhoto(index) : undefined}
             />
           ))}
         </div>
