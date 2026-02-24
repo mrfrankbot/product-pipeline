@@ -533,15 +533,20 @@ router.post('/api/images/reprocess-edited', upload.single('image'), async (req: 
 
     const imageService = await getImageService();
 
-    // The image already has bg removed (transparent PNG). Send it to PhotoRoom
-    // with removeBackground still on (it's a no-op on transparent images) plus shadow.
+    // The image already has bg removed and product positioned/scaled by the client.
+    // We just need PhotoRoom to add white bg + shadow WITHOUT repositioning/rescaling.
     const blob = new Blob([req.file.buffer as unknown as BlobPart]);
-    const formData = new FormData();
-    formData.append('imageFile', blob, 'edited.png');
-    formData.append('background.color', 'FFFFFF');
-    formData.append('padding', '0.1');
-    formData.append('shadow.mode', 'ai.soft');
-    formData.append('outputSize', '4000x4000');
+    const scale = parseFloat(req.body?.scale || '1');
+    const prFormData = new FormData();
+    prFormData.append('imageFile', blob, 'edited.png');
+    prFormData.append('background.color', 'FFFFFF');
+    // padding=0 + ignorePadding prevents PhotoRoom from repositioning/rescaling
+    // The client canvas already has the product at the right size and position
+    prFormData.append('padding', '0');
+    prFormData.append('shadow.mode', 'ai.soft');
+    prFormData.append('outputSize', '4000x4000');
+    // Tell PhotoRoom NOT to reposition the subject
+    prFormData.append('background.scaling', 'fill');
 
     const apiKey = process.env.PHOTOROOM_API_KEY;
     if (!apiKey) {
@@ -551,7 +556,7 @@ router.post('/api/images/reprocess-edited', upload.single('image'), async (req: 
     const response = await fetch('https://image-api.photoroom.com/v2/edit', {
       method: 'POST',
       headers: { 'x-api-key': apiKey },
-      body: formData as any,
+      body: prFormData as any,
     });
 
     if (!response.ok) {

@@ -233,6 +233,7 @@ const BulkPhotoEditor: React.FC<BulkPhotoEditorProps> = ({
         formData.append('image', blob, `bulk-${draftId}-${idx}-${Date.now()}.png`);
         formData.append('draftId', String(draftId || 'unknown'));
         formData.append('imageIndex', String(idx));
+        formData.append('scale', String(scale));
         let data: any;
         try {
           const res = await fetch('/api/images/reprocess-edited', {
