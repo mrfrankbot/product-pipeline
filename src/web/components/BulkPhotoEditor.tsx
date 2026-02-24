@@ -227,6 +227,8 @@ const BulkPhotoEditor: React.FC<BulkPhotoEditorProps> = ({
 
         const formData = new FormData();
         formData.append('image', blob, `bulk-${draftId}-${idx}-${Date.now()}.png`);
+        formData.append('draftId', String(draftId || 'unknown'));
+        formData.append('imageIndex', String(idx));
         const res = await fetch('/api/images/reprocess-edited', {
           method: 'POST',
           body: formData,
@@ -238,19 +240,13 @@ const BulkPhotoEditor: React.FC<BulkPhotoEditorProps> = ({
         }
 
         const data = await res.json();
-        updatedImages[idx] = data.dataUrl;
+        // Prefer GCS URL over data URL (data URLs are too large for draft storage)
+        updatedImages[idx] = data.gcsUrl || data.dataUrl;
         setProgress(i + 1);
       }
 
-      if (draftId) {
-        const updateRes = await fetch(`/api/drafts/${draftId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ images: updatedImages }),
-        });
-        if (!updateRes.ok) throw new Error('Failed to update draft');
-      }
-
+      // Don't PUT here — let the parent handle saving via its own mutation
+      // (avoids double-PUT race condition)
       onSave(updatedImages);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Bulk edit failed');

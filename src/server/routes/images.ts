@@ -561,11 +561,20 @@ router.post('/api/images/reprocess-edited', upload.single('image'), async (req: 
 
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
+
+    // Upload to GCS and return a signed URL (not a data URL — those are too large for draft storage)
+    const { uploadProcessedImage } = await import('../../watcher/drive-search.js');
+    const draftId = req.body?.draftId || 'unknown';
+    const imageIndex = req.body?.imageIndex || '0';
+    const filename = `reprocessed-draft${draftId}-img${imageIndex}-${Date.now()}.png`;
+    const gcsUrl = await uploadProcessedImage(buffer, filename);
+
+    // Also return dataUrl for backward compat (but prefer gcsUrl)
     const base64 = buffer.toString('base64');
     const dataUrl = `data:image/png;base64,${base64}`;
 
-    info(`[Images API] PhotoRoom reprocess complete (${buffer.length} bytes)`);
-    res.json({ ok: true, dataUrl, size: buffer.length });
+    info(`[Images API] PhotoRoom reprocess complete (${buffer.length} bytes) → ${filename}`);
+    res.json({ ok: true, dataUrl, gcsUrl, size: buffer.length });
   } catch (err) {
     logError(`[Images API] Reprocess-edited failed: ${err}`);
     res.status(500).json({ error: 'Reprocess failed', detail: String(err) });
