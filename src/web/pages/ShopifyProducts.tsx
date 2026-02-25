@@ -23,7 +23,6 @@ import {
   Icon,
   useIndexResourceState,
 } from '@shopify/polaris';
-import { ExternalLink, Filter, Play, Search, SortAsc, SortDesc } from 'lucide-react';
 import {
   SearchIcon,
   CheckCircleIcon,
@@ -624,70 +623,6 @@ export const ShopifyProductDetail: React.FC = () => {
 
   return (
     <>
-      <style>
-        {`
-          @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-          }
-          @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(4px); }
-            to { opacity: 1; transform: translateY(0); }
-          }
-          .product-detail-animate > * {
-            animation: fadeIn 0.2s ease-out both;
-          }
-          .product-detail-animate > *:nth-child(2) { animation-delay: 0.05s; }
-          .product-detail-animate > *:nth-child(3) { animation-delay: 0.1s; }
-          .product-detail-animate > *:nth-child(4) { animation-delay: 0.15s; }
-          
-          .pipeline-step {
-            transition: all 0.15s ease;
-          }
-          .pipeline-step:hover {
-            background: #f9fafb;
-            border-radius: 8px;
-          }
-          
-          .empty-photos-zone {
-            border: 2px dashed #d1d5db;
-            border-radius: 12px;
-            padding: 48px 24px;
-            text-align: center;
-            background: linear-gradient(180deg, #fafbfc 0%, #f3f4f6 100%);
-            transition: border-color 0.2s, background 0.2s;
-          }
-          .empty-photos-zone:hover {
-            border-color: #9ca3af;
-            background: linear-gradient(180deg, #f8f9fb 0%, #eef0f3 100%);
-          }
-
-          .description-rendered {
-            font-size: 14px;
-            line-height: 1.7;
-            color: #1a1a1a;
-          }
-          .description-rendered h1,
-          .description-rendered h2,
-          .description-rendered h3 {
-            margin-top: 1em;
-            margin-bottom: 0.4em;
-            font-weight: 600;
-            color: #111;
-          }
-          .description-rendered ul {
-            padding-left: 1.5em;
-            margin: 0.5em 0;
-          }
-          .description-rendered li {
-            margin-bottom: 0.2em;
-          }
-          .description-rendered p {
-            margin: 0.4em 0;
-          }
-        `}
-      </style>
-
       <Page
         title={product?.title ?? 'Loading product…'}
         subtitle={product ? `${variant?.sku || 'No SKU'} · ${formatMoney(variant?.price)}` : undefined}
@@ -744,7 +679,7 @@ export const ShopifyProductDetail: React.FC = () => {
         )}
 
         {product && (
-          <div className="product-detail-animate">
+          <div>
             {/* ── Draft Ready Banner ── */}
             {existingDraft && (existingDraft as any)?.draft?.id && (
               <div style={{ marginBottom: '16px' }}>
@@ -810,7 +745,7 @@ export const ShopifyProductDetail: React.FC = () => {
                       </InlineStack>
                       
                       {activePhotos.length === 0 && !activePhotosLoading ? (
-                        <div className="empty-photos-zone">
+                        <Box padding="800" borderWidth="025" borderStyle="dashed" borderColor="border" borderRadius="300" background="bg-surface-secondary">
                           <BlockStack gap="300" align="center">
                             <div style={{ fontSize: '36px', opacity: 0.4 }}>📷</div>
                             <Text variant="headingSm" as="h3" tone="subdued">No photos yet</Text>
@@ -827,7 +762,7 @@ export const ShopifyProductDetail: React.FC = () => {
                               </Button>
                             </div>
                           </BlockStack>
-                        </div>
+                        </Box>
                       ) : (
                         <ActivePhotosGallery
                           photos={activePhotos}
@@ -913,7 +848,6 @@ export const ShopifyProductDetail: React.FC = () => {
                             </InlineStack>
                           </InlineStack>
                           <div
-                            className="description-rendered"
                             style={{ 
                               maxHeight: '300px', 
                               overflow: 'auto', 
@@ -921,6 +855,9 @@ export const ShopifyProductDetail: React.FC = () => {
                               background: '#ffffff', 
                               borderRadius: '8px',
                               border: '1px solid #bae6fd',
+                              fontSize: '14px',
+                              lineHeight: '1.7',
+                              color: '#1a1a1a',
                             }}
                             dangerouslySetInnerHTML={{ __html: markdownToHtml(aiDescription) }}
                           />
@@ -947,7 +884,6 @@ export const ShopifyProductDetail: React.FC = () => {
                       {product.body_html ? (
                         <>
                           <div
-                            className="description-rendered"
                             style={{ 
                               maxHeight: '400px', 
                               overflow: 'auto', 
@@ -955,6 +891,9 @@ export const ShopifyProductDetail: React.FC = () => {
                               background: '#f9fafb', 
                               borderRadius: '8px',
                               border: '1px solid #e3e5e7',
+                              fontSize: '14px',
+                              lineHeight: '1.7',
+                              color: '#1a1a1a',
                             }}
                             dangerouslySetInnerHTML={{ __html: product.body_html }}
                           />
@@ -1087,7 +1026,7 @@ export const ShopifyProductDetail: React.FC = () => {
                             const isRunning = step.status === 'running';
                             
                             return (
-                              <div key={step.name} className="pipeline-step" style={{ padding: '2px 4px' }}>
+                              <div key={step.name} style={{ padding: '2px 4px' }}>
                                 <InlineStack gap="300" blockAlign="start">
                                   <div style={{ position: 'relative', marginTop: '2px' }}>
                                     <div
@@ -1117,7 +1056,7 @@ export const ShopifyProductDetail: React.FC = () => {
                                             inset: '2px',
                                             borderRadius: '50%',
                                             backgroundColor: '#f59e0b',
-                                            animation: 'pulse 2s infinite'
+                                            opacity: 0.7
                                           }}
                                         />
                                       )}
@@ -1638,7 +1577,7 @@ const ShopifyProducts: React.FC = () => {
               placeholder="Search products…"
               value={searchValue}
               onChange={(value) => { setSearchValue(value); setPage(1); }}
-              prefix={<Search className="w-4 h-4" />}
+              prefix={<Icon source={SearchIcon} />}
               clearButton
               onClearButtonClick={() => setSearchValue('')}
               autoComplete="off"

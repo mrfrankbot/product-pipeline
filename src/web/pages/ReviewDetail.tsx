@@ -24,6 +24,7 @@ import {
   ViewIcon,
   CheckIcon,
   XIcon,
+  ArrowLeftIcon,
 } from '@shopify/polaris-icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -489,7 +490,7 @@ const ReviewDetail: React.FC = () => {
                     <Badge tone="success">Live</Badge>
                   </InlineStack>
                   <InlineStack gap="200" blockAlign="center">
-                    <Badge tone="success">Listing #{listingId}</Badge>
+                    <Badge tone="success">{`Listing #${listingId}`}</Badge>
                   </InlineStack>
                   <Button
                     fullWidth
@@ -583,7 +584,7 @@ const ReviewDetail: React.FC = () => {
                   </InlineStack>
                   <InlineStack gap="200" blockAlign="center">
                     <Badge tone={draft.status === 'approved' || draft.status === 'listed' ? 'success' : draft.status === 'rejected' ? 'critical' : 'warning'}>
-                      Review: {draft.status}
+                      {`Review: ${draft.status}`}
                     </Badge>
                   </InlineStack>
                   <InlineStack gap="200" blockAlign="center">

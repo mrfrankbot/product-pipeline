@@ -5,11 +5,14 @@ import {
   Box,
   Button,
   Card,
+  EmptyState,
   InlineStack,
   Layout,
   Modal,
   Page,
   Select,
+  SkeletonBodyText,
+  SkeletonPage,
   Text,
 } from '@shopify/polaris';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -51,31 +54,19 @@ interface TemplatesResponse {
 
 const TemplatePreview: React.FC<{ params: PhotoRoomParams }> = ({ params }) => {
   return (
-    <div
-      style={{
-        width: 40,
-        height: 40,
-        backgroundColor: params.background,
-        borderRadius: 6,
-        border: '1px solid #e5e7eb',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        position: 'relative',
-        overflow: 'hidden',
-      }}
+    <Box
+      background="bg-surface-secondary"
+      borderRadius="200"
+      borderWidth="025"
+      borderColor="border"
+      padding="100"
+      minWidth="40px"
+      minHeight="40px"
     >
-      {/* Inner box representing the product (with padding) */}
-      <div
-        style={{
-          width: `${Math.max(10, 40 - params.padding * 80)}px`,
-          height: `${Math.max(10, 40 - params.padding * 80)}px`,
-          backgroundColor: '#9ca3af',
-          borderRadius: 3,
-          boxShadow: params.shadow ? '0 2px 4px rgba(0,0,0,0.2)' : 'none',
-        }}
-      />
-    </div>
+      <InlineStack align="center" blockAlign="center">
+        <Badge>{params.background}</Badge>
+      </InlineStack>
+    </Box>
   );
 };
 

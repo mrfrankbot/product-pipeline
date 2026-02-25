@@ -763,6 +763,7 @@ const EbayListingPrep: React.FC = () => {
         <Layout>
           {/* ── Left Column: Editable Fields ──────────────────────── */}
           <Layout.Section>
+            <BlockStack gap="400">
             {/* Listing Details Card */}
             <Card>
               <BlockStack gap="400">
@@ -770,25 +771,23 @@ const EbayListingPrep: React.FC = () => {
 
                 <FormLayout>
                   {/* Title */}
-                  <div>
-                    <TextField
-                      label={
-                        <InlineStack gap="200" blockAlign="center">
-                          <span>eBay Title</span>
-                          <Badge tone={charCount > 80 ? 'critical' : charCount > 65 ? 'warning' : 'success'}>
-                            {`${charCount}/80`}
-                          </Badge>
-                        </InlineStack>
-                      }
-                      value={editState.title}
-                      onChange={(val) => update('title', val.slice(0, 80))}
-                      maxLength={80}
-                      showCharacterCount
-                      helpText="eBay allows up to 80 characters. Avoid special characters like ©, ™."
-                      autoComplete="off"
-                      error={charCount > 80 ? 'Title exceeds 80 character eBay limit' : undefined}
-                    />
-                  </div>
+                  <TextField
+                    label={
+                      <InlineStack gap="200" blockAlign="center">
+                        <span>eBay Title</span>
+                        <Badge tone={charCount > 80 ? 'critical' : charCount > 65 ? 'warning' : 'success'}>
+                          {`${charCount}/80`}
+                        </Badge>
+                      </InlineStack>
+                    }
+                    value={editState.title}
+                    onChange={(val) => update('title', val.slice(0, 80))}
+                    maxLength={80}
+                    showCharacterCount
+                    helpText="eBay allows up to 80 characters. Avoid special characters like ©, ™."
+                    autoComplete="off"
+                    error={charCount > 80 ? 'Title exceeds 80 character eBay limit' : undefined}
+                  />
 
                   {/* Price */}
                   <TextField
@@ -803,47 +802,45 @@ const EbayListingPrep: React.FC = () => {
 
                   <FormLayout.Group>
                     {/* eBay Category — searchable combobox */}
-                    <div>
-                      <Combobox
-                        activator={
-                          <Combobox.TextField
-                            label="eBay Category"
-                            value={categoryInputValue}
-                            onChange={handleCategoryInputChange}
-                            onFocus={() => setCategoryPopoverActive(true)}
-                            onBlur={() => {
-                              // Short delay so a click on an option registers first
-                              setTimeout(() => setCategoryPopoverActive(false), 150);
-                            }}
-                            placeholder="Search or enter category ID…"
-                            helpText={
-                              categoryName
-                                ? `Auto-suggested · type to search, or enter a numeric ID`
-                                : 'Type to search categories, or enter a numeric ID'
-                            }
-                            autoComplete="off"
-                          />
-                        }
-                        allowMultiple={false}
-                      >
-                        {categoryPopoverActive && filteredCategoryOptions.length > 0 ? (
-                          <Listbox onSelect={handleCategorySelect}>
-                            {filteredCategoryOptions.map((cat) => (
-                              <Listbox.Option
-                                key={cat.id}
-                                value={cat.id}
-                                selected={editState.categoryId === cat.id}
-                                accessibilityLabel={cat.label}
-                              >
-                                <Listbox.TextOption selected={editState.categoryId === cat.id}>
-                                  {cat.label}
-                                </Listbox.TextOption>
-                              </Listbox.Option>
-                            ))}
-                          </Listbox>
-                        ) : null}
-                      </Combobox>
-                    </div>
+                    <Combobox
+                      activator={
+                        <Combobox.TextField
+                          label="eBay Category"
+                          value={categoryInputValue}
+                          onChange={handleCategoryInputChange}
+                          onFocus={() => setCategoryPopoverActive(true)}
+                          onBlur={() => {
+                            // Short delay so a click on an option registers first
+                            setTimeout(() => setCategoryPopoverActive(false), 150);
+                          }}
+                          placeholder="Search or enter category ID…"
+                          helpText={
+                            categoryName
+                              ? `Auto-suggested · type to search, or enter a numeric ID`
+                              : 'Type to search categories, or enter a numeric ID'
+                          }
+                          autoComplete="off"
+                        />
+                      }
+                      allowMultiple={false}
+                    >
+                      {categoryPopoverActive && filteredCategoryOptions.length > 0 ? (
+                        <Listbox onSelect={handleCategorySelect}>
+                          {filteredCategoryOptions.map((cat) => (
+                            <Listbox.Option
+                              key={cat.id}
+                              value={cat.id}
+                              selected={editState.categoryId === cat.id}
+                              accessibilityLabel={cat.label}
+                            >
+                              <Listbox.TextOption selected={editState.categoryId === cat.id}>
+                                {cat.label}
+                              </Listbox.TextOption>
+                            </Listbox.Option>
+                          ))}
+                        </Listbox>
+                      ) : null}
+                    </Combobox>
 
                     {/* Condition */}
                     <Select
@@ -868,8 +865,6 @@ const EbayListingPrep: React.FC = () => {
                 </FormLayout>
               </BlockStack>
             </Card>
-
-            <div style={{ marginTop: '16px' }} />
 
             {/* Item Specifics Card */}
             <Card>
@@ -1036,6 +1031,7 @@ const EbayListingPrep: React.FC = () => {
             )}
 
             <div style={{ height: '100px' }} />
+            </BlockStack>
           </Layout.Section>
 
           {/* ── Right Column: eBay Preview + Sticky Actions ──────── */}

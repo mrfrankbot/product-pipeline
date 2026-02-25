@@ -4,24 +4,26 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../hooks/useApi';
 import {
-  Home,
-  Package,
-  ShoppingCart,
-  Settings as SettingsIcon,
-  BarChart3,
-  GitBranch,
-  Image,
-  Workflow,
-  Store,
-  Tag,
-} from 'lucide-react';
+  HomeIcon,
+  ProductIcon,
+  OrderIcon,
+  SettingsIcon,
+  ChartLineIcon,
+  ImageIcon,
+  ClipboardChecklistIcon,
+  ListBulletedIcon,
+  QuestionCircleIcon,
+  StarIcon,
+  PackageIcon,
+  ViewIcon,
+  AutomationIcon,
+} from '@shopify/polaris-icons';
 
 const AppNavigation: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
   const isSelected = (path: string) => location.pathname === path;
-  const isInSection = (paths: string[]) => paths.some((p) => location.pathname.startsWith(p));
 
   const { data: draftCount } = useQuery({
     queryKey: ['drafts-count'],
@@ -31,12 +33,12 @@ const AppNavigation: React.FC = () => {
 
   return (
     <Navigation location={location.pathname}>
-      {/* Dashboard — top level */}
+      {/* Dashboard */}
       <Navigation.Section
         items={[
           {
             label: 'Dashboard',
-            icon: undefined,
+            icon: HomeIcon,
             selected: isSelected('/'),
             onClick: () => navigate('/'),
             url: '/',
@@ -44,13 +46,13 @@ const AppNavigation: React.FC = () => {
         ]}
       />
 
-      {/* Shopify section */}
+      {/* Shopify */}
       <Navigation.Section
         title="Shopify"
         items={[
           {
             label: 'Products',
-            icon: undefined,
+            icon: ProductIcon,
             selected: isSelected('/listings') || location.pathname.startsWith('/listings/'),
             onClick: () => navigate('/listings'),
             url: '/listings',
@@ -58,34 +60,34 @@ const AppNavigation: React.FC = () => {
         ]}
       />
 
-      {/* eBay section */}
+      {/* eBay */}
       <Navigation.Section
         title="eBay"
         items={[
           {
             label: 'Listings',
-            icon: undefined,
+            icon: PackageIcon,
             selected: isSelected('/ebay/listings') || location.pathname.startsWith('/ebay/listings/'),
             onClick: () => navigate('/ebay/listings'),
             url: '/ebay/listings',
           },
           {
             label: 'Orders',
-            icon: undefined,
+            icon: OrderIcon,
             selected: isSelected('/orders'),
             onClick: () => navigate('/orders'),
             url: '/orders',
           },
           {
             label: 'eBay Orders',
-            icon: undefined,
+            icon: OrderIcon,
             selected: isSelected('/ebay-orders'),
             onClick: () => navigate('/ebay-orders'),
             url: '/ebay-orders',
           },
           {
             label: 'Mappings',
-            icon: undefined,
+            icon: ListBulletedIcon,
             selected: isSelected('/mappings'),
             onClick: () => navigate('/mappings'),
             url: '/mappings',
@@ -93,20 +95,20 @@ const AppNavigation: React.FC = () => {
         ]}
       />
 
-      {/* Pipeline section */}
+      {/* Pipeline */}
       <Navigation.Section
         title="Pipeline"
         items={[
           {
             label: 'Overview',
-            icon: undefined,
+            icon: AutomationIcon,
             selected: isSelected('/pipeline'),
             onClick: () => navigate('/pipeline'),
             url: '/pipeline',
           },
           {
             label: 'Review Queue',
-            icon: undefined,
+            icon: ClipboardChecklistIcon,
             selected: location.pathname.startsWith('/review'),
             onClick: () => navigate('/review'),
             url: '/review',
@@ -114,14 +116,14 @@ const AppNavigation: React.FC = () => {
           },
           {
             label: 'Images',
-            icon: undefined,
+            icon: ImageIcon,
             selected: isSelected('/images'),
             onClick: () => navigate('/images'),
             url: '/images',
           },
           {
             label: 'Category Mapping',
-            icon: undefined,
+            icon: ListBulletedIcon,
             selected: isSelected('/category-mapping'),
             onClick: () => navigate('/category-mapping'),
             url: '/category-mapping',
@@ -129,28 +131,28 @@ const AppNavigation: React.FC = () => {
         ]}
       />
 
-      {/* Settings & Analytics section */}
+      {/* Settings & Analytics */}
       <Navigation.Section
         title="Settings & Analytics"
         separator
         items={[
           {
             label: 'Analytics',
-            icon: undefined,
+            icon: ChartLineIcon,
             selected: isSelected('/logs'),
             onClick: () => navigate('/logs'),
             url: '/logs',
           },
           {
             label: 'Settings',
-            icon: undefined,
+            icon: SettingsIcon,
             selected: isSelected('/settings'),
             onClick: () => navigate('/settings'),
             url: '/settings',
           },
           {
             label: 'Help',
-            icon: undefined,
+            icon: QuestionCircleIcon,
             selected: location.pathname.startsWith('/help'),
             onClick: () => navigate('/help'),
             url: '/help',
@@ -174,7 +176,7 @@ const AppNavigation: React.FC = () => {
           },
           {
             label: 'Feature Requests',
-            icon: undefined,
+            icon: StarIcon,
             selected: isSelected('/features') || isSelected('/features/admin'),
             onClick: () => navigate('/features'),
             url: '/features',

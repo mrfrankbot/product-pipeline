@@ -1,17 +1,27 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Badge,
+  Banner,
+  BlockStack,
+  Box,
   Button,
+  Card,
   Checkbox,
+  Divider,
+  InlineStack,
+  Layout,
+  Page,
   Select,
+  SkeletonBodyText,
+  SkeletonPage,
   Spinner,
+  Text,
   TextField,
 } from '@shopify/polaris';
-import { LinkIcon, RefreshIcon } from '@shopify/polaris-icons';
+import { LinkIcon, RefreshIcon, DeleteIcon, PlusIcon } from '@shopify/polaris-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, useEbayAuthStatus, useSettings, useStatus, useUpdateSettings } from '../hooks/useApi';
 import { useAppStore } from '../store';
-import '../styles/settings.css';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -25,19 +35,6 @@ interface CategoryRule {
   keywords: string[];
   priority: number;
 }
-
-// ── Section definitions ────────────────────────────────────────────────
-
-const SECTIONS = [
-  { id: 'connections', label: 'Connections', icon: '🔗', color: '#e8f5e9' },
-  { id: 'sync', label: 'Sync', icon: '🔄', color: '#e3f2fd' },
-  { id: 'pipeline', label: 'Pipeline', icon: '⚡', color: '#fff3e0' },
-  { id: 'photo-processing', label: 'Photo Processing', icon: '📷', color: '#f3e5f5' },
-  { id: 'ebay', label: 'eBay', icon: '🛒', color: '#e8eaf6' },
-  { id: 'ai-descriptions', label: 'AI Descriptions', icon: '🤖', color: '#e0f7fa' },
-] as const;
-
-type SectionId = (typeof SECTIONS)[number]['id'];
 
 // ── Hardcoded defaults (mirrors config files) ──────────────────────────
 
@@ -65,15 +62,6 @@ const DEFAULT_CATEGORY_RULES: CategoryRule[] = [
   { categoryId: '48444', name: 'Other Camera Accessories', keywords: ['accessory', 'accessories', 'strap', 'remote', 'adapter', 'battery', 'charger'], priority: 50 },
 ];
 
-// ── Sub-components ─────────────────────────────────────────────────────
-
-const StatusBadge: React.FC<{ connected: boolean; label?: string }> = ({ connected, label }) => (
-  <div className={`settings-status-badge ${connected ? 'connected' : 'disconnected'}`}>
-    <div className={`settings-status-dot ${connected ? 'connected' : 'disconnected'}`} />
-    {label ?? (connected ? 'Connected' : 'Disconnected')}
-  </div>
-);
-
 // ── Main Component ─────────────────────────────────────────────────────
 
 const Settings: React.FC = () => {
@@ -85,8 +73,6 @@ const Settings: React.FC = () => {
   const queryClient = useQueryClient();
 
   const [draft, setDraft] = useState<Record<string, string | boolean>>({});
-  const [activeSection, setActiveSection] = useState<SectionId>('connections');
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // ── Condition descriptions state ──────────────────────────────────────
   const { data: condDescData } = useQuery({
@@ -220,291 +206,200 @@ const Settings: React.FC = () => {
     settings?.photoroom_api_key_configured === 'true' || process.env.PHOTOROOM_API_KEY,
   );
 
-  // ── Scroll-spy ────────────────────────────────────────────────────────
-  const sectionRefs = useRef<Map<string, HTMLElement>>(new Map());
-  const observerRef = useRef<IntersectionObserver | null>(null);
-
-  const registerSection = useCallback((id: string, el: HTMLElement | null) => {
-    if (el) sectionRefs.current.set(id, el);
-    else sectionRefs.current.delete(id);
-  }, []);
-
-  useEffect(() => {
-    if (observerRef.current) observerRef.current.disconnect();
-
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            setActiveSection(entry.target.id as SectionId);
-          }
-        }
-      },
-      { rootMargin: '-20% 0px -70% 0px', threshold: 0 },
-    );
-
-    for (const el of sectionRefs.current.values()) {
-      observerRef.current.observe(el);
-    }
-
-    return () => observerRef.current?.disconnect();
-  }, []);
-
-  const scrollToSection = (id: SectionId) => {
-    const el = sectionRefs.current.get(id);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-    setSidebarOpen(false);
-  };
-
   // ── Loading / error states ────────────────────────────────────────────
   if (isLoading) {
     return (
-      <div className="settings-page">
-        <div className="settings-main" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Spinner size="large" accessibilityLabel="Loading settings" />
-        </div>
-      </div>
+      <SkeletonPage title="Settings">
+        <Layout>
+          <Layout.AnnotatedSection title="Connections" description="Loading...">
+            <Card>
+              <SkeletonBodyText lines={4} />
+            </Card>
+          </Layout.AnnotatedSection>
+        </Layout>
+      </SkeletonPage>
     );
   }
 
   if (error) {
     return (
-      <div className="settings-page">
-        <div className="settings-main">
-          <div className="settings-card">
-            <p className="settings-card-title">Settings unavailable</p>
-            <p className="settings-card-desc">{(error as Error).message}</p>
-          </div>
-        </div>
-      </div>
+      <Page title="Settings">
+        <Banner tone="critical" title="Settings unavailable">
+          <p>{(error as Error).message}</p>
+        </Banner>
+      </Page>
     );
   }
 
   // ── Render ────────────────────────────────────────────────────────────
   return (
-    <div className="settings-page">
-      {/* Mobile overlay */}
-      {sidebarOpen && <div className="settings-mobile-overlay" onClick={() => setSidebarOpen(false)} />}
-
-      {/* Sidebar */}
-      <aside className={`settings-sidebar${sidebarOpen ? ' mobile-open' : ''}`}>
-        <div className="settings-sidebar-header">
-          <span className="settings-sidebar-title">⚙️ &nbsp;Settings</span>
-        </div>
-        {SECTIONS.map((s) => (
-          <button
-            key={s.id}
-            className={`settings-nav-item${activeSection === s.id ? ' active' : ''}`}
-            onClick={() => scrollToSection(s.id)}
-          >
-            <span className="settings-nav-icon">{s.icon}</span>
-            {s.label}
-          </button>
-        ))}
-      </aside>
-
-      {/* Main content */}
-      <main className="settings-main">
-        <div className="settings-page-header">
-          <h1 className="settings-page-title">Settings</h1>
-          <p className="settings-page-subtitle">Manage sync configuration, platform connections, and eBay settings</p>
-        </div>
-
+    <Page title="Settings">
+      <Layout>
         {/* ── Connections ─────────────────────────────────────────────── */}
-        <section
-          id="connections"
-          className="settings-section"
-          ref={(el) => registerSection('connections', el)}
+        <Layout.AnnotatedSection
+          title="Connections"
+          description="Platform integrations and authentication"
         >
-          <div className="settings-section-header">
-            <div className="settings-section-icon" style={{ background: '#e8f5e9' }}>🔗</div>
-            <div className="settings-section-title-block">
-              <h2 className="settings-section-title">Connections</h2>
-              <p className="settings-section-desc">Platform integrations and authentication</p>
-            </div>
-          </div>
-
-          <div className="settings-connections-grid">
+          <BlockStack gap="400">
             {/* Shopify */}
-            <div className="settings-connection-card">
-              <div className="settings-connection-header">
-                <div className="settings-connection-name">
-                  <div className="settings-connection-logo">🛍️</div>
-                  <span className="settings-connection-title">Shopify</span>
-                </div>
-                <StatusBadge connected={Boolean(connections.shopify)} />
-              </div>
-              <p className="settings-connection-desc">
-                Connect Shopify to sync products, inventory, and pricing.
-              </p>
-              <div className="settings-connection-actions">
+            <Card>
+              <BlockStack gap="300">
+                <InlineStack align="space-between" blockAlign="center">
+                  <InlineStack gap="200" blockAlign="center">
+                    <Text variant="headingMd" as="h3">🛍️ Shopify</Text>
+                    <Badge tone={connections.shopify ? 'success' : 'critical'}>
+                      {connections.shopify ? 'Connected' : 'Disconnected'}
+                    </Badge>
+                  </InlineStack>
+                </InlineStack>
+                <Text variant="bodySm" as="p" tone="subdued">
+                  Connect Shopify to sync products, inventory, and pricing.
+                </Text>
                 <Button icon={LinkIcon} onClick={handleConnectShopify} size="slim">
                   Connect Shopify
                 </Button>
-              </div>
-            </div>
+              </BlockStack>
+            </Card>
 
             {/* eBay */}
-            <div className="settings-connection-card">
-              <div className="settings-connection-header">
-                <div className="settings-connection-name">
-                  <div className="settings-connection-logo">🛒</div>
-                  <span className="settings-connection-title">eBay</span>
-                </div>
-                {ebayLoading ? (
-                  <Spinner size="small" accessibilityLabel="Checking eBay status" />
-                ) : (
-                  <StatusBadge connected={Boolean(ebayAuth?.connected)} />
-                )}
-              </div>
-              <p className="settings-connection-desc">
-                {ebayAuth?.connected
-                  ? 'eBay account is authorized. Products will sync automatically.'
-                  : 'Authorize your eBay seller account to enable listing sync.'}
-              </p>
-              <div className="settings-connection-actions">
-                <Button icon={LinkIcon} onClick={handleConnectEbay} size="slim">
-                  {ebayAuth?.connected ? 'Reconnect eBay' : 'Connect eBay'}
-                </Button>
-                <Button icon={RefreshIcon} onClick={() => refetchEbay()} size="slim">
-                  Refresh
-                </Button>
-                {ebayAuth?.connected && (
-                  <Button tone="critical" onClick={handleDisconnectEbay} size="slim">
-                    Disconnect
+            <Card>
+              <BlockStack gap="300">
+                <InlineStack align="space-between" blockAlign="center">
+                  <InlineStack gap="200" blockAlign="center">
+                    <Text variant="headingMd" as="h3">🛒 eBay</Text>
+                    {ebayLoading ? (
+                      <Spinner size="small" accessibilityLabel="Checking eBay status" />
+                    ) : (
+                      <Badge tone={ebayAuth?.connected ? 'success' : 'critical'}>
+                        {ebayAuth?.connected ? 'Connected' : 'Disconnected'}
+                      </Badge>
+                    )}
+                  </InlineStack>
+                </InlineStack>
+                <Text variant="bodySm" as="p" tone="subdued">
+                  {ebayAuth?.connected
+                    ? 'eBay account is authorized. Products will sync automatically.'
+                    : 'Authorize your eBay seller account to enable listing sync.'}
+                </Text>
+                <InlineStack gap="200">
+                  <Button icon={LinkIcon} onClick={handleConnectEbay} size="slim">
+                    {ebayAuth?.connected ? 'Reconnect eBay' : 'Connect eBay'}
                   </Button>
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
+                  <Button icon={RefreshIcon} onClick={() => refetchEbay()} size="slim">
+                    Refresh
+                  </Button>
+                  {ebayAuth?.connected && (
+                    <Button tone="critical" onClick={handleDisconnectEbay} size="slim">
+                      Disconnect
+                    </Button>
+                  )}
+                </InlineStack>
+              </BlockStack>
+            </Card>
+          </BlockStack>
+        </Layout.AnnotatedSection>
 
         {/* ── Sync ────────────────────────────────────────────────────── */}
-        <section
-          id="sync"
-          className="settings-section"
-          ref={(el) => registerSection('sync', el)}
+        <Layout.AnnotatedSection
+          title="Sync"
+          description="Control how and when products sync between Shopify and eBay"
         >
-          <div className="settings-section-header">
-            <div className="settings-section-icon" style={{ background: '#e3f2fd' }}>🔄</div>
-            <div className="settings-section-title-block">
-              <h2 className="settings-section-title">Sync</h2>
-              <p className="settings-section-desc">Control how and when products sync between Shopify and eBay</p>
-            </div>
-          </div>
-
-          <div className="settings-card">
-            <div className="settings-checkboxes">
-              <Checkbox
-                label="Auto-sync enabled"
-                checked={String(mergedSettings.auto_sync_enabled) === 'true'}
-                onChange={(value) =>
-                  setDraft((prev) => ({ ...prev, auto_sync_enabled: value ? 'true' : 'false' }))
-                }
-              />
-              <Checkbox
-                label="Sync inventory"
-                checked={String(mergedSettings.sync_inventory) === 'true'}
-                onChange={(value) =>
-                  setDraft((prev) => ({ ...prev, sync_inventory: value ? 'true' : 'false' }))
-                }
-              />
-              <Checkbox
-                label="Sync price"
-                checked={String(mergedSettings.sync_price) === 'true'}
-                onChange={(value) =>
-                  setDraft((prev) => ({ ...prev, sync_price: value ? 'true' : 'false' }))
-                }
-              />
-            </div>
-            <div style={{ maxWidth: '200px' }}>
-              <Select
-                label="Sync interval (minutes)"
-                options={[
-                  { label: '5 minutes', value: '5' },
-                  { label: '10 minutes', value: '10' },
-                  { label: '15 minutes', value: '15' },
-                  { label: '30 minutes', value: '30' },
-                ]}
-                value={String(mergedSettings.sync_interval_minutes)}
-                onChange={(value) => setDraft((prev) => ({ ...prev, sync_interval_minutes: value }))}
-              />
-            </div>
-            <div className="settings-save-bar">
-              <Button
-                variant="primary"
-                onClick={handleSave}
-                loading={updateSettings.isPending}
-                size="slim"
-              >
-                Save sync settings
-              </Button>
-            </div>
-          </div>
-        </section>
+          <Card>
+            <BlockStack gap="400">
+              <BlockStack gap="200">
+                <Checkbox
+                  label="Auto-sync enabled"
+                  checked={String(mergedSettings.auto_sync_enabled) === 'true'}
+                  onChange={(value) =>
+                    setDraft((prev) => ({ ...prev, auto_sync_enabled: value ? 'true' : 'false' }))
+                  }
+                />
+                <Checkbox
+                  label="Sync inventory"
+                  checked={String(mergedSettings.sync_inventory) === 'true'}
+                  onChange={(value) =>
+                    setDraft((prev) => ({ ...prev, sync_inventory: value ? 'true' : 'false' }))
+                  }
+                />
+                <Checkbox
+                  label="Sync price"
+                  checked={String(mergedSettings.sync_price) === 'true'}
+                  onChange={(value) =>
+                    setDraft((prev) => ({ ...prev, sync_price: value ? 'true' : 'false' }))
+                  }
+                />
+              </BlockStack>
+              <Box maxWidth="200px">
+                <Select
+                  label="Sync interval (minutes)"
+                  options={[
+                    { label: '5 minutes', value: '5' },
+                    { label: '10 minutes', value: '10' },
+                    { label: '15 minutes', value: '15' },
+                    { label: '30 minutes', value: '30' },
+                  ]}
+                  value={String(mergedSettings.sync_interval_minutes)}
+                  onChange={(value) => setDraft((prev) => ({ ...prev, sync_interval_minutes: value }))}
+                />
+              </Box>
+              <InlineStack align="end">
+                <Button
+                  variant="primary"
+                  onClick={handleSave}
+                  loading={updateSettings.isPending}
+                  size="slim"
+                >
+                  Save sync settings
+                </Button>
+              </InlineStack>
+            </BlockStack>
+          </Card>
+        </Layout.AnnotatedSection>
 
         {/* ── Pipeline ────────────────────────────────────────────────── */}
-        <section
-          id="pipeline"
-          className="settings-section"
-          ref={(el) => registerSection('pipeline', el)}
+        <Layout.AnnotatedSection
+          title="Pipeline"
+          description="Automatic processing steps for new products entering the pipeline"
         >
-          <div className="settings-section-header">
-            <div className="settings-section-icon" style={{ background: '#fff3e0' }}>⚡</div>
-            <div className="settings-section-title-block">
-              <h2 className="settings-section-title">Pipeline</h2>
-              <p className="settings-section-desc">Automatic processing steps for new products entering the pipeline</p>
-            </div>
-          </div>
-
-          <div className="settings-card">
-            <div className="settings-checkboxes">
-              <Checkbox
-                label="Auto-generate descriptions on new products"
-                checked={String(mergedSettings.pipeline_auto_descriptions) === '1'}
-                onChange={(value) =>
-                  setDraft((prev) => ({ ...prev, pipeline_auto_descriptions: value ? '1' : '0' }))
-                }
-              />
-              <Checkbox
-                label="Auto-process images on new products"
-                checked={String(mergedSettings.pipeline_auto_images) === '1'}
-                onChange={(value) =>
-                  setDraft((prev) => ({ ...prev, pipeline_auto_images: value ? '1' : '0' }))
-                }
-              />
-            </div>
-            <div className="settings-save-bar">
-              <Button
-                variant="primary"
-                onClick={handleSave}
-                loading={updateSettings.isPending}
-                size="slim"
-              >
-                Save pipeline settings
-              </Button>
-            </div>
-          </div>
-        </section>
+          <Card>
+            <BlockStack gap="400">
+              <BlockStack gap="200">
+                <Checkbox
+                  label="Auto-generate descriptions on new products"
+                  checked={String(mergedSettings.pipeline_auto_descriptions) === '1'}
+                  onChange={(value) =>
+                    setDraft((prev) => ({ ...prev, pipeline_auto_descriptions: value ? '1' : '0' }))
+                  }
+                />
+                <Checkbox
+                  label="Auto-process images on new products"
+                  checked={String(mergedSettings.pipeline_auto_images) === '1'}
+                  onChange={(value) =>
+                    setDraft((prev) => ({ ...prev, pipeline_auto_images: value ? '1' : '0' }))
+                  }
+                />
+              </BlockStack>
+              <InlineStack align="end">
+                <Button
+                  variant="primary"
+                  onClick={handleSave}
+                  loading={updateSettings.isPending}
+                  size="slim"
+                >
+                  Save pipeline settings
+                </Button>
+              </InlineStack>
+            </BlockStack>
+          </Card>
+        </Layout.AnnotatedSection>
 
         {/* ── Photo Processing ─────────────────────────────────────────── */}
-        <section
-          id="photo-processing"
-          className="settings-section"
-          ref={(el) => registerSection('photo-processing', el)}
+        <Layout.AnnotatedSection
+          title="Photo Processing"
+          description="PhotoRoom integration and image template settings"
         >
-          <div className="settings-section-header">
-            <div className="settings-section-icon" style={{ background: '#f3e5f5' }}>📷</div>
-            <div className="settings-section-title-block">
-              <h2 className="settings-section-title">Photo Processing</h2>
-              <p className="settings-section-desc">PhotoRoom integration and image template settings</p>
-            </div>
-          </div>
-
-          <div className="settings-card">
-            <div style={{ marginBottom: '20px' }}>
+          <Card>
+            <BlockStack gap="400">
               <TextField
                 label="PhotoRoom Template ID"
                 value={String(mergedSettings.photoroom_template_id)}
@@ -512,222 +407,195 @@ const Settings: React.FC = () => {
                 autoComplete="off"
                 helpText="The PhotoRoom template used to render product images."
               />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
-              <span style={{ fontSize: '14px', color: '#6d7175' }}>PhotoRoom API key:</span>
-              <Badge tone={photoroomKeyConfigured ? 'success' : 'critical'}>
-                {photoroomKeyConfigured ? 'Configured' : 'Not configured'}
-              </Badge>
-            </div>
-            <div className="settings-save-bar">
-              <Button
-                variant="primary"
-                onClick={handleSave}
-                loading={updateSettings.isPending}
-                size="slim"
-              >
-                Save photo settings
-              </Button>
-            </div>
-          </div>
-        </section>
+              <InlineStack gap="200" blockAlign="center">
+                <Text variant="bodySm" as="span" tone="subdued">PhotoRoom API key:</Text>
+                <Badge tone={photoroomKeyConfigured ? 'success' : 'critical'}>
+                  {photoroomKeyConfigured ? 'Configured' : 'Not configured'}
+                </Badge>
+              </InlineStack>
+              <InlineStack align="end">
+                <Button
+                  variant="primary"
+                  onClick={handleSave}
+                  loading={updateSettings.isPending}
+                  size="slim"
+                >
+                  Save photo settings
+                </Button>
+              </InlineStack>
+            </BlockStack>
+          </Card>
+        </Layout.AnnotatedSection>
 
         {/* ── eBay ─────────────────────────────────────────────────────── */}
-        <section
-          id="ebay"
-          className="settings-section"
-          ref={(el) => registerSection('ebay', el)}
+        <Layout.AnnotatedSection
+          title="eBay"
+          description="Condition descriptions, category mappings, and listing defaults"
         >
-          <div className="settings-section-header">
-            <div className="settings-section-icon" style={{ background: '#e8eaf6' }}>🛒</div>
-            <div className="settings-section-title-block">
-              <h2 className="settings-section-title">eBay</h2>
-              <p className="settings-section-desc">Condition descriptions, category mappings, and listing defaults</p>
-            </div>
-          </div>
+          <BlockStack gap="400">
+            {/* Condition Descriptions */}
+            <Card>
+              <BlockStack gap="400">
+                <Text variant="headingMd" as="h3">Condition Grade Descriptions</Text>
+                <Text variant="bodySm" as="p" tone="subdued">
+                  Edit the descriptions shown on eBay listings for each condition grade. These appear as the item condition notes visible to buyers.
+                </Text>
+                <BlockStack gap="300">
+                  {Object.entries(condDescriptions).map(([grade, desc]) => (
+                    <BlockStack key={grade} gap="100">
+                      <Text variant="bodyMd" as="span" fontWeight="semibold">{grade}</Text>
+                      <TextField
+                        label=""
+                        labelHidden
+                        value={desc}
+                        onChange={(val) =>
+                          setCondDraft((prev) => ({ ...prev, [grade]: val }))
+                        }
+                        multiline={2}
+                        autoComplete="off"
+                      />
+                    </BlockStack>
+                  ))}
+                </BlockStack>
+                <InlineStack align="space-between" blockAlign="center">
+                  <Text variant="bodySm" as="span" tone={condSaveStatus === 'saved' ? 'success' : condSaveStatus === 'error' ? 'critical' : 'subdued'}>
+                    {condSaveStatus === 'saved' && '✓ Saved'}
+                    {condSaveStatus === 'error' && '✗ Failed to save'}
+                  </Text>
+                  <Button
+                    variant="primary"
+                    onClick={handleSaveCondDesc}
+                    loading={condSaveStatus === 'saving'}
+                    size="slim"
+                  >
+                    Save descriptions
+                  </Button>
+                </InlineStack>
+              </BlockStack>
+            </Card>
 
-          {/* Condition Descriptions */}
-          <div className="settings-card">
-            <p className="settings-card-title">Condition Grade Descriptions</p>
-            <p className="settings-card-desc">
-              Edit the descriptions shown on eBay listings for each condition grade. These appear as the item condition notes visible to buyers.
-            </p>
-            <div className="settings-conditions-grid">
-              {Object.entries(condDescriptions).map(([grade, desc]) => (
-                <div key={grade} className="settings-condition-item">
-                  <div className="settings-condition-grade">
-                    <span>{grade}</span>
-                  </div>
-                  <TextField
-                    label=""
-                    labelHidden
-                    value={desc}
-                    onChange={(val) =>
-                      setCondDraft((prev) => ({ ...prev, [grade]: val }))
-                    }
-                    multiline={2}
-                    autoComplete="off"
-                  />
-                </div>
-              ))}
-            </div>
-            <div className="settings-save-bar">
-              <span className={`settings-save-status${condSaveStatus === 'saved' ? ' saved' : condSaveStatus === 'error' ? ' error' : ''}`}>
-                {condSaveStatus === 'saved' && '✓ Saved'}
-                {condSaveStatus === 'error' && '✗ Failed to save'}
-              </span>
-              <Button
-                variant="primary"
-                onClick={handleSaveCondDesc}
-                loading={condSaveStatus === 'saving'}
-                size="slim"
-              >
-                Save descriptions
-              </Button>
-            </div>
-          </div>
-
-          {/* Category Mappings */}
-          <div className="settings-card">
-            <p className="settings-card-title">eBay Category Mappings</p>
-            <p className="settings-card-desc">
-              Map Shopify product types to eBay category IDs. Keywords are matched against the product type (comma-separated, lowercased).
-            </p>
-            <div style={{ overflowX: 'auto' }}>
-              <table className="settings-category-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: '22%' }}>Category Name</th>
-                    <th style={{ width: '12%' }}>eBay ID</th>
-                    <th style={{ width: '10%' }}>Priority</th>
-                    <th>Keywords</th>
-                    <th style={{ width: '40px' }}></th>
-                  </tr>
-                </thead>
-                <tbody>
+            {/* Category Mappings */}
+            <Card>
+              <BlockStack gap="400">
+                <Text variant="headingMd" as="h3">eBay Category Mappings</Text>
+                <Text variant="bodySm" as="p" tone="subdued">
+                  Map Shopify product types to eBay category IDs. Keywords are matched against the product type (comma-separated, lowercased).
+                </Text>
+                <BlockStack gap="300">
                   {displayCategoryRules.map((rule, idx) => (
-                    <tr key={idx} className="settings-category-row">
-                      <td>
-                        <input
-                          className="settings-category-name-input"
-                          value={rule.name}
-                          onChange={(e) => handleCategoryChange(idx, 'name', e.target.value)}
-                          placeholder="Category name"
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="settings-category-id-input"
-                          value={rule.categoryId}
-                          onChange={(e) => handleCategoryChange(idx, 'categoryId', e.target.value)}
-                          placeholder="e.g. 31388"
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="settings-category-id-input"
-                          type="number"
-                          value={rule.priority}
-                          onChange={(e) => handleCategoryChange(idx, 'priority', parseInt(e.target.value) || 0)}
-                          placeholder="100"
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="settings-category-keywords-input"
+                    <Card key={idx}>
+                      <BlockStack gap="200">
+                        <InlineStack align="space-between" blockAlign="center">
+                          <Text variant="bodyMd" as="span" fontWeight="semibold">
+                            {rule.name || `Category ${idx + 1}`}
+                          </Text>
+                          <Button
+                            icon={DeleteIcon}
+                            onClick={() => handleDeleteCategory(idx)}
+                            tone="critical"
+                            variant="plain"
+                            accessibilityLabel="Remove category"
+                          />
+                        </InlineStack>
+                        <InlineStack gap="200" wrap>
+                          <Box minWidth="180px" maxWidth="240px">
+                            <TextField
+                              label="Category Name"
+                              value={rule.name}
+                              onChange={(val) => handleCategoryChange(idx, 'name', val)}
+                              autoComplete="off"
+                            />
+                          </Box>
+                          <Box minWidth="120px" maxWidth="140px">
+                            <TextField
+                              label="eBay ID"
+                              value={rule.categoryId}
+                              onChange={(val) => handleCategoryChange(idx, 'categoryId', val)}
+                              placeholder="e.g. 31388"
+                              autoComplete="off"
+                            />
+                          </Box>
+                          <Box minWidth="80px" maxWidth="100px">
+                            <TextField
+                              label="Priority"
+                              type="number"
+                              value={String(rule.priority)}
+                              onChange={(val) => handleCategoryChange(idx, 'priority', parseInt(val) || 0)}
+                              autoComplete="off"
+                            />
+                          </Box>
+                        </InlineStack>
+                        <TextField
+                          label="Keywords"
                           value={Array.isArray(rule.keywords) ? rule.keywords.join(', ') : rule.keywords}
-                          onChange={(e) =>
-                            handleCategoryChange(idx, 'keywords', e.target.value.split(',').map((k) => k.trim()).filter(Boolean))
+                          onChange={(val) =>
+                            handleCategoryChange(idx, 'keywords', val.split(',').map((k) => k.trim()).filter(Boolean))
                           }
                           placeholder="camera, dslr, mirrorless…"
+                          autoComplete="off"
                         />
-                      </td>
-                      <td>
-                        <button
-                          className="settings-category-delete-btn"
-                          onClick={() => handleDeleteCategory(idx)}
-                          title="Remove category"
-                        >
-                          ×
-                        </button>
-                      </td>
-                    </tr>
+                      </BlockStack>
+                    </Card>
                   ))}
-                </tbody>
-              </table>
-            </div>
-            <button className="settings-add-row-btn" onClick={handleAddCategory}>
-              + Add category
-            </button>
-            <div className="settings-save-bar">
-              <span className={`settings-save-status${catSaveStatus === 'saved' ? ' saved' : catSaveStatus === 'error' ? ' error' : ''}`}>
-                {catSaveStatus === 'saved' && '✓ Saved'}
-                {catSaveStatus === 'error' && '✗ Failed to save'}
-              </span>
-              <Button
-                variant="primary"
-                onClick={handleSaveCategories}
-                loading={catSaveStatus === 'saving'}
-                size="slim"
-              >
-                Save categories
-              </Button>
-            </div>
-          </div>
-        </section>
+                </BlockStack>
+                <Button icon={PlusIcon} onClick={handleAddCategory} variant="plain" size="slim">
+                  Add category
+                </Button>
+                <InlineStack align="space-between" blockAlign="center">
+                  <Text variant="bodySm" as="span" tone={catSaveStatus === 'saved' ? 'success' : catSaveStatus === 'error' ? 'critical' : 'subdued'}>
+                    {catSaveStatus === 'saved' && '✓ Saved'}
+                    {catSaveStatus === 'error' && '✗ Failed to save'}
+                  </Text>
+                  <Button
+                    variant="primary"
+                    onClick={handleSaveCategories}
+                    loading={catSaveStatus === 'saving'}
+                    size="slim"
+                  >
+                    Save categories
+                  </Button>
+                </InlineStack>
+              </BlockStack>
+            </Card>
+          </BlockStack>
+        </Layout.AnnotatedSection>
 
         {/* ── AI Descriptions ──────────────────────────────────────────── */}
-        <section
-          id="ai-descriptions"
-          className="settings-section"
-          ref={(el) => registerSection('ai-descriptions', el)}
+        <Layout.AnnotatedSection
+          title="AI Descriptions"
+          description="Configure the AI prompt used to generate eBay listing descriptions"
         >
-          <div className="settings-section-header">
-            <div className="settings-section-icon" style={{ background: '#e0f7fa' }}>🤖</div>
-            <div className="settings-section-title-block">
-              <h2 className="settings-section-title">AI Descriptions</h2>
-              <p className="settings-section-desc">Configure the AI prompt used to generate eBay listing descriptions</p>
-            </div>
-          </div>
-
-          <div className="settings-card">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-              <span style={{ fontSize: '14px', color: '#6d7175' }}>OpenAI API key:</span>
-              <Badge tone={settings?.openai_api_key_configured === 'true' ? 'success' : 'critical'}>
-                {settings?.openai_api_key_configured === 'true' ? 'Configured' : 'Not configured'}
-              </Badge>
-            </div>
-            <TextField
-              label="Description Generation Prompt"
-              value={String(mergedSettings.description_prompt)}
-              onChange={(value) => setDraft((prev) => ({ ...prev, description_prompt: value }))}
-              multiline={10}
-              autoComplete="off"
-              helpText="This prompt is sent to the AI when generating product descriptions for new listings."
-            />
-            <div className="settings-save-bar">
-              <Button
-                variant="primary"
-                onClick={handleSave}
-                loading={updateSettings.isPending}
-                size="slim"
-              >
-                Save prompt
-              </Button>
-            </div>
-          </div>
-        </section>
-      </main>
-
-      {/* Mobile sidebar toggle */}
-      <button
-        className="settings-mobile-toggle"
-        onClick={() => setSidebarOpen((v) => !v)}
-        aria-label="Toggle settings navigation"
-      >
-        ☰
-      </button>
-    </div>
+          <Card>
+            <BlockStack gap="400">
+              <InlineStack gap="200" blockAlign="center">
+                <Text variant="bodySm" as="span" tone="subdued">OpenAI API key:</Text>
+                <Badge tone={settings?.openai_api_key_configured === 'true' ? 'success' : 'critical'}>
+                  {settings?.openai_api_key_configured === 'true' ? 'Configured' : 'Not configured'}
+                </Badge>
+              </InlineStack>
+              <TextField
+                label="Description Generation Prompt"
+                value={String(mergedSettings.description_prompt)}
+                onChange={(value) => setDraft((prev) => ({ ...prev, description_prompt: value }))}
+                multiline={10}
+                autoComplete="off"
+                helpText="This prompt is sent to the AI when generating product descriptions for new listings."
+              />
+              <InlineStack align="end">
+                <Button
+                  variant="primary"
+                  onClick={handleSave}
+                  loading={updateSettings.isPending}
+                  size="slim"
+                >
+                  Save prompt
+                </Button>
+              </InlineStack>
+            </BlockStack>
+          </Card>
+        </Layout.AnnotatedSection>
+      </Layout>
+    </Page>
   );
 };
 

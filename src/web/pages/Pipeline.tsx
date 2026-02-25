@@ -1,33 +1,39 @@
 import React, { useCallback, useState } from 'react';
 import {
   Badge,
+  Banner,
   BlockStack,
+  Box,
   Button,
   Card,
+  Divider,
+  EmptyState,
+  Icon,
   IndexTable,
+  InlineGrid,
   InlineStack,
   Page,
+  SkeletonBodyText,
+  SkeletonPage,
   Text,
   TextField,
 } from '@shopify/polaris';
+import {
+  ProductIcon,
+  MagicIcon,
+  ImageIcon,
+  StoreIcon,
+  StatusActiveIcon,
+  AlertCircleIcon,
+  ClockIcon,
+  CheckCircleIcon,
+  PlayIcon,
+} from '@shopify/polaris-icons';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../hooks/useApi';
-import {
-  ShoppingBag,
-  Sparkles,
-  ImageIcon,
-  Store,
-  ArrowRight,
-  CheckCircle2,
-  Clock,
-  AlertTriangle,
-  Loader2,
-} from 'lucide-react';
 import PipelineProgress from '../components/PipelineProgress';
 
-/* ------------------------------------------------------------------ */
-/* Types                                                               */
-/* ------------------------------------------------------------------ */
+/* ────────────────── Types ────────────────── */
 
 interface PipelineStep {
   name: string;
@@ -56,18 +62,7 @@ interface PipelineJobsResponse {
   count: number;
 }
 
-/* ------------------------------------------------------------------ */
-/* Pipeline stage definitions                                          */
-/* ------------------------------------------------------------------ */
-
-interface PipelineStage {
-  key: string;
-  label: string;
-  description: string;
-  icon: React.ReactNode;
-  gradient: string;
-  activeCount: number;
-}
+/* ────────────────── Helpers ────────────────── */
 
 const STEP_LABELS: Record<string, string> = {
   fetch_product: 'Shopify Import',
@@ -76,135 +71,25 @@ const STEP_LABELS: Record<string, string> = {
   create_ebay_listing: 'eBay Listing',
 };
 
+const STAGE_CONFIG = [
+  { key: 'import', label: 'Shopify Import', description: 'Products ingested from catalog', icon: ProductIcon, tone: 'info' as const },
+  { key: 'ai', label: 'AI Description', description: 'Optimized listing copy generated', icon: MagicIcon, tone: 'warning' as const },
+  { key: 'images', label: 'Image Processing', description: 'PhotoRoom templates applied', icon: ImageIcon, tone: 'success' as const },
+  { key: 'listing', label: 'eBay Listing', description: 'Published to marketplace', icon: StoreIcon, tone: 'info' as const },
+];
+
 function resolveStepLabel(job: PipelineJob): string {
   if (job.currentStep) return job.currentStep;
-  const running = job.steps?.find((step) => step.status === 'running');
+  const running = job.steps?.find((s) => s.status === 'running');
   if (running?.name && STEP_LABELS[running.name]) return STEP_LABELS[running.name];
-  const pending = job.steps?.find((step) => step.status === 'pending');
+  const pending = job.steps?.find((s) => s.status === 'pending');
   if (pending?.name && STEP_LABELS[pending.name]) return STEP_LABELS[pending.name];
   return 'Shopify Import';
 }
 
-function buildStages(jobs: PipelineJob[]): PipelineStage[] {
-  const countAtStep = (step: string, status?: string) =>
-    jobs.filter(
-      (j) =>
-        resolveStepLabel(j) === step &&
-        (status ? j.status === status : j.status === 'processing' || j.status === 'queued'),
-    ).length;
-
-  return [
-    {
-      key: 'import',
-      label: 'Shopify Import',
-      description: 'Products ingested from Shopify catalog',
-      icon: <ShoppingBag size={28} />,
-      gradient: 'linear-gradient(135deg, #95bf47 0%, #5e8e3e 100%)',
-      activeCount: countAtStep('Shopify Import'),
-    },
-    {
-      key: 'ai',
-      label: 'AI Description',
-      description: 'Generate optimized listing copy',
-      icon: <Sparkles size={28} />,
-      gradient: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)',
-      activeCount: countAtStep('AI Description'),
-    },
-    {
-      key: 'images',
-      label: 'Image Processing',
-      description: 'PhotoRoom templates applied',
-      icon: <ImageIcon size={28} />,
-      gradient: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-      activeCount: countAtStep('Image Processing'),
-    },
-    {
-      key: 'listing',
-      label: 'eBay Listing',
-      description: 'Published to eBay marketplace',
-      icon: <Store size={28} />,
-      gradient: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
-      activeCount: countAtStep('eBay Listing'),
-    },
-  ];
-}
-
-/* ------------------------------------------------------------------ */
-/* Sub-components                                                      */
-/* ------------------------------------------------------------------ */
-
-const StageCard: React.FC<{ stage: PipelineStage; index: number }> = ({ stage, index }) => {
-  return (
-    <div className="pipeline-stage-card" style={{ animationDelay: `${index * 0.1}s` }}>
-      {/* Glass card */}
-      <div className="pipeline-glass-card">
-        <div className="pipeline-stage-icon" style={{ background: stage.gradient }}>
-          {stage.icon}
-        </div>
-        <div className="pipeline-stage-label">{stage.label}</div>
-        <div className="pipeline-stage-desc">{stage.description}</div>
-        {stage.activeCount > 0 && (
-          <div className="pipeline-stage-badge">
-            <span className="pipeline-badge-dot" />
-            {stage.activeCount} active
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const ConnectorArrow: React.FC<{ active: boolean }> = ({ active }) => (
-  <div className="pipeline-connector">
-    <div className={`pipeline-connector-line ${active ? 'pipeline-connector-active' : ''}`}>
-      <div className="pipeline-connector-track" />
-      {active && (
-        <>
-          <div className="pipeline-dot pipeline-dot-1" />
-          <div className="pipeline-dot pipeline-dot-2" />
-          <div className="pipeline-dot pipeline-dot-3" />
-        </>
-      )}
-    </div>
-    <ArrowRight size={18} className="pipeline-connector-arrow" />
-  </div>
-);
-
-function statusBadge(status: string) {
-  switch (status) {
-    case 'completed':
-      return <Badge tone="success">Completed</Badge>;
-    case 'processing':
-      return <Badge tone="attention">Processing</Badge>;
-    case 'queued':
-      return <Badge tone="info">Queued</Badge>;
-    case 'failed':
-      return <Badge tone="critical">Failed</Badge>;
-    default:
-      return <Badge>{status}</Badge>;
-  }
-}
-
-function statusIcon(status: string) {
-  switch (status) {
-    case 'completed':
-      return <CheckCircle2 size={16} color="#22c55e" />;
-    case 'processing':
-      return <Loader2 size={16} color="#f59e0b" className="pipeline-spin" />;
-    case 'queued':
-      return <Clock size={16} color="#6366f1" />;
-    case 'failed':
-      return <AlertTriangle size={16} color="#ef4444" />;
-    default:
-      return null;
-  }
-}
-
 function toMilliseconds(value?: number | string | null): number | null {
   if (value === null || value === undefined || value === '') return null;
-  if (typeof value === 'number') {
-    return value > 1_000_000_000_000 ? value : value * 1000;
-  }
+  if (typeof value === 'number') return value > 1e12 ? value : value * 1000;
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? null : parsed;
 }
@@ -212,7 +97,13 @@ function toMilliseconds(value?: number | string | null): number | null {
 function formatTimestamp(value?: number | string | null): string {
   const ms = toMilliseconds(value);
   if (!ms) return '—';
-  return new Date(ms).toLocaleString();
+  const d = new Date(ms);
+  const now = new Date();
+  const diff = now.getTime() - d.getTime();
+  if (diff < 60_000) return 'Just now';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return d.toLocaleDateString();
 }
 
 function formatDuration(start?: number | string | null, end?: number | string | null): string {
@@ -225,13 +116,68 @@ function formatDuration(start?: number | string | null, end?: number | string | 
   const minutes = totalMinutes % 60;
   if (hours > 0) return `${hours}h ${minutes}m`;
   if (totalMinutes > 0) return `${totalMinutes}m`;
-  const seconds = Math.max(1, Math.floor(diffMs / 1000));
-  return `${seconds}s`;
+  return `${Math.max(1, Math.floor(diffMs / 1000))}s`;
 }
 
-/* ------------------------------------------------------------------ */
-/* Main Pipeline page                                                  */
-/* ------------------------------------------------------------------ */
+function statusBadge(status: string) {
+  switch (status) {
+    case 'completed': return <Badge tone="success">Completed</Badge>;
+    case 'processing': return <Badge tone="attention">Processing</Badge>;
+    case 'queued': return <Badge tone="info">Queued</Badge>;
+    case 'failed': return <Badge tone="critical">Failed</Badge>;
+    default: return <Badge>{status}</Badge>;
+  }
+}
+
+/* ────────────────── Stage Card ────────────────── */
+
+const StageCard: React.FC<{ icon: any; label: string; description: string; count: number; tone: 'info' | 'warning' | 'success' }> = ({ icon, label, description, count, tone }) => (
+  <Card>
+    <BlockStack gap="300" inlineAlign="center">
+      <Box
+        background={
+          tone === 'success' ? 'bg-fill-success-secondary'
+            : tone === 'warning' ? 'bg-fill-warning-secondary'
+              : 'bg-fill-secondary'
+        }
+        borderRadius="200"
+        padding="300"
+      >
+        <Icon source={icon} tone={tone === 'warning' ? 'warning' : tone === 'success' ? 'success' : 'base'} />
+      </Box>
+      <Text variant="headingSm" as="h3" alignment="center">{label}</Text>
+      <Text variant="bodySm" tone="subdued" as="p" alignment="center">{description}</Text>
+      {count > 0 && <Badge tone="attention">{`${count} active`}</Badge>}
+    </BlockStack>
+  </Card>
+);
+
+/* ────────────────── Stat Card ────────────────── */
+
+const StatCard: React.FC<{ label: string; value: number; icon: any; tone: 'success' | 'critical' | 'info' | 'warning' }> = ({ label, value, icon, tone }) => (
+  <Card>
+    <BlockStack gap="200">
+      <InlineStack align="space-between" blockAlign="center">
+        <Box
+          background={
+            tone === 'success' ? 'bg-fill-success-secondary'
+              : tone === 'critical' ? 'bg-fill-critical-secondary'
+                : tone === 'warning' ? 'bg-fill-warning-secondary'
+                  : 'bg-fill-secondary'
+          }
+          borderRadius="200"
+          padding="200"
+        >
+          <Icon source={icon} tone={tone} />
+        </Box>
+      </InlineStack>
+      <Text variant="headingXl" as="p">{value}</Text>
+      <Text variant="bodySm" tone="subdued" as="p">{label}</Text>
+    </BlockStack>
+  </Card>
+);
+
+/* ────────────────── Pipeline Page ────────────────── */
 
 const Pipeline: React.FC = () => {
   const [productId, setProductId] = useState('');
@@ -250,29 +196,14 @@ const Pipeline: React.FC = () => {
         `/auto-list/${encodeURIComponent(id)}`,
       );
       const newJobId = res.jobId;
-      setTriggerStatus({
-        loading: false,
-        result: {
-          success: true,
-          message: res.message || 'Pipeline job started',
-          jobId: newJobId,
-        },
-      });
-      if (newJobId) {
-        setActiveJobIds((prev) => (prev.includes(newJobId) ? prev : [newJobId, ...prev]));
-      }
+      setTriggerStatus({ loading: false, result: { success: true, message: res.message || 'Pipeline job started', jobId: newJobId } });
+      if (newJobId) setActiveJobIds((prev) => (prev.includes(newJobId) ? prev : [newJobId, ...prev]));
     } catch (err: any) {
-      setTriggerStatus({
-        loading: false,
-        result: {
-          success: false,
-          message: err?.message || 'Failed to start pipeline job',
-        },
-      });
+      setTriggerStatus({ loading: false, result: { success: false, message: err?.message || 'Failed to start pipeline job' } });
     }
   }, [productId]);
 
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['pipeline-jobs'],
     queryFn: () => apiClient.get<PipelineJobsResponse>('/pipeline/jobs'),
     refetchInterval: 10000,
@@ -281,25 +212,15 @@ const Pipeline: React.FC = () => {
 
   const jobs: PipelineJob[] = data?.jobs ?? [];
 
-  // Auto-track active jobs from query data
   React.useEffect(() => {
-    const activeFromData = jobs
-      .filter((j) => j.status === 'processing' || j.status === 'queued')
-      .map((j) => j.id);
+    const activeFromData = jobs.filter((j) => j.status === 'processing' || j.status === 'queued').map((j) => j.id);
     if (activeFromData.length > 0) {
-      setActiveJobIds((prev) => {
-        const combined = new Set([...prev, ...activeFromData]);
-        return Array.from(combined);
-      });
+      setActiveJobIds((prev) => Array.from(new Set([...prev, ...activeFromData])));
     }
   }, [jobs]);
-  const isEmpty = jobs.length === 0;
 
   const missingTitleIds = React.useMemo(() => {
-    const ids = jobs
-      .filter((job) => !job.shopifyTitle && job.shopifyProductId)
-      .map((job) => job.shopifyProductId);
-    return Array.from(new Set(ids));
+    return Array.from(new Set(jobs.filter((j) => !j.shopifyTitle && j.shopifyProductId).map((j) => j.shopifyProductId)));
   }, [jobs]);
 
   const { data: titleLookup } = useQuery({
@@ -309,225 +230,200 @@ const Pipeline: React.FC = () => {
       const entries = await Promise.all(
         missingTitleIds.map(async (id) => {
           try {
-            const res = await apiClient.get<{ ok: boolean; product?: { title?: string } }>(
-              `/test/product-info/${encodeURIComponent(id)}`,
-            );
+            const res = await apiClient.get<{ ok: boolean; product?: { title?: string } }>(`/test/product-info/${encodeURIComponent(id)}`);
             return [id, res.product?.title ?? ''] as const;
-          } catch {
-            return [id, ''] as const;
-          }
+          } catch { return [id, ''] as const; }
         }),
       );
-      return entries.reduce((acc, [id, title]) => {
-        if (title) acc[id] = title;
-        return acc;
-      }, {} as Record<string, string>);
+      return entries.reduce((acc, [id, title]) => { if (title) acc[id] = title; return acc; }, {} as Record<string, string>);
     },
     enabled: missingTitleIds.length > 0,
     staleTime: 5 * 60 * 1000,
   });
 
-  const stages = buildStages(jobs);
-  const hasActiveFlow = stages.some((s) => s.activeCount > 0);
+  // Stage counts
+  const countAtStep = (step: string) =>
+    jobs.filter((j) => resolveStepLabel(j) === step && (j.status === 'processing' || j.status === 'queued')).length;
 
-  // Stats
+  const stageCounts: Record<string, number> = {
+    import: countAtStep('Shopify Import'),
+    ai: countAtStep('AI Description'),
+    images: countAtStep('Image Processing'),
+    listing: countAtStep('eBay Listing'),
+  };
+
   const completed = jobs.filter((j) => j.status === 'completed').length;
   const processing = jobs.filter((j) => j.status === 'processing').length;
   const queued = jobs.filter((j) => j.status === 'queued').length;
   const failed = jobs.filter((j) => j.status === 'failed').length;
 
+  if (isLoading) {
+    return (
+      <SkeletonPage title="Pipeline Overview" fullWidth>
+        <BlockStack gap="400">
+          <Card><SkeletonBodyText lines={3} /></Card>
+          <Card><SkeletonBodyText lines={4} /></Card>
+        </BlockStack>
+      </SkeletonPage>
+    );
+  }
+
   return (
     <Page title="Pipeline Overview" subtitle="Real-time product automation flow" fullWidth>
-      <BlockStack gap="600">
-        {/* Process Product trigger */}
+      <BlockStack gap="500">
+        {/* Process Product */}
         <Card>
-          <div style={{ padding: '16px' }}>
-            <BlockStack gap="400">
-              <Text as="h2" variant="headingMd">
-                Process Product
-              </Text>
-              <Text as="p" tone="subdued" variant="bodySm">
-                Enter a Shopify product ID to run it through the auto-listing pipeline.
-              </Text>
-              <InlineStack gap="300" blockAlign="end">
-                <div style={{ flexGrow: 1, maxWidth: '360px' }}>
-                  <TextField
-                    label="Shopify Product ID"
-                    labelHidden
-                    value={productId}
-                    onChange={setProductId}
-                    placeholder="e.g. 8012345678901"
-                    autoComplete="off"
-                    connectedRight={
-                      <Button
-                        variant="primary"
-                        onClick={handleRunPipeline}
-                        loading={triggerStatus.loading}
-                        disabled={!productId.trim()}
-                      >
-                        Run Pipeline
-                      </Button>
-                    }
-                  />
-                </div>
-              </InlineStack>
-              {triggerStatus.result && (
-                <div
-                  style={{
-                    padding: '10px 14px',
-                    borderRadius: '8px',
-                    background: triggerStatus.result.success ? '#e8f5e9' : '#fce4ec',
-                    color: triggerStatus.result.success ? '#2e7d32' : '#c62828',
-                    fontSize: '14px',
-                  }}
-                >
-                  {triggerStatus.result.success ? '✅' : '❌'} {triggerStatus.result.message}
-                  {triggerStatus.result.jobId && (
-                    <span style={{ marginLeft: '8px', opacity: 0.7 }}>
-                      Job ID: {triggerStatus.result.jobId}
-                    </span>
-                  )}
-                </div>
-              )}
-            </BlockStack>
-          </div>
+          <BlockStack gap="400">
+            <InlineStack gap="200" blockAlign="center">
+              <Box background="bg-fill-secondary" borderRadius="200" padding="200">
+                <Icon source={PlayIcon} />
+              </Box>
+              <Text as="h2" variant="headingMd">Process Product</Text>
+            </InlineStack>
+            <Text as="p" tone="subdued" variant="bodySm">
+              Enter a Shopify product ID to run it through the auto-listing pipeline.
+            </Text>
+            <InlineStack gap="300" blockAlign="end">
+              <Box minWidth="320px">
+                <TextField
+                  label="Shopify Product ID"
+                  labelHidden
+                  value={productId}
+                  onChange={setProductId}
+                  placeholder="e.g. 8012345678901"
+                  autoComplete="off"
+                  connectedRight={
+                    <Button variant="primary" onClick={handleRunPipeline} loading={triggerStatus.loading} disabled={!productId.trim()}>
+                      Run Pipeline
+                    </Button>
+                  }
+                />
+              </Box>
+            </InlineStack>
+            {triggerStatus.result && (
+              <Banner
+                tone={triggerStatus.result.success ? 'success' : 'critical'}
+                title={triggerStatus.result.message}
+                onDismiss={() => setTriggerStatus((prev) => ({ ...prev, result: null }))}
+              >
+                {triggerStatus.result.jobId && (
+                  <Text as="p" variant="bodySm" tone="subdued">Job ID: {triggerStatus.result.jobId}</Text>
+                )}
+              </Banner>
+            )}
+          </BlockStack>
         </Card>
+
         {/* Active pipeline progress */}
         {activeJobIds.length > 0 && (
           <Card>
-            <div style={{ padding: '16px' }}>
-              <BlockStack gap="400">
-                <InlineStack align="space-between" blockAlign="center">
-                  <Text as="h2" variant="headingMd">
-                    Live Pipeline Progress
-                  </Text>
-                  <button
-                    onClick={async () => {
-                      await fetch('/api/pipeline/jobs/clear-stuck', { method: 'POST' });
-                      setActiveJobIds([]);
-                    }}
-                    style={{
-                      padding: '4px 12px', fontSize: '12px',
-                      background: '#6b7280', color: 'white',
-                      border: 'none', borderRadius: '4px', cursor: 'pointer',
-                    }}
-                  >
-                    Clear All
-                  </button>
+            <BlockStack gap="400">
+              <InlineStack align="space-between" blockAlign="center">
+                <InlineStack gap="200" blockAlign="center">
+                  <Box background="bg-fill-warning-secondary" borderRadius="200" padding="200">
+                    <Icon source={StatusActiveIcon} tone="warning" />
+                  </Box>
+                  <Text as="h2" variant="headingMd">Live Pipeline Progress</Text>
                 </InlineStack>
-                {activeJobIds.map((jid) => (
-                  <PipelineProgress
-                    key={jid}
-                    jobId={jid}
-                    onComplete={() => {
-                      // Keep showing for 10s then remove
-                      setTimeout(() => {
-                        setActiveJobIds((prev) => prev.filter((id) => id !== jid));
-                      }, 10000);
-                    }}
-                  />
-                ))}
-              </BlockStack>
-            </div>
+                <Button
+                  size="slim"
+                  onClick={async () => {
+                    await fetch('/api/pipeline/jobs/clear-stuck', { method: 'POST' });
+                    setActiveJobIds([]);
+                  }}
+                >
+                  Clear All
+                </Button>
+              </InlineStack>
+              <Divider />
+              {activeJobIds.map((jid) => (
+                <PipelineProgress
+                  key={jid}
+                  jobId={jid}
+                  onComplete={() => {
+                    setTimeout(() => setActiveJobIds((prev) => prev.filter((id) => id !== jid)), 10000);
+                  }}
+                />
+              ))}
+            </BlockStack>
           </Card>
         )}
 
-        {/* Stats bar */}
-        <div className="pipeline-stats-bar">
-          <div className="pipeline-stat">
-            <div className="pipeline-stat-value pipeline-stat-completed">{completed}</div>
-            <div className="pipeline-stat-label">Completed</div>
-          </div>
-          <div className="pipeline-stat">
-            <div className="pipeline-stat-value pipeline-stat-processing">{processing}</div>
-            <div className="pipeline-stat-label">Processing</div>
-          </div>
-          <div className="pipeline-stat">
-            <div className="pipeline-stat-value pipeline-stat-queued">{queued}</div>
-            <div className="pipeline-stat-label">Queued</div>
-          </div>
-          <div className="pipeline-stat">
-            <div className="pipeline-stat-value pipeline-stat-failed">{failed}</div>
-            <div className="pipeline-stat-label">Failed</div>
-          </div>
-        </div>
+        {/* Stats */}
+        <InlineGrid columns={{ xs: 2, sm: 4 }} gap="300">
+          <StatCard label="Completed" value={completed} icon={CheckCircleIcon} tone="success" />
+          <StatCard label="Processing" value={processing} icon={StatusActiveIcon} tone="warning" />
+          <StatCard label="Queued" value={queued} icon={ClockIcon} tone="info" />
+          <StatCard label="Failed" value={failed} icon={AlertCircleIcon} tone="critical" />
+        </InlineGrid>
 
-        {/* Pipeline visualization */}
+        {/* Pipeline flow visualization */}
         <Card>
-          <div style={{ padding: '24px 16px' }}>
-            <div className="pipeline-flow">
-              {stages.map((stage, i) => (
-                <React.Fragment key={stage.key}>
-                  <StageCard stage={stage} index={i} />
-                  {i < stages.length - 1 && (
-                    <ConnectorArrow active={hasActiveFlow} />
-                  )}
-                </React.Fragment>
+          <BlockStack gap="300">
+            <Text variant="headingMd" as="h2">Pipeline Flow</Text>
+            <Divider />
+            <InlineGrid columns={{ xs: 2, sm: 4 }} gap="300">
+              {STAGE_CONFIG.map((stage) => (
+                <StageCard
+                  key={stage.key}
+                  icon={stage.icon}
+                  label={stage.label}
+                  description={stage.description}
+                  count={stageCounts[stage.key] ?? 0}
+                  tone={stage.tone}
+                />
               ))}
-            </div>
-          </div>
+            </InlineGrid>
+          </BlockStack>
         </Card>
 
         {/* Recent jobs table */}
         <Card>
-          <div style={{ padding: '16px' }}>
-            <BlockStack gap="400">
-              <Text as="p" variant="headingMd">
-                Recent Pipeline Jobs
-              </Text>
-              {isEmpty ? (
-                <div style={{ textAlign: 'center', padding: '2rem' }}>
-                  <Text as="p" tone="subdued">
-                    No pipeline jobs yet. Enter a Shopify Product ID above to run the pipeline.
-                  </Text>
-                </div>
-              ) : (
-                <IndexTable
-                  resourceName={{ singular: 'job', plural: 'jobs' }}
-                  itemCount={jobs.length}
-                  headings={[
-                    { title: 'Product' },
-                    { title: 'Status' },
-                    { title: 'Current Step' },
-                    { title: 'Started' },
-                    { title: 'Duration' },
-                  ]}
-                  selectable={false}
-                >
-                  {jobs.map((job, idx) => (
-                    <IndexTable.Row key={job.id} id={job.id} position={idx}>
-                      <IndexTable.Cell>
-                        <Text as="span" variant="bodyMd" fontWeight="semibold">
-                          {job.shopifyTitle ??
-                            titleLookup?.[job.shopifyProductId] ??
-                            `Shopify product ${job.shopifyProductId}`}
-                        </Text>
-                      </IndexTable.Cell>
-                      <IndexTable.Cell>
-                        <InlineStack gap="200" blockAlign="center">
-                          {statusIcon(job.status)}
-                          {statusBadge(job.status)}
-                        </InlineStack>
-                      </IndexTable.Cell>
-                      <IndexTable.Cell>
-                        <Text as="span">{resolveStepLabel(job)}</Text>
-                      </IndexTable.Cell>
-                      <IndexTable.Cell>
-                        <Text as="span" tone="subdued">
-                          {formatTimestamp(job.startedAt ?? job.createdAt ?? null)}
-                        </Text>
-                      </IndexTable.Cell>
-                      <IndexTable.Cell>
-                        <Text as="span" tone="subdued">
-                          {formatDuration(job.startedAt ?? job.createdAt ?? null, job.completedAt ?? null)}
-                        </Text>
-                      </IndexTable.Cell>
-                    </IndexTable.Row>
-                  ))}
-                </IndexTable>
-              )}
-            </BlockStack>
-          </div>
+          <BlockStack gap="400">
+            <InlineStack gap="200" blockAlign="center">
+              <Box background="bg-fill-secondary" borderRadius="200" padding="200">
+                <Icon source={ClockIcon} />
+              </Box>
+              <Text as="h2" variant="headingMd">Recent Pipeline Jobs</Text>
+            </InlineStack>
+            <Divider />
+            {jobs.length === 0 ? (
+              <EmptyState heading="No pipeline jobs yet" image="">
+                <Text as="p" tone="subdued">Enter a Shopify Product ID above to run the pipeline.</Text>
+              </EmptyState>
+            ) : (
+              <IndexTable
+                resourceName={{ singular: 'job', plural: 'jobs' }}
+                itemCount={jobs.length}
+                headings={[
+                  { title: 'Product' },
+                  { title: 'Status' },
+                  { title: 'Current Step' },
+                  { title: 'Started' },
+                  { title: 'Duration' },
+                ]}
+                selectable={false}
+              >
+                {jobs.map((job, idx) => (
+                  <IndexTable.Row key={job.id} id={job.id} position={idx}>
+                    <IndexTable.Cell>
+                      <Text as="span" variant="bodyMd" fontWeight="semibold">
+                        {job.shopifyTitle ?? titleLookup?.[job.shopifyProductId] ?? `Product ${job.shopifyProductId}`}
+                      </Text>
+                    </IndexTable.Cell>
+                    <IndexTable.Cell>{statusBadge(job.status)}</IndexTable.Cell>
+                    <IndexTable.Cell><Text as="span">{resolveStepLabel(job)}</Text></IndexTable.Cell>
+                    <IndexTable.Cell>
+                      <Text as="span" tone="subdued">{formatTimestamp(job.startedAt ?? job.createdAt ?? null)}</Text>
+                    </IndexTable.Cell>
+                    <IndexTable.Cell>
+                      <Text as="span" tone="subdued">{formatDuration(job.startedAt ?? job.createdAt ?? null, job.completedAt ?? null)}</Text>
+                    </IndexTable.Cell>
+                  </IndexTable.Row>
+                ))}
+              </IndexTable>
+            )}
+          </BlockStack>
         </Card>
       </BlockStack>
     </Page>

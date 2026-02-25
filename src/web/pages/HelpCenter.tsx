@@ -1,9 +1,37 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Spinner } from '@shopify/polaris';
+import {
+  Badge,
+  BlockStack,
+  Box,
+  Button,
+  Card,
+  Divider,
+  EmptyState,
+  Icon,
+  InlineGrid,
+  InlineStack,
+  Layout,
+  Page,
+  SkeletonBodyText,
+  Text,
+  TextField,
+} from '@shopify/polaris';
+import {
+  QuestionCircleIcon,
+  SearchIcon,
+  ChevronRightIcon,
+  ProductIcon,
+  OrderIcon,
+  ChartLineIcon,
+  SettingsIcon,
+  ImageIcon,
+  ListBulletedIcon,
+  AutomationIcon,
+  ClipboardChecklistIcon,
+} from '@shopify/polaris-icons';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams, useLocation, Outlet } from 'react-router-dom';
 import { apiClient } from '../hooks/useApi';
-import '../styles/help.css';
 
 /* ── Types ──────────────────────────────────────────────── */
 export interface HelpArticle {
@@ -25,69 +53,62 @@ export interface HelpCategoryInfo {
 }
 
 /* ── Category metadata ──────────────────────────────────── */
-const CATEGORY_META: Record<string, { icon: string; color: string; description: string; order: number }> = {
+const CATEGORY_META: Record<
+  string,
+  { icon: React.FC<any>; description: string; order: number }
+> = {
   'Getting Started': {
-    icon: '🚀',
-    color: '#e8f5e9',
+    icon: QuestionCircleIcon,
     description: 'New here? Start with the basics',
     order: 0,
   },
   Products: {
-    icon: '📦',
-    color: '#e3f2fd',
+    icon: ProductIcon,
     description: 'Managing your Shopify product catalog',
     order: 1,
   },
   Mappings: {
-    icon: '🔗',
-    color: '#f3e5f5',
+    icon: ListBulletedIcon,
     description: 'Configure how Shopify fields map to eBay',
     order: 2,
   },
   Pipeline: {
-    icon: '⚡',
-    color: '#fff3e0',
+    icon: AutomationIcon,
     description: 'Automated listing workflow and stages',
     order: 3,
   },
   Orders: {
-    icon: '🛒',
-    color: '#e8eaf6',
+    icon: OrderIcon,
     description: 'Order sync and fulfillment',
     order: 4,
   },
   Analytics: {
-    icon: '📊',
-    color: '#fce4ec',
+    icon: ChartLineIcon,
     description: 'Reports, logs, and insights',
     order: 5,
   },
   Chat: {
-    icon: '💬',
-    color: '#e0f7fa',
+    icon: ClipboardChecklistIcon,
     description: 'Using the AI assistant',
     order: 6,
   },
   General: {
-    icon: '📖',
-    color: '#f1f8e9',
+    icon: SettingsIcon,
     description: 'General usage and tips',
     order: 7,
   },
 };
 
 const getCategoryMeta = (name: string) =>
-  CATEGORY_META[name] || { icon: '📄', color: '#f5f5f5', description: '', order: 99 };
+  CATEGORY_META[name] ?? { icon: QuestionCircleIcon, description: '', order: 99 };
 
-export const categorySlug = (name: string) => encodeURIComponent(name.toLowerCase().replace(/\s+/g, '-'));
+export const categorySlug = (name: string) =>
+  encodeURIComponent(name.toLowerCase().replace(/\s+/g, '-'));
 export const categoryFromSlug = (slug: string, categories: string[]) =>
   categories.find((c) => categorySlug(c) === slug) || slug;
 
-/* ── Helpers ────────────────────────────────────────────── */
-const stripFormatting = (text: string) => text.replace(/\*\*/g, '').replace(/\n/g, ' ');
-
 const snippet = (text: string, max = 120) => {
-  const plain = stripFormatting(text);
+  const plain = text.replace(/\*\*/g, '').replace(/\n/g, ' ');
   return plain.length > max ? plain.slice(0, max) + '…' : plain;
 };
 
@@ -99,8 +120,6 @@ const HelpCenter: React.FC = () => {
   const location = useLocation();
   const params = useParams<{ category?: string; id?: string }>();
 
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set());
   const [sidebarSearch, setSidebarSearch] = useState('');
 
   // Fetch all published articles
@@ -115,7 +134,7 @@ const HelpCenter: React.FC = () => {
   const categories = useMemo(() => {
     const catMap = new Map<string, HelpArticle[]>();
     for (const a of articles) {
-      const cat = a.category || 'general';
+      const cat = a.category || 'General';
       if (!catMap.has(cat)) catMap.set(cat, []);
       catMap.get(cat)!.push(a);
     }
@@ -123,40 +142,6 @@ const HelpCenter: React.FC = () => {
       .map(([name, items]) => ({ name, items }))
       .sort((a, b) => getCategoryMeta(a.name).order - getCategoryMeta(b.name).order);
   }, [articles]);
-
-  // Auto-expand the active category
-  useEffect(() => {
-    if (params.category) {
-      const catName = categoryFromSlug(
-        params.category,
-        categories.map((c) => c.name),
-      );
-      setExpandedCats((prev) => {
-        const next = new Set(prev);
-        next.add(catName);
-        return next;
-      });
-    }
-    if (params.id) {
-      const article = articles.find((a) => a.id === Number(params.id));
-      if (article) {
-        setExpandedCats((prev) => {
-          const next = new Set(prev);
-          next.add(article.category || 'general');
-          return next;
-        });
-      }
-    }
-  }, [params.category, params.id, categories, articles]);
-
-  const toggleCategory = useCallback((name: string) => {
-    setExpandedCats((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      return next;
-    });
-  }, []);
 
   // Filter sidebar articles by search
   const filteredCategories = useMemo(() => {
@@ -174,139 +159,171 @@ const HelpCenter: React.FC = () => {
       .filter((cat) => cat.items.length > 0);
   }, [categories, sidebarSearch]);
 
-  // Auto-expand all when searching
-  useEffect(() => {
-    if (sidebarSearch.trim()) {
-      setExpandedCats(new Set(filteredCategories.map((c) => c.name)));
-    }
-  }, [sidebarSearch, filteredCategories]);
-
   const activeArticleId = params.id ? Number(params.id) : null;
+  const isLanding = location.pathname === '/help';
 
   const goToArticle = useCallback(
-    (id: number) => {
-      navigate(`/help/article/${id}`);
-      setSidebarOpen(false);
-    },
+    (id: number) => navigate(`/help/article/${id}`),
     [navigate],
   );
 
   const goToCategory = useCallback(
-    (name: string) => {
-      navigate(`/help/category/${categorySlug(name)}`);
-      setSidebarOpen(false);
-    },
+    (name: string) => navigate(`/help/category/${categorySlug(name)}`),
     [navigate],
   );
 
-  const isLanding = location.pathname === '/help';
-
   return (
-    <div className="help-docs">
-      {/* Mobile overlay */}
-      {sidebarOpen && <div className="help-mobile-overlay" onClick={() => setSidebarOpen(false)} />}
+    <Page
+      title="Help Center"
+      subtitle="Documentation, guides, and support"
+      primaryAction={{
+        content: 'Ask a Question',
+        icon: QuestionCircleIcon,
+        onAction: () => navigate('/help/ask'),
+      }}
+      fullWidth
+    >
+      <Layout>
+        {/* Sidebar */}
+        <Layout.Section variant="oneThird">
+          <BlockStack gap="300">
+            <Card>
+              <BlockStack gap="300">
+                <TextField
+                  label=""
+                  labelHidden
+                  value={sidebarSearch}
+                  onChange={setSidebarSearch}
+                  placeholder="Filter articles…"
+                  prefix={<Icon source={SearchIcon} />}
+                  clearButton
+                  onClearButtonClick={() => setSidebarSearch('')}
+                  autoComplete="off"
+                />
 
-      {/* Sidebar */}
-      <aside className={`help-docs-sidebar${sidebarOpen ? ' mobile-open' : ''}`}>
-        <div className="help-sidebar-header">
-          <span className="help-sidebar-title" onClick={() => navigate('/help')}>
-            📚 Documentation
-          </span>
-        </div>
-
-        <div className="help-sidebar-search">
-          <input
-            type="text"
-            placeholder="Filter articles…"
-            value={sidebarSearch}
-            onChange={(e) => setSidebarSearch(e.target.value)}
-          />
-        </div>
-
-        {isLoading ? (
-          <div className="help-loading">
-            <Spinner size="small" accessibilityLabel="Loading" />
-          </div>
-        ) : (
-          filteredCategories.map((cat) => {
-            const meta = getCategoryMeta(cat.name);
-            const isExpanded = expandedCats.has(cat.name);
-            return (
-              <div className="help-sidebar-category" key={cat.name}>
-                <button
-                  className={`help-sidebar-category-btn${
-                    params.category && categoryFromSlug(params.category, categories.map((c) => c.name)) === cat.name
-                      ? ' active'
-                      : ''
-                  }`}
-                  onClick={() => toggleCategory(cat.name)}
-                >
-                  <span>
-                    {meta.icon} {cat.name}
-                  </span>
-                  <span className="help-sidebar-category-count">{cat.items.length}</span>
-                  <span className={`help-sidebar-category-chevron${isExpanded ? ' open' : ''}`}>▸</span>
-                </button>
-                <div
-                  className="help-sidebar-articles"
-                  style={{ maxHeight: isExpanded ? `${cat.items.length * 34 + 4}px` : '0px' }}
-                >
-                  {cat.items.map((article) => (
-                    <div
-                      key={article.id}
-                      className={`help-sidebar-article-link${activeArticleId === article.id ? ' active' : ''}`}
-                      onClick={() => goToArticle(article.id)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') goToArticle(article.id);
-                      }}
+                {isLoading ? (
+                  <SkeletonBodyText lines={8} />
+                ) : (
+                  <BlockStack gap="100">
+                    <Button
+                      variant="plain"
+                      fullWidth
+                      textAlign="left"
+                      onClick={() => navigate('/help')}
                     >
-                      {article.question.length > 40
-                        ? article.question.slice(0, 40) + '…'
-                        : article.question}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })
-        )}
-      </aside>
+                      <Text
+                        variant="bodySm"
+                        fontWeight={isLanding ? 'semibold' : 'regular'}
+                        tone={isLanding ? undefined : 'subdued'}
+                        as="span"
+                      >
+                        📚 All articles
+                      </Text>
+                    </Button>
 
-      {/* Main content area */}
-      <main className="help-docs-main">
-        {isLanding ? (
-          <HelpLanding
-            articles={articles}
-            categories={categories}
-            goToArticle={goToArticle}
-            goToCategory={goToCategory}
-          />
-        ) : (
-          <Outlet context={{ articles, categories }} />
-        )}
-      </main>
+                    <Divider />
 
-      {/* Mobile sidebar toggle */}
-      <button className="help-mobile-toggle" onClick={() => setSidebarOpen((prev) => !prev)}>
-        ☰
-      </button>
-    </div>
+                    {filteredCategories.map((cat) => {
+                      const meta = getCategoryMeta(cat.name);
+                      const isCatActive =
+                        params.category &&
+                        categoryFromSlug(
+                          params.category,
+                          categories.map((c) => c.name),
+                        ) === cat.name;
+
+                      return (
+                        <BlockStack key={cat.name} gap="050">
+                          <InlineStack gap="200" blockAlign="center">
+                            <Button
+                              variant="plain"
+                              fullWidth
+                              textAlign="left"
+                              onClick={() => goToCategory(cat.name)}
+                            >
+                              <InlineStack gap="200" blockAlign="center">
+                                <Icon source={meta.icon} />
+                                <Text
+                                  variant="bodySm"
+                                  fontWeight={isCatActive ? 'semibold' : 'regular'}
+                                  as="span"
+                                >
+                                  {cat.name}
+                                </Text>
+                                <Badge>{String(cat.items.length)}</Badge>
+                              </InlineStack>
+                            </Button>
+                          </InlineStack>
+
+                          {(isCatActive || sidebarSearch) &&
+                            cat.items.map((article) => (
+                              <Box key={article.id} paddingInlineStart="600">
+                                <Button
+                                  variant="plain"
+                                  fullWidth
+                                  textAlign="left"
+                                  onClick={() => goToArticle(article.id)}
+                                >
+                                  <Text
+                                    variant="bodySm"
+                                    tone={activeArticleId === article.id ? undefined : 'subdued'}
+                                    fontWeight={activeArticleId === article.id ? 'semibold' : 'regular'}
+                                    as="span"
+                                  >
+                                    {article.question.length > 45
+                                      ? article.question.slice(0, 45) + '…'
+                                      : article.question}
+                                  </Text>
+                                </Button>
+                              </Box>
+                            ))}
+                        </BlockStack>
+                      );
+                    })}
+                  </BlockStack>
+                )}
+              </BlockStack>
+            </Card>
+          </BlockStack>
+        </Layout.Section>
+
+        {/* Main content */}
+        <Layout.Section>
+          {isLanding ? (
+            <HelpLanding
+              articles={articles}
+              categories={categories}
+              isLoading={isLoading}
+              goToArticle={goToArticle}
+              goToCategory={goToCategory}
+            />
+          ) : (
+            <Outlet context={{ articles, categories }} />
+          )}
+        </Layout.Section>
+      </Layout>
+    </Page>
   );
 };
 
 /* ═══════════════════════════════════════════════════════════
-   HelpLanding — hero + search + category cards + popular
+   HelpLanding — hero + search + category cards
    ═══════════════════════════════════════════════════════════ */
 interface HelpLandingProps {
   articles: HelpArticle[];
   categories: { name: string; items: HelpArticle[] }[];
+  isLoading: boolean;
   goToArticle: (id: number) => void;
   goToCategory: (name: string) => void;
 }
 
-const HelpLanding: React.FC<HelpLandingProps> = ({ articles, categories, goToArticle, goToCategory }) => {
+const HelpLanding: React.FC<HelpLandingProps> = ({
+  articles,
+  categories,
+  isLoading,
+  goToArticle,
+  goToCategory,
+}) => {
   const [search, setSearch] = useState('');
 
   const searchResults = useMemo(() => {
@@ -322,119 +339,120 @@ const HelpLanding: React.FC<HelpLandingProps> = ({ articles, categories, goToArt
       .slice(0, 10);
   }, [search, articles]);
 
-  // Popular = first article from each category
-  const popular = useMemo(
-    () => categories.slice(0, 8).map((c) => c.items[0]).filter(Boolean),
-    [categories],
-  );
+  if (isLoading) {
+    return (
+      <Card>
+        <SkeletonBodyText lines={12} />
+      </Card>
+    );
+  }
+
+  if (articles.length === 0) {
+    return (
+      <Card>
+        <EmptyState heading="No documentation yet" image="">
+          <Text as="p">
+            No published articles yet. Ask a question to get started!
+          </Text>
+        </EmptyState>
+      </Card>
+    );
+  }
 
   return (
-    <div className="help-landing">
-      {/* Hero */}
-      <div className="help-hero">
-        <h1>How can we help?</h1>
-        <p>Search our documentation or browse by category below</p>
-        <div className="help-hero-search">
-          <span className="help-hero-search-icon">🔍</span>
-          <input
-            type="text"
-            placeholder="Search articles…"
+    <BlockStack gap="400">
+      {/* Search */}
+      <Card>
+        <BlockStack gap="300">
+          <Text variant="headingMd" as="h2">Search documentation</Text>
+          <TextField
+            label=""
+            labelHidden
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={setSearch}
+            placeholder="Search articles…"
+            prefix={<Icon source={SearchIcon} />}
+            clearButton
+            onClearButtonClick={() => setSearch('')}
+            autoComplete="off"
           />
-        </div>
-      </div>
 
-      {/* Search results */}
-      {search.trim() && (
-        <div className="help-search-results">
-          {searchResults.length === 0 ? (
-            <div className="help-empty">
-              <h3>No results found</h3>
-              <p>Try different keywords or browse the categories below</p>
-            </div>
-          ) : (
-            searchResults.map((a) => (
-              <div
-                key={a.id}
-                className="help-search-result-item"
-                onClick={() => goToArticle(a.id)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') goToArticle(a.id);
-                }}
-              >
-                <p className="help-search-result-category">{a.category || 'general'}</p>
-                <p className="help-search-result-title">{a.question}</p>
-                <p className="help-search-result-snippet">{snippet(a.answer || '', 150)}</p>
-              </div>
-            ))
+          {search.trim() && (
+            <BlockStack gap="200">
+              <Divider />
+              {searchResults.length === 0 ? (
+                <Box padding="300">
+                  <Text tone="subdued" as="p">
+                    No results for "{search}". Try different keywords.
+                  </Text>
+                </Box>
+              ) : (
+                searchResults.map((a) => (
+                  <Box
+                    key={a.id}
+                    padding="300"
+                    background="bg-fill-secondary"
+                    borderRadius="200"
+                  >
+                    <BlockStack gap="100">
+                      <InlineStack align="space-between" blockAlign="center">
+                        <Text variant="bodyMd" fontWeight="semibold" as="p">
+                          {a.question}
+                        </Text>
+                        <Badge>{a.category || 'General'}</Badge>
+                      </InlineStack>
+                      <Text variant="bodySm" tone="subdued" as="p">
+                        {snippet(a.answer || '', 150)}
+                      </Text>
+                      <Button
+                        variant="plain"
+                        onClick={() => goToArticle(a.id)}
+                      >
+                        Read article →
+                      </Button>
+                    </BlockStack>
+                  </Box>
+                ))
+              )}
+            </BlockStack>
           )}
-        </div>
-      )}
+        </BlockStack>
+      </Card>
 
       {/* Category cards */}
       {!search.trim() && (
-        <>
-          <div className="help-categories-grid">
-            {categories.map((cat) => {
-              const meta = getCategoryMeta(cat.name);
-              return (
-                <div
-                  key={cat.name}
-                  className="help-category-card"
-                  onClick={() => goToCategory(cat.name)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') goToCategory(cat.name);
-                  }}
-                >
-                  <div
-                    className="help-category-card-icon"
-                    style={{ background: meta.color }}
-                  >
-                    {meta.icon}
-                  </div>
-                  <p className="help-category-card-title">{cat.name}</p>
+        <InlineGrid columns={{ xs: 1, sm: 2, md: 2 }} gap="300">
+          {categories.map((cat) => {
+            const meta = getCategoryMeta(cat.name);
+            return (
+              <Card key={cat.name}>
+                <BlockStack gap="200">
+                  <InlineStack gap="200" blockAlign="center">
+                    <Box background="bg-fill-secondary" borderRadius="200" padding="200">
+                      <Icon source={meta.icon} />
+                    </Box>
+                    <BlockStack gap="050">
+                      <Text variant="headingSm" as="h3">{cat.name}</Text>
+                      <Text variant="bodySm" tone="subdued" as="p">
+                        {cat.items.length} article{cat.items.length !== 1 ? 's' : ''}
+                      </Text>
+                    </BlockStack>
+                  </InlineStack>
                   {meta.description && (
-                    <p className="help-category-card-desc">{meta.description}</p>
+                    <Text variant="bodySm" tone="subdued" as="p">
+                      {meta.description}
+                    </Text>
                   )}
-                  <p className="help-category-card-count">
-                    {cat.items.length} article{cat.items.length !== 1 ? 's' : ''}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Popular Articles */}
-          {popular.length > 0 && (
-            <div className="help-popular-section">
-              <h2 className="help-section-title">Popular Articles</h2>
-              <div className="help-popular-list">
-                {popular.map((a) => (
-                  <div
-                    key={a.id}
-                    className="help-popular-item"
-                    onClick={() => goToArticle(a.id)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') goToArticle(a.id);
-                    }}
-                  >
-                    <span className="help-popular-item-icon">→</span>
-                    <span className="help-popular-item-text">{a.question}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </>
+                  <Button variant="secondary" onClick={() => goToCategory(cat.name)}>
+                    Browse {cat.name}
+                  </Button>
+                </BlockStack>
+              </Card>
+            );
+          })}
+        </InlineGrid>
       )}
-    </div>
+    </BlockStack>
   );
 };
 
