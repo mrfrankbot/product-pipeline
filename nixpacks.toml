@@ -1,6 +1,8 @@
-# Skip rebuilding — dist/ is committed and pre-built locally
+[phases.install]
+cmds = ["npm ci"]
+
 [phases.build]
-cmds = []
+cmds = ["echo 'Using committed dist — skipping build'"]
 
 [start]
 cmd = "node dist/server/index.js"
