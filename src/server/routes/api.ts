@@ -245,11 +245,65 @@ router.get('/api/orders', async (req: Request, res: Response) => {
     const db = await getRawDb();
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
     const offset = parseInt(req.query.offset as string) || 0;
+    const search = (req.query.search as string || '').trim();
+    const status = (req.query.status as string || '').trim();
+    const startDate = (req.query.startDate as string || '').trim();
+    const endDate = (req.query.endDate as string || '').trim();
 
-    const orders = db.prepare(`SELECT * FROM order_mappings ORDER BY id DESC LIMIT ? OFFSET ?`).all(limit, offset);
-    const total = db.prepare(`SELECT COUNT(*) as count FROM order_mappings`).get() as any;
+    const conditions: string[] = [];
+    const params: any[] = [];
 
-    res.json({ data: orders, total: total?.count ?? 0, limit, offset });
+    if (status) {
+      conditions.push('om.status = ?');
+      params.push(status);
+    }
+
+    if (search) {
+      const like = `%${search}%`;
+      conditions.push(
+        `(om.ebay_order_id LIKE ? OR om.shopify_order_id LIKE ? OR om.shopify_order_name LIKE ? OR eo.buyer_username LIKE ?)`
+      );
+      params.push(like, like, like, like);
+    }
+
+    if (startDate) {
+      conditions.push('om.created_at >= unixepoch(?)');
+      params.push(startDate);
+    }
+
+    if (endDate) {
+      conditions.push('om.created_at <= unixepoch(?)');
+      params.push(endDate);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const countRow = db
+      .prepare(
+        `SELECT COUNT(*) as count
+         FROM order_mappings om
+         LEFT JOIN ebay_orders eo ON eo.ebay_order_id = om.ebay_order_id
+         ${whereClause}`
+      )
+      .get(...params) as any;
+
+    const orders = db
+      .prepare(
+        `SELECT
+           om.*,
+           eo.total_amount as total,
+           eo.currency as currency,
+           eo.ebay_created_at as ebay_created_at,
+           eo.buyer_username as buyer_username
+         FROM order_mappings om
+         LEFT JOIN ebay_orders eo ON eo.ebay_order_id = om.ebay_order_id
+         ${whereClause}
+         ORDER BY om.id DESC
+         LIMIT ? OFFSET ?`
+      )
+      .all(...params, limit, offset);
+
+    res.json({ data: orders, total: countRow?.count ?? 0, limit, offset });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch orders', detail: String(err) });
   }
@@ -440,6 +494,23 @@ router.post('/api/sync/products', async (req: Request, res: Response) => {
     
   } catch (err) {
     res.status(500).json({ error: 'Product sync failed', detail: String(err) });
+  }
+});
+
+/** GET /api/sync/inventory — Latest inventory sync status */
+router.get('/api/sync/inventory', async (_req: Request, res: Response) => {
+  try {
+    const db = await getRawDb();
+    const last = db.prepare(
+      `SELECT * FROM sync_log WHERE entity_type = 'inventory' ORDER BY id DESC LIMIT 1`
+    ).get() as any;
+
+    res.json({
+      ok: true,
+      lastSync: last ?? null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch inventory status', detail: String(err) });
   }
 });
 
@@ -1053,7 +1124,20 @@ router.put('/api/product-overrides/:shopifyProductId', async (req: Request, res:
  * See AGENTS.md and PROJECT.md for the full incident history.
  */
 router.post('/api/sync/trigger', async (req: Request, res: Response) => {
-  const since = req.query.since as string;
+  const normalizeSince = (value?: string) => {
+    if (!value) return undefined;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return undefined;
+    return parsed.toISOString();
+  };
+
+  const bodySince = typeof req.body?.since === 'string'
+    ? req.body.since
+    : typeof req.body?.startDate === 'string'
+      ? req.body.startDate
+      : undefined;
+
+  const since = normalizeSince((req.query.since as string | undefined) ?? bodySince);
   // confirm=true is required to create real orders. Everything else is a dry run.
   const confirm = req.query.confirm === 'true';
   const legacyDryRunFlag = req.query.dry as string | undefined;
@@ -1748,4 +1832,3 @@ router.put('/api/products/:productId/notes', async (req: Request, res: Response)
 // served by src/server/routes/ebay-metadata.ts (registered separately).
 
 export default router;
-

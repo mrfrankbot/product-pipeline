@@ -30,7 +30,13 @@ router.post('/api/features', async (req: Request, res: Response) => {
 
     info(`[Features] New request: "${title.trim().slice(0, 60)}"`);
 
-    const created = db.prepare(`SELECT * FROM feature_requests WHERE id = ?`).get(result.lastInsertRowid);
+    const created = db.prepare(
+      `SELECT
+        fr.*,
+        (SELECT COUNT(*) FROM feature_votes fv WHERE fv.feature_id = fr.id) as votes
+       FROM feature_requests fr
+       WHERE id = ?`
+    ).get(result.lastInsertRowid);
     res.status(201).json({ ok: true, feature: created });
   } catch (err) {
     res.status(500).json({ error: 'Failed to submit feature request', detail: String(err) });
@@ -46,13 +52,22 @@ router.get('/api/features', async (req: Request, res: Response) => {
     let features;
     if (status && VALID_STATUSES.includes(status as any)) {
       features = db.prepare(
-        `SELECT * FROM feature_requests WHERE status = ? ORDER BY
+        `SELECT
+          fr.*,
+          (SELECT COUNT(*) FROM feature_votes fv WHERE fv.feature_id = fr.id) as votes
+         FROM feature_requests fr
+         WHERE status = ?
+         ORDER BY
           CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END,
           created_at DESC`
       ).all(status);
     } else {
       features = db.prepare(
-        `SELECT * FROM feature_requests ORDER BY
+        `SELECT
+          fr.*,
+          (SELECT COUNT(*) FROM feature_votes fv WHERE fv.feature_id = fr.id) as votes
+         FROM feature_requests fr
+         ORDER BY
           CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END,
           created_at DESC`
       ).all();
@@ -69,7 +84,13 @@ router.get('/api/features/:id', async (req: Request, res: Response) => {
   try {
     const db = await getRawDb();
     const id = req.params.id;
-    const feature = db.prepare(`SELECT * FROM feature_requests WHERE id = ?`).get(id);
+    const feature = db.prepare(
+      `SELECT
+        fr.*,
+        (SELECT COUNT(*) FROM feature_votes fv WHERE fv.feature_id = fr.id) as votes
+       FROM feature_requests fr
+       WHERE id = ?`
+    ).get(id);
 
     if (!feature) {
       res.status(404).json({ error: 'Feature request not found' });
@@ -79,6 +100,42 @@ router.get('/api/features/:id', async (req: Request, res: Response) => {
     res.json(feature);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch feature request', detail: String(err) });
+  }
+});
+
+/** POST /api/features/:id/vote — Vote for a feature request */
+router.post('/api/features/:id/vote', async (req: Request, res: Response) => {
+  try {
+    const db = await getRawDb();
+    const id = req.params.id;
+    const voterId = req.body?.voterId;
+
+    if (!voterId || typeof voterId !== 'string') {
+      res.status(400).json({ error: 'voterId is required' });
+      return;
+    }
+
+    const feature = db.prepare(`SELECT id FROM feature_requests WHERE id = ?`).get(id);
+    if (!feature) {
+      res.status(404).json({ error: 'Feature request not found' });
+      return;
+    }
+
+    const insert = db.prepare(
+      `INSERT OR IGNORE INTO feature_votes (feature_id, voter_id) VALUES (?, ?)`
+    ).run(id, voterId.trim());
+
+    const votesRow = db.prepare(
+      `SELECT COUNT(*) as count FROM feature_votes WHERE feature_id = ?`
+    ).get(id) as any;
+
+    res.json({
+      ok: true,
+      alreadyVoted: insert.changes === 0,
+      votes: votesRow?.count ?? 0,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to vote on feature request', detail: String(err) });
   }
 });
 
@@ -149,7 +206,13 @@ router.put('/api/features/:id', async (req: Request, res: Response) => {
       return;
     }
 
-    const updated = db.prepare(`SELECT * FROM feature_requests WHERE id = ?`).get(id);
+    const updated = db.prepare(
+      `SELECT
+        fr.*,
+        (SELECT COUNT(*) FROM feature_votes fv WHERE fv.feature_id = fr.id) as votes
+       FROM feature_requests fr
+       WHERE id = ?`
+    ).get(id);
     info(`[Features] Request ${id} updated`);
     res.json({ ok: true, feature: updated });
   } catch (err) {

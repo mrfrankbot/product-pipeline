@@ -319,6 +319,12 @@ Test files: `src/services/__tests__/`
 
 ## Recent Changes
 
+### 2026-02-25: End-to-End UI Fixes — Voting, Orders Filters, Sync Status
+Improved end-to-end functionality to eliminate dead interactions and mismatches:
+- **Feature Requests voting**: added vote tracking and API support; UI now shows vote counts and allows one vote per browser.
+- **Orders page accuracy**: orders API now supports search/status/date filters and surfaces totals via eBay order data; UI status filters align with actual sync states.
+- **Sync reliability**: order sync trigger now accepts body-provided dates, inventory status can be queried via GET, and background sync uses explicit `confirm=true`.
+
 ### 2026-02-24: Help Center — Seed Articles for All Shipped Features
 
 Added a dedicated seed script for Help Center articles covering every shipped feature.

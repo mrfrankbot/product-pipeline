@@ -385,6 +385,22 @@ A dedicated Settings page for editing condition description templates is planned
 **Per-product overrides:**
 Regardless of the template, you can always edit the condition description for an individual product in the Review Queue or eBay Listing Prep page. Per-product edits override the template.`,
   },
+  {
+    question: 'How do I vote on feature requests?',
+    category: 'Settings',
+    sort_order: 4,
+    answer: `Feature Requests are a shared wishlist for ProductPipeline improvements. You can upvote requests to help prioritize what gets built next.
+
+**How to vote:**
+1. Go to **Settings & Analytics → Feature Requests**.
+2. Find a request you support.
+3. Click **Vote**. Your vote is counted immediately and the vote total updates.
+4. You can only vote once per request from a browser.
+
+**Tips:**
+- Add context in the description when you submit your own request — clear use cases get prioritized faster.
+- Sort requests by status to see what's planned or in progress.`,
+  },
 ];
 
 /**

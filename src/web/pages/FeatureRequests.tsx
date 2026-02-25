@@ -28,6 +28,7 @@ interface FeatureRequest {
   requested_by: string | null;
   completed_at: string | null;
   admin_notes: string | null;
+  votes?: number;
   created_at: string;
   updated_at: string;
 }
@@ -66,6 +67,29 @@ const priorityBadge = (priority: string) => {
 
 const FeatureRequests: React.FC = () => {
   const queryClient = useQueryClient();
+  const voterId = useMemo(() => {
+    if (typeof window === 'undefined') return 'anonymous';
+    const existing = localStorage.getItem('pp-feature-voter-id');
+    if (existing) return existing;
+    const generated =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `pp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem('pp-feature-voter-id', generated);
+    return generated;
+  }, []);
+
+  const [votedIds, setVotedIds] = useState<Set<number>>(() => {
+    if (typeof window === 'undefined') return new Set();
+    try {
+      const raw = localStorage.getItem('pp-feature-votes');
+      if (!raw) return new Set();
+      const parsed = JSON.parse(raw) as number[];
+      return new Set(parsed);
+    } catch {
+      return new Set();
+    }
+  });
 
   const [submitOpen, setSubmitOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -91,6 +115,21 @@ const FeatureRequests: React.FC = () => {
       setNewDescription('');
       setNewPriority('medium');
       setNewRequestedBy('');
+      queryClient.invalidateQueries({ queryKey: ['features'] });
+    },
+  });
+
+  const voteForFeature = useMutation({
+    mutationFn: (featureId: number) => apiClient.post(`/features/${featureId}/vote`, { voterId }),
+    onSuccess: (_data, featureId) => {
+      setVotedIds((prev) => {
+        const next = new Set(prev);
+        next.add(featureId);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('pp-feature-votes', JSON.stringify(Array.from(next)));
+        }
+        return next;
+      });
       queryClient.invalidateQueries({ queryKey: ['features'] });
     },
   });
@@ -194,9 +233,21 @@ const FeatureRequests: React.FC = () => {
                           {priorityBadge(feature.priority)}
                         </InlineStack>
                       </BlockStack>
-                      <Text as="span" tone="subdued" variant="bodySm">
-                        {new Date(feature.created_at).toLocaleDateString()}
-                      </Text>
+                      <BlockStack gap="100" inlineAlign="end">
+                        <Text as="span" tone="subdued" variant="bodySm">
+                          {new Date(feature.created_at).toLocaleDateString()}
+                        </Text>
+                        <InlineStack gap="100" blockAlign="center">
+                          <Badge tone="info">{`${feature.votes ?? 0} votes`}</Badge>
+                          <Button
+                            size="slim"
+                            disabled={votedIds.has(feature.id)}
+                            onClick={() => voteForFeature.mutate(feature.id)}
+                          >
+                            {votedIds.has(feature.id) ? 'Voted' : 'Vote'}
+                          </Button>
+                        </InlineStack>
+                      </BlockStack>
                     </InlineStack>
 
                     <Text as="p">{feature.description}</Text>

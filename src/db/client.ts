@@ -214,6 +214,14 @@ const initExtraTables = (sqlite: InstanceType<typeof Database>) => {
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS feature_votes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      feature_id INTEGER NOT NULL,
+      voter_id TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(feature_id, voter_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_feature_votes_feature ON feature_votes(feature_id);
   `);
 };
 

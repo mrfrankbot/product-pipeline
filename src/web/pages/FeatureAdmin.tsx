@@ -30,6 +30,7 @@ interface FeatureRequest {
   requested_by: string | null;
   completed_at: string | null;
   admin_notes: string | null;
+  votes?: number;
   created_at: string;
   updated_at: string;
 }
@@ -207,6 +208,7 @@ const FeatureAdmin: React.FC = () => {
                                   </Text>
                                 </InlineStack>
                                 <InlineStack gap="200" blockAlign="center">
+                                  <Badge tone="info">{`${f.votes ?? 0} votes`}</Badge>
                                   {priorityBadge(f.priority)}
                                   {statusBadge(f.status)}
                                 </InlineStack>

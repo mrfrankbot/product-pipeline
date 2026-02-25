@@ -48,6 +48,7 @@ export interface OrderItem {
   shopify_order_id?: string;
   status?: string;
   total?: number;
+  ebay_created_at?: string;
   created_at?: string;
   shopifyOrderId?: string;
   ebayOrderId?: string;

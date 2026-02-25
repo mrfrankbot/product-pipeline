@@ -380,7 +380,7 @@ async function runBackgroundSync() {
   try {
     const { runOrderSync } = await import('./sync-helper.js');
     // Only sync orders from the last 24 hours for auto-sync
-    const result = await runOrderSync({ dryRun: false });
+    const result = await runOrderSync({ confirm: true });
     if (result) {
       info(`[Scheduler] Background sync complete: ${result.imported} imported, ${result.skipped} skipped, ${result.failed} failed`);
     } else {

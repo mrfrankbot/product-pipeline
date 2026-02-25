@@ -23,9 +23,8 @@ import { useOrders } from '../hooks/useApi';
 
 const STATUS_OPTIONS = [
   { label: 'All statuses', value: '' },
-  { label: 'Imported', value: 'imported' },
-  { label: 'Pending', value: 'pending' },
-  { label: 'Failed', value: 'failed' },
+  { label: 'Synced', value: 'synced' },
+  { label: 'Fulfilled', value: 'fulfilled' },
 ];
 
 const formatCurrency = (amount?: number) => {
@@ -186,12 +185,12 @@ const Orders: React.FC = () => {
                     <IndexTable.Cell>
                       <Badge 
                         tone={
-                          order.status === 'failed' 
-                            ? 'critical' 
-                            : order.status === 'pending' 
-                              ? 'info' 
-                              : order.status === 'imported'
-                                ? 'success'
+                          order.status === 'fulfilled'
+                            ? 'success'
+                            : order.status === 'synced'
+                              ? 'info'
+                              : order.status === 'failed'
+                                ? 'critical'
                                 : 'info'
                         }
                       >
@@ -203,7 +202,7 @@ const Orders: React.FC = () => {
                     </IndexTable.Cell>
                     <IndexTable.Cell>
                       <Text variant="bodySm" tone="subdued" as="span">
-                        {formatTimestamp(order.created_at ?? order.createdAt)}
+                        {formatTimestamp(order.ebay_created_at ?? order.created_at ?? order.createdAt)}
                       </Text>
                     </IndexTable.Cell>
                   </IndexTable.Row>

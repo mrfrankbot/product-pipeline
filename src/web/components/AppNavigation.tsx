@@ -107,7 +107,7 @@ const AppNavigation: React.FC = () => {
           {
             label: 'Review Queue',
             icon: undefined,
-            selected: isSelected('/review'),
+            selected: location.pathname.startsWith('/review'),
             onClick: () => navigate('/review'),
             url: '/review',
             badge: draftCount?.count ? String(draftCount.count) : undefined,
