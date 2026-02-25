@@ -573,6 +573,15 @@ export async function autoListProduct(
     // Check what the product currently has on Shopify
     const existingContent = await checkExistingContent(shopifyProductId);
 
+    // Build tags list — include product tags plus any newly applied condition tag
+    const draftTags = [...(product.tags || [])];
+    if (timCondition) {
+      const condTag = `condition:${timCondition}`;
+      if (!draftTags.some(t => t.toLowerCase() === condTag.toLowerCase())) {
+        draftTags.push(condTag);
+      }
+    }
+
     // Create a draft with processed content + original content for comparison
     const draftId = await createDraft(shopifyProductId, {
       title: product.title || '',
@@ -583,6 +592,7 @@ export async function autoListProduct(
       originalTitle: existingContent.title,
       originalDescription: existingContent.description,
       originalImages: existingContent.images,
+      tags: draftTags.length > 0 ? draftTags : undefined,
     });
 
     // Auto-publish logic:
