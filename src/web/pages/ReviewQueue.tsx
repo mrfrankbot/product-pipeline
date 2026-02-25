@@ -19,6 +19,8 @@ import {
   Spinner,
   EmptyState,
   Tabs,
+  Box,
+  Divider,
 } from '@shopify/polaris';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -154,7 +156,7 @@ const ReviewQueue: React.FC = () => {
           <Layout>
             <Layout.Section>
               <Card padding="0">
-                <div style={{ padding: '16px 16px 0' }}>
+                <Box padding="400" paddingBlockEnd="0">
                   <Filters
                     queryValue=""
                     onQueryChange={() => {}}
@@ -198,20 +200,25 @@ const ReviewQueue: React.FC = () => {
                     }
                     hideQueryField
                   />
-                </div>
+                </Box>
+                <Divider />
 
                 {isLoading ? (
-                  <div style={{ textAlign: 'center', padding: '2rem' }}>
-                    <Spinner size="large" />
-                  </div>
+                  <Box padding="500">
+                    <InlineStack align="center">
+                      <Spinner size="large" />
+                    </InlineStack>
+                  </Box>
                 ) : drafts.length === 0 ? (
-                  <EmptyState heading="No drafts found" image="">
-                    <p>
-                      {statusValue === 'pending'
-                        ? 'All caught up! No drafts awaiting review.'
-                        : `No ${statusValue} drafts.`}
-                    </p>
-                  </EmptyState>
+                  <Box padding="500">
+                    <EmptyState heading="No drafts found" image="">
+                      <Text as="p" variant="bodyMd">
+                        {statusValue === 'pending'
+                          ? 'All caught up! No drafts awaiting review.'
+                          : `No ${statusValue} drafts.`}
+                      </Text>
+                    </EmptyState>
+                  </Box>
                 ) : (
                   <ResourceList
                     resourceName={{ singular: 'draft', plural: 'drafts' }}
@@ -239,9 +246,7 @@ const ReviewQueue: React.FC = () => {
                               </Text>
                               <Text variant="bodySm" as="span" tone="subdued">
                                 {draft.draftImages.length} photos
-                                {draft.draft_description
-                                  ? ` · ${truncateHtml(draft.draft_description, 80)}`
-                                  : ''}
+                                {draft.draft_description ? ` · ${truncateHtml(draft.draft_description, 80)}` : ''}
                               </Text>
                               <Text variant="bodySm" as="span" tone="subdued">
                                 {formatDate(draft.created_at)}
@@ -256,19 +261,20 @@ const ReviewQueue: React.FC = () => {
                 )}
               </Card>
 
-              {/* Pagination */}
               {total > limit && (
-                <div style={{ display: 'flex', justifyContent: 'center', padding: '1rem', gap: '0.5rem' }}>
-                  <Button disabled={page === 0} onClick={() => setPage(page - 1)}>
-                    Previous
-                  </Button>
-                  <Text variant="bodySm" as="span" tone="subdued">
-                    Page {page + 1} of {Math.ceil(total / limit)}
-                  </Text>
-                  <Button disabled={(page + 1) * limit >= total} onClick={() => setPage(page + 1)}>
-                    Next
-                  </Button>
-                </div>
+                <Card>
+                  <InlineStack align="center" blockAlign="center" gap="300">
+                    <Button disabled={page === 0} onClick={() => setPage(page - 1)}>
+                      Previous
+                    </Button>
+                    <Text variant="bodySm" as="span" tone="subdued">
+                      Page {page + 1} of {Math.ceil(total / limit)}
+                    </Text>
+                    <Button disabled={(page + 1) * limit >= total} onClick={() => setPage(page + 1)}>
+                      Next
+                    </Button>
+                  </InlineStack>
+                </Card>
               )}
             </Layout.Section>
           </Layout>
@@ -281,7 +287,6 @@ const ReviewQueue: React.FC = () => {
         )}
       </Tabs>
 
-      {/* Bulk Approve Modal */}
       <Modal
         open={bulkApproveModalOpen}
         onClose={() => setBulkApproveModalOpen(false)}
@@ -295,10 +300,10 @@ const ReviewQueue: React.FC = () => {
       >
         <Modal.Section>
           <Banner tone="warning">
-            <p>
-              This will approve <strong>{pendingCount}</strong> pending drafts and push their content
-              to Shopify. This action cannot be undone.
-            </p>
+            <Text as="p">
+              This will approve <strong>{pendingCount}</strong> pending drafts and push their content to Shopify. This
+              action cannot be undone.
+            </Text>
           </Banner>
         </Modal.Section>
       </Modal>

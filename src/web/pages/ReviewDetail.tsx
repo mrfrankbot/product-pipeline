@@ -5,7 +5,6 @@ import {
   Card,
   Badge,
   Button,
-  ButtonGroup,
   Text,
   BlockStack,
   InlineStack,
@@ -15,17 +14,16 @@ import {
   TextField,
   Pagination,
   Banner,
-  Tooltip,
-  Icon,
+  Modal,
+  InlineGrid,
+  Thumbnail,
 } from '@shopify/polaris';
 import {
-  ArrowLeftIcon,
   ExternalIcon,
   EditIcon,
+  ViewIcon,
   CheckIcon,
   XIcon,
-  NoteIcon,
-  ImageIcon,
 } from '@shopify/polaris-icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -104,30 +102,6 @@ const formatDate = (unix: number) =>
     minute: '2-digit',
   });
 
-// ── Lightbox Component ─────────────────────────────────────────────────
-
-const Lightbox: React.FC<{ src: string; alt: string; onClose: () => void }> = ({ src, alt, onClose }) => (
-  <div
-    onClick={onClose}
-    style={{
-      position: 'fixed',
-      inset: 0,
-      zIndex: 999999,
-      background: 'rgba(0,0,0,0.85)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      cursor: 'zoom-out',
-    }}
-  >
-    <img
-      src={src}
-      alt={alt}
-      style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: '8px', objectFit: 'contain' }}
-    />
-  </div>
-);
-
 // ── Main Component ─────────────────────────────────────────────────────
 
 const ReviewDetail: React.FC = () => {
@@ -141,17 +115,12 @@ const ReviewDetail: React.FC = () => {
   const [editDescription, setEditDescription] = useState('');
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
-  // Notes state
   const [localNotes, setLocalNotes] = useState('');
   const [notesInit, setNotesInit] = useState(false);
 
-  // Photo editor state
   const [editingPhotoIndex, setEditingPhotoIndex] = useState<number | null>(null);
 
-  // eBay listing result (shown after listing succeeds via the prep page)
   const [ebayListingResult] = useState<{ listingId: string; ebayUrl: string } | null>(null);
-
-  // ── Fetch queue list for prev/next navigation ──────────────────────
 
   const { data: queueData } = useQuery({
     queryKey: ['drafts', 'pending', 'nav'],
@@ -164,8 +133,6 @@ const ReviewDetail: React.FC = () => {
   const prevId = currentIndex > 0 ? queueIds[currentIndex - 1] : null;
   const nextId = currentIndex >= 0 && currentIndex < queueIds.length - 1 ? queueIds[currentIndex + 1] : null;
 
-  // ── Fetch draft detail ─────────────────────────────────────────────
-
   const { data: detailData, isLoading } = useQuery({
     queryKey: ['draft-detail', draftId],
     queryFn: () => apiClient.get<DraftDetailResponse>(`/drafts/${draftId}`),
@@ -174,8 +141,6 @@ const ReviewDetail: React.FC = () => {
 
   const draft = detailData?.draft;
   const live = detailData?.live;
-
-  // ── Product notes ──────────────────────────────────────────────────
 
   const productId = draft?.shopify_product_id;
   const { data: notesData } = useProductNotes(productId);
@@ -188,14 +153,11 @@ const ReviewDetail: React.FC = () => {
     }
   }, [notesData, notesInit]);
 
-  // Reset notes init when navigating to different draft
   useEffect(() => {
     setNotesInit(false);
     setLocalNotes('');
     setIsEditing(false);
   }, [draftId]);
-
-  // ── Mutations ──────────────────────────────────────────────────────
 
   const approveMutation = useMutation({
     mutationFn: ({ photos, description }: { photos: boolean; description: boolean }) =>
@@ -205,7 +167,6 @@ const ReviewDetail: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['drafts-count'] });
       queryClient.invalidateQueries({ queryKey: ['draft-detail'] });
       addNotification({ type: 'success', title: 'Draft approved', message: 'Changes pushed to Shopify', autoClose: 4000 });
-      // Auto-advance to next
       if (nextId) {
         navigate(`/review/${nextId}`, { replace: true });
       } else {
@@ -241,7 +202,6 @@ const ReviewDetail: React.FC = () => {
     },
   });
 
-  // Photo reorder mutation — called by DraggablePhotoGrid on drop or bulk transform
   const reorderMutation = useMutation({
     mutationFn: (newImages: string[]) =>
       apiClient.put(`/drafts/${draftId}`, { images: newImages }),
@@ -265,11 +225,6 @@ const ReviewDetail: React.FC = () => {
     [reorderMutation],
   );
 
-  // eBay listing is now handled by the full EbayListingPrep page
-  // Navigate to /review/:id/ebay-prep for the full listing flow
-
-  // ── Handlers ───────────────────────────────────────────────────────
-
   const handleStartEdit = useCallback(() => {
     setEditDescription(draft?.draft_description || '');
     setIsEditing(true);
@@ -287,8 +242,6 @@ const ReviewDetail: React.FC = () => {
     }
   }, [nextId, navigate]);
 
-  // ── Keyboard navigation ────────────────────────────────────────────
-
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (isEditing) return;
@@ -299,17 +252,17 @@ const ReviewDetail: React.FC = () => {
     return () => window.removeEventListener('keydown', handler);
   }, [prevId, nextId, navigate, isEditing]);
 
-  // ── Loading / Error states ─────────────────────────────────────────
-
   if (isLoading || !draft || !live) {
     return (
       <Page
         backAction={{ content: 'Review Queue', url: '/review' }}
         title="Loading..."
       >
-        <div style={{ textAlign: 'center', padding: '4rem' }}>
-          <Spinner size="large" />
-        </div>
+        <Box padding="600">
+          <InlineStack align="center">
+            <Spinner size="large" />
+          </InlineStack>
+        </Box>
       </Page>
     );
   }
@@ -317,15 +270,13 @@ const ReviewDetail: React.FC = () => {
   const title = draft.draft_title || draft.original_title || `Product #${draft.shopify_product_id}`;
   const shopifyAdminUrl = `https://admin.shopify.com/store/pictureline/products/${draft.shopify_product_id}`;
 
-  // Parse images - ensure we have valid URLs
   const draftImages = (draft.draftImages || []).filter((img) => img && img.startsWith('http'));
-  const originalImages = (draft.originalImages || []).filter((img) => img && img.startsWith('http'));
   const liveImages = (live.images || []).filter((img) => img && img.startsWith('http'));
+
+  const listingId = ebayListingResult?.listingId || draft.ebay_listing_id;
 
   return (
     <>
-      {lightboxSrc && <Lightbox src={lightboxSrc} alt="Enlarged photo" onClose={() => setLightboxSrc(null)} />}
-
       <Page
         backAction={{ content: 'Review Queue', url: '/review' }}
         title={title}
@@ -344,28 +295,25 @@ const ReviewDetail: React.FC = () => {
         }
       >
         <Layout>
-          {/* ── Left Column ─────────────────────────────────────────── */}
           <Layout.Section>
-            {/* Photos Card */}
             <Card>
               <BlockStack gap="400">
                 <InlineStack align="space-between" blockAlign="center">
                   <Text variant="headingMd" as="h2">
                     Photos
                   </Text>
-                  <Badge>
-                    {`${draftImages.length} draft${liveImages.length > 0 ? ` · ${liveImages.length} live` : ''}`}
-                  </Badge>
+                  <Badge>{`${draftImages.length} draft${liveImages.length > 0 ? ` · ${liveImages.length} live` : ''}`}</Badge>
                 </InlineStack>
 
                 {draftImages.length === 0 && liveImages.length === 0 ? (
                   <Banner tone="info">
-                    <p>No photos available for this draft.</p>
+                    <Text as="p">No photos available for this draft.</Text>
                   </Banner>
                 ) : draftImages.length > 0 && liveImages.length > 0 ? (
-                  /* Side-by-side before/after */
-                  <>
-                    <Text variant="headingSm" as="h3" tone="subdued">Draft Photos (New)</Text>
+                  <BlockStack gap="300">
+                    <Text variant="headingSm" as="h3" tone="subdued">
+                      Draft Photos (New)
+                    </Text>
                     <DraggablePhotoGrid
                       imageUrls={draftImages}
                       onChange={handleReorderPhotos}
@@ -374,74 +322,53 @@ const ReviewDetail: React.FC = () => {
                       draftId={draftId}
                     />
                     <Divider />
-                    <Text variant="headingSm" as="h3" tone="subdued">Current Live Photos</Text>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
+                    <Text variant="headingSm" as="h3" tone="subdued">
+                      Current Live Photos
+                    </Text>
+                    <InlineGrid columns={{ xs: 2, sm: 3, md: 4 }} gap="200">
                       {liveImages.map((img, i) => (
-                        <div
-                          key={`live-${i}`}
-                          onClick={() => setLightboxSrc(img)}
-                          style={{
-                            cursor: 'zoom-in',
-                            borderRadius: '8px',
-                            overflow: 'hidden',
-                            border: '2px solid #e3e5e7',
-                            opacity: 0.7,
-                            aspectRatio: '1',
-                          }}
-                        >
-                          <img
-                            src={img}
-                            alt={`Live photo ${i + 1}`}
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                          />
-                        </div>
+                        <Card key={`live-${i}`} padding="200">
+                          <BlockStack gap="200" inlineAlign="center">
+                            <Thumbnail source={img} alt={`Live photo ${i + 1}`} size="large" />
+                            <Button variant="plain" icon={ViewIcon} onClick={() => setLightboxSrc(img)}>
+                              View
+                            </Button>
+                          </BlockStack>
+                        </Card>
                       ))}
-                    </div>
-                  </>
+                    </InlineGrid>
+                  </BlockStack>
+                ) : draftImages.length > 0 ? (
+                  <DraggablePhotoGrid
+                    imageUrls={draftImages}
+                    onChange={handleReorderPhotos}
+                    onEditPhoto={(i) => setEditingPhotoIndex(i)}
+                    enableBulkEdit
+                    draftId={draftId}
+                  />
                 ) : (
-                  /* Only one set of images — draft (draggable) or live (static) */
-                  draftImages.length > 0 ? (
-                    <DraggablePhotoGrid
-                      imageUrls={draftImages}
-                      onChange={handleReorderPhotos}
-                      onEditPhoto={(i) => setEditingPhotoIndex(i)}
-                      enableBulkEdit
-                      draftId={draftId}
-                    />
-                  ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
-                      {liveImages.map((img, i) => (
-                        <div
-                          key={i}
-                          onClick={() => setLightboxSrc(img)}
-                          style={{
-                            cursor: 'zoom-in',
-                            borderRadius: '8px',
-                            overflow: 'hidden',
-                            border: '2px solid #e3e5e7',
-                            aspectRatio: '1',
-                          }}
-                        >
-                          <img
-                            src={img}
-                            alt={`Live photo ${i + 1}`}
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )
+                  <InlineGrid columns={{ xs: 2, sm: 3, md: 4 }} gap="200">
+                    {liveImages.map((img, i) => (
+                      <Card key={i} padding="200">
+                        <BlockStack gap="200" inlineAlign="center">
+                          <Thumbnail source={img} alt={`Live photo ${i + 1}`} size="large" />
+                          <Button variant="plain" icon={ViewIcon} onClick={() => setLightboxSrc(img)}>
+                            View
+                          </Button>
+                        </BlockStack>
+                      </Card>
+                    ))}
+                  </InlineGrid>
                 )}
               </BlockStack>
             </Card>
 
-            <div style={{ marginTop: '16px' }} />
-
-            {/* AI Description Card */}
             <Card>
               <BlockStack gap="400">
                 <InlineStack align="space-between" blockAlign="center">
-                  <Text variant="headingMd" as="h2">AI Description</Text>
+                  <Text variant="headingMd" as="h2">
+                    AI Description
+                  </Text>
                   {draft.status === 'pending' && !isEditing && (
                     <Button icon={EditIcon} onClick={handleStartEdit} size="slim">
                       Edit
@@ -451,20 +378,13 @@ const ReviewDetail: React.FC = () => {
 
                 {isEditing ? (
                   <BlockStack gap="300">
-                    <textarea
+                    <TextField
+                      label=""
+                      labelHidden
                       value={editDescription}
-                      onChange={(e) => setEditDescription(e.target.value)}
-                      rows={12}
-                      style={{
-                        width: '100%',
-                        padding: '12px',
-                        fontSize: '14px',
-                        lineHeight: '1.6',
-                        borderRadius: '8px',
-                        border: '1px solid #c9cccf',
-                        fontFamily: 'inherit',
-                        resize: 'vertical',
-                      }}
+                      onChange={setEditDescription}
+                      multiline={12}
+                      autoComplete="off"
                     />
                     <InlineStack gap="200">
                       <Button variant="primary" onClick={handleSaveEdit} loading={updateMutation.isPending}>
@@ -474,53 +394,37 @@ const ReviewDetail: React.FC = () => {
                     </InlineStack>
                   </BlockStack>
                 ) : (
-                  <div
-                    style={{
-                      fontSize: '14px',
-                      lineHeight: '1.6',
-                      padding: '12px',
-                      background: '#f9fafb',
-                      borderRadius: '8px',
-                      border: '1px solid #e3e5e7',
-                      maxHeight: '500px',
-                      overflow: 'auto',
-                    }}
-                    dangerouslySetInnerHTML={{ __html: draft.draft_description || '<em>No description</em>' }}
-                  />
+                  <Card background="bg-surface-secondary" padding="300">
+                    <Box>
+                      <div dangerouslySetInnerHTML={{ __html: draft.draft_description || '<em>No description</em>' }} />
+                    </Box>
+                  </Card>
                 )}
 
-                {/* Show original/live description for comparison */}
                 {live.description && (
                   <>
                     <Divider />
-                    <Text variant="headingSm" as="h3" tone="subdued">Current Live Description</Text>
-                    <div
-                      style={{
-                        fontSize: '13px',
-                        lineHeight: '1.5',
-                        padding: '12px',
-                        background: '#fff',
-                        borderRadius: '8px',
-                        border: '1px solid #e3e5e7',
-                        maxHeight: '300px',
-                        overflow: 'auto',
-                        opacity: 0.7,
-                      }}
-                      dangerouslySetInnerHTML={{ __html: live.description }}
-                    />
+                    <Text variant="headingSm" as="h3" tone="subdued">
+                      Current Live Description
+                    </Text>
+                    <Card background="bg-surface-secondary" padding="300">
+                      <Box>
+                        <div dangerouslySetInnerHTML={{ __html: live.description }} />
+                      </Box>
+                    </Card>
                   </>
                 )}
               </BlockStack>
             </Card>
           </Layout.Section>
 
-          {/* ── Right Column ────────────────────────────────────────── */}
           <Layout.Section variant="oneThird">
-            {/* Actions Card */}
             {draft.status === 'pending' && (
               <Card>
                 <BlockStack gap="300">
-                  <Text variant="headingMd" as="h2">Actions</Text>
+                  <Text variant="headingMd" as="h2">
+                    Actions
+                  </Text>
                   <Button
                     variant="primary"
                     tone="success"
@@ -529,41 +433,23 @@ const ReviewDetail: React.FC = () => {
                     onClick={() => approveMutation.mutate({ photos: true, description: true })}
                     loading={approveMutation.isPending}
                   >
-                    ✓ Approve All
+                    Approve all
                   </Button>
-                  <InlineStack gap="200">
-                    <div style={{ flex: 1 }}>
-                      <Button
-                        fullWidth
-                        size="slim"
-                        onClick={() => approveMutation.mutate({ photos: true, description: false })}
-                      >
-                        Photos Only
-                      </Button>
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <Button
-                        fullWidth
-                        size="slim"
-                        onClick={() => approveMutation.mutate({ photos: false, description: true })}
-                      >
-                        Description Only
-                      </Button>
-                    </div>
-                  </InlineStack>
+                  <InlineGrid columns={{ xs: 1, sm: 2 }} gap="200">
+                    <Button fullWidth size="slim" onClick={() => approveMutation.mutate({ photos: true, description: false })}>
+                      Photos only
+                    </Button>
+                    <Button fullWidth size="slim" onClick={() => approveMutation.mutate({ photos: false, description: true })}>
+                      Description only
+                    </Button>
+                  </InlineGrid>
                   <Divider />
-                  {/* eBay Listing Button — navigates to full prep page */}
-                  <Button
-                    variant="primary"
-                    size="large"
-                    fullWidth
-                    url={`/review/${draftId}/ebay-prep`}
-                  >
-                    🛍️ Approve &amp; List on eBay
+                  <Button variant="primary" size="large" fullWidth url={`/review/${draftId}/ebay-prep`}>
+                    Approve &amp; List on eBay
                   </Button>
                   <Divider />
-                  <Button fullWidth onClick={handleSkip}>
-                    Skip →
+                  <Button fullWidth onClick={handleSkip} icon={ArrowLeftIcon}>
+                    Skip
                   </Button>
                   <Button
                     fullWidth
@@ -580,7 +466,9 @@ const ReviewDetail: React.FC = () => {
             {draft.status !== 'pending' && (
               <Card>
                 <BlockStack gap="200">
-                  <Text variant="headingMd" as="h2">Status</Text>
+                  <Text variant="headingMd" as="h2">
+                    Status
+                  </Text>
                   {statusBadge(draft.status)}
                   {draft.reviewed_at && (
                     <Text variant="bodySm" as="p" tone="subdued">
@@ -591,75 +479,69 @@ const ReviewDetail: React.FC = () => {
               </Card>
             )}
 
-            {/* eBay Listing result (after listing) */}
-            {(ebayListingResult || draft.ebay_listing_id) && (
-              <div style={{ marginTop: '16px' }}>
-                <Card>
-                  <BlockStack gap="300">
-                    <InlineStack align="space-between" blockAlign="center">
-                      <Text variant="headingMd" as="h2">eBay Listing</Text>
-                      <Badge tone="success">Live</Badge>
-                    </InlineStack>
-                    <InlineStack gap="200" blockAlign="center">
-                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e' }} />
-                      <Text variant="bodySm" as="span">
-                        Listing #{ebayListingResult?.listingId || draft.ebay_listing_id}
-                      </Text>
-                    </InlineStack>
-                    <a
-                      href={ebayListingResult?.ebayUrl || `https://www.ebay.com/itm/${draft.ebay_listing_id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ textDecoration: 'none' }}
-                    >
-                      <Button fullWidth icon={ExternalIcon} size="slim">
-                        View on eBay
-                      </Button>
-                    </a>
-                  </BlockStack>
-                </Card>
-              </div>
+            {listingId && (
+              <Card>
+                <BlockStack gap="300">
+                  <InlineStack align="space-between" blockAlign="center">
+                    <Text variant="headingMd" as="h2">
+                      eBay Listing
+                    </Text>
+                    <Badge tone="success">Live</Badge>
+                  </InlineStack>
+                  <InlineStack gap="200" blockAlign="center">
+                    <Badge tone="success">Listing #{listingId}</Badge>
+                  </InlineStack>
+                  <Button
+                    fullWidth
+                    icon={ExternalIcon}
+                    size="slim"
+                    url={ebayListingResult?.ebayUrl || `https://www.ebay.com/itm/${listingId}`}
+                    target="_blank"
+                  >
+                    View on eBay
+                  </Button>
+                </BlockStack>
+              </Card>
             )}
 
-            <div style={{ marginTop: '16px' }} />
-
-            {/* Product Info Card */}
             <Card>
               <BlockStack gap="300">
-                <Text variant="headingMd" as="h2">Product Info</Text>
+                <Text variant="headingMd" as="h2">
+                  Product Info
+                </Text>
                 <BlockStack gap="200">
                   <InlineStack align="space-between">
-                    <Text variant="bodySm" as="span" tone="subdued">Shopify ID</Text>
-                    <Text variant="bodySm" as="span">{draft.shopify_product_id}</Text>
+                    <Text variant="bodySm" as="span" tone="subdued">
+                      Shopify ID
+                    </Text>
+                    <Text variant="bodySm" as="span">
+                      {draft.shopify_product_id}
+                    </Text>
                   </InlineStack>
                   {draft.draft_title && (
                     <InlineStack align="space-between">
-                      <Text variant="bodySm" as="span" tone="subdued">Title</Text>
-                      <Text variant="bodySm" as="span">{draft.draft_title}</Text>
+                      <Text variant="bodySm" as="span" tone="subdued">
+                        Title
+                      </Text>
+                      <Text variant="bodySm" as="span">
+                        {draft.draft_title}
+                      </Text>
                     </InlineStack>
                   )}
                 </BlockStack>
-                <a
-                  href={shopifyAdminUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ textDecoration: 'none' }}
-                >
-                  <Button fullWidth icon={ExternalIcon} size="slim">
-                    View in Shopify
-                  </Button>
-                </a>
+                <Button fullWidth icon={ExternalIcon} size="slim" url={shopifyAdminUrl} target="_blank">
+                  View in Shopify
+                </Button>
               </BlockStack>
             </Card>
 
-            <div style={{ marginTop: '16px' }} />
-
-            {/* Product Notes Card */}
             {productId && (
               <Card>
                 <BlockStack gap="300">
                   <InlineStack align="space-between" blockAlign="center">
-                    <Text variant="headingMd" as="h2">Notes</Text>
+                    <Text variant="headingMd" as="h2">
+                      Notes
+                    </Text>
                     {localNotes.trim() && <Badge tone="attention">Has Notes</Badge>}
                   </InlineStack>
                   <TextField
@@ -683,47 +565,55 @@ const ReviewDetail: React.FC = () => {
               </Card>
             )}
 
-            <div style={{ marginTop: '16px' }} />
-
-            {/* Pipeline Status Card */}
             <Card>
               <BlockStack gap="300">
-                <Text variant="headingMd" as="h2">Pipeline Status</Text>
+                <Text variant="headingMd" as="h2">
+                  Pipeline Status
+                </Text>
                 <BlockStack gap="200">
                   <InlineStack gap="200" blockAlign="center">
-                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: draft.draft_description ? '#22c55e' : '#d1d5db' }} />
-                    <Text variant="bodySm" as="span">
-                      Description {draft.draft_description ? 'generated' : 'not generated'}
-                    </Text>
+                    <Badge tone={draft.draft_description ? 'success' : 'critical'}>
+                      {draft.draft_description ? 'Description generated' : 'Description missing'}
+                    </Badge>
                   </InlineStack>
                   <InlineStack gap="200" blockAlign="center">
-                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: draftImages.length > 0 ? '#22c55e' : '#d1d5db' }} />
-                    <Text variant="bodySm" as="span">
-                      Photos {draftImages.length > 0 ? `processed (${draftImages.length})` : 'not processed'}
-                    </Text>
+                    <Badge tone={draftImages.length > 0 ? 'success' : 'critical'}>
+                      {draftImages.length > 0 ? `Photos processed (${draftImages.length})` : 'Photos not processed'}
+                    </Badge>
                   </InlineStack>
                   <InlineStack gap="200" blockAlign="center">
-                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: draft.status === 'approved' || draft.status === 'listed' ? '#22c55e' : draft.status === 'rejected' ? '#ef4444' : '#f59e0b' }} />
-                    <Text variant="bodySm" as="span">
+                    <Badge tone={draft.status === 'approved' || draft.status === 'listed' ? 'success' : draft.status === 'rejected' ? 'critical' : 'warning'}>
                       Review: {draft.status}
-                    </Text>
+                    </Badge>
                   </InlineStack>
                   <InlineStack gap="200" blockAlign="center">
-                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: (ebayListingResult?.listingId || draft.ebay_listing_id) ? '#22c55e' : '#d1d5db' }} />
-                    <Text variant="bodySm" as="span">
-                      eBay {(ebayListingResult?.listingId || draft.ebay_listing_id) ? `listed (#${ebayListingResult?.listingId || draft.ebay_listing_id})` : 'not listed'}
-                    </Text>
+                    <Badge tone={listingId ? 'success' : 'warning'}>
+                      {listingId ? `eBay listed (#${listingId})` : 'eBay not listed'}
+                    </Badge>
                   </InlineStack>
                 </BlockStack>
               </BlockStack>
             </Card>
           </Layout.Section>
         </Layout>
-
-        <div style={{ height: '2rem' }} />
       </Page>
 
-      {/* Photo Editor Modal */}
+      <Modal
+        open={Boolean(lightboxSrc)}
+        onClose={() => setLightboxSrc(null)}
+        title="Photo preview"
+        primaryAction={{
+          content: 'Close',
+          onAction: () => setLightboxSrc(null),
+        }}
+      >
+        <Modal.Section>
+          <InlineStack align="center">
+            {lightboxSrc ? <Thumbnail source={lightboxSrc} alt="Enlarged photo" size="large" /> : null}
+          </InlineStack>
+        </Modal.Section>
+      </Modal>
+
       {editingPhotoIndex !== null && (
         <ProductPhotoEditor
           open={editingPhotoIndex !== null}
