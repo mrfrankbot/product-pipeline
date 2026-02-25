@@ -5,7 +5,6 @@ import {
   BlockStack,
   Box,
   Button,
-  ButtonGroup,
   Card,
   Checkbox,
   Divider,
@@ -28,6 +27,7 @@ import {
   ImportIcon,
   SearchIcon,
   SaveIcon,
+  SettingsIcon,
 } from '@shopify/polaris-icons';
 import {
   AttributeMapping,
@@ -36,6 +36,8 @@ import {
   apiClient,
 } from '../hooks/useApi';
 import { useAppStore } from '../store';
+
+/* ────────────────── Constants ────────────────── */
 
 const SHOPIFY_FIELD_OPTIONS = [
   { label: 'Select a field', value: '' },
@@ -106,25 +108,23 @@ const FILTER_OPTIONS = [
   { label: 'Disabled', value: 'disabled' },
 ];
 
+/* ────────────────── Helpers ────────────────── */
+
 const formatFieldName = (value: string) =>
-  value
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+  value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 
 const isMappingComplete = (mapping?: AttributeMapping) => {
   if (!mapping || !mapping.is_enabled) return false;
   switch (mapping.mapping_type) {
-    case 'shopify_field':
-      return Boolean(mapping.source_value);
+    case 'shopify_field': return Boolean(mapping.source_value);
     case 'constant':
-    case 'formula':
-      return Boolean(mapping.target_value);
-    case 'edit_in_grid':
-      return true;
-    default:
-      return false;
+    case 'formula': return Boolean(mapping.target_value);
+    case 'edit_in_grid': return true;
+    default: return false;
   }
 };
+
+/* ────────────────── Mappings Page ────────────────── */
 
 const Mappings: React.FC = () => {
   const { data, isLoading, error, refetch } = useMappings();
@@ -139,14 +139,11 @@ const Mappings: React.FC = () => {
   const [selectedTab, setSelectedTab] = useState(0);
   const [searchValue, setSearchValue] = useState('');
   const [filterValue, setFilterValue] = useState('all');
-  const [pendingUpdates, setPendingUpdates] = useState<Map<string, Partial<AttributeMapping>>>(
-    new Map(),
-  );
+  const [pendingUpdates, setPendingUpdates] = useState<Map<string, Partial<AttributeMapping>>>(new Map());
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
-
   const debounceRef = useRef<number | null>(null);
 
   const categories = useMemo(() => Object.keys(CATEGORY_LABELS), []);
@@ -165,8 +162,7 @@ const Mappings: React.FC = () => {
   const mergedMapping = useCallback(
     (mapping: AttributeMapping) => {
       const key = `${mapping.category}:${mapping.field_name}`;
-      const pending = pendingUpdates.get(key) ?? {};
-      return { ...mapping, ...pending };
+      return { ...mapping, ...(pendingUpdates.get(key) ?? {}) };
     },
     [pendingUpdates],
   );
@@ -192,8 +188,7 @@ const Mappings: React.FC = () => {
         .map((key) => {
           const base = mappingIndex.get(key);
           const updates = pendingUpdates.get(key) ?? {};
-          if (!base) return null;
-          return { ...base, ...updates } as AttributeMapping;
+          return base ? ({ ...base, ...updates } as AttributeMapping) : null;
         })
         .filter(Boolean) as AttributeMapping[];
 
@@ -221,29 +216,19 @@ const Mappings: React.FC = () => {
 
   useEffect(() => {
     if (pendingUpdates.size === 0) return;
-    if (debounceRef.current) {
-      window.clearTimeout(debounceRef.current);
-    }
+    if (debounceRef.current) window.clearTimeout(debounceRef.current);
     debounceRef.current = window.setTimeout(() => {
-      const keys = Array.from(pendingUpdates.keys());
-      void saveMappings(keys);
+      void saveMappings(Array.from(pendingUpdates.keys()));
     }, 800);
-
-    return () => {
-      if (debounceRef.current) {
-        window.clearTimeout(debounceRef.current);
-      }
-    };
+    return () => { if (debounceRef.current) window.clearTimeout(debounceRef.current); };
   }, [pendingUpdates, saveMappings]);
 
   const tabDefinitions = useMemo(() => {
     return categories.map((category) => {
       const required = REQUIRED_FIELDS[category] ?? [];
       const unmappedCount = required.reduce((count, field) => {
-        const mapping = mappingIndex.get(`${category}:${field}`);
-        return count + (isMappingComplete(mapping) ? 0 : 1);
+        return count + (isMappingComplete(mappingIndex.get(`${category}:${field}`)) ? 0 : 1);
       }, 0);
-
       return {
         id: category,
         content: CATEGORY_LABELS[category],
@@ -256,21 +241,12 @@ const Mappings: React.FC = () => {
   const currentCategory = categories[selectedTab];
   const currentMappings = useMemo(() => {
     const categoryMappings = data?.[currentCategory as keyof typeof data] ?? [];
-
     return categoryMappings.filter((mapping) => {
-      const nameMatch = mapping.field_name.toLowerCase().includes(searchValue.toLowerCase());
-      if (!nameMatch) return false;
-
-      if (filterValue === 'required') {
-        return (REQUIRED_FIELDS[currentCategory] ?? []).includes(mapping.field_name);
-      }
-      if (filterValue === 'disabled') {
-        return !mergedMapping(mapping).is_enabled;
-      }
+      if (!mapping.field_name.toLowerCase().includes(searchValue.toLowerCase())) return false;
+      if (filterValue === 'required') return (REQUIRED_FIELDS[currentCategory] ?? []).includes(mapping.field_name);
+      if (filterValue === 'disabled') return !mergedMapping(mapping).is_enabled;
       if (filterValue === 'unmapped') {
-        return (REQUIRED_FIELDS[currentCategory] ?? []).includes(mapping.field_name)
-          ? !isMappingComplete(mergedMapping(mapping))
-          : false;
+        return (REQUIRED_FIELDS[currentCategory] ?? []).includes(mapping.field_name) && !isMappingComplete(mergedMapping(mapping));
       }
       return true;
     });
@@ -278,10 +254,7 @@ const Mappings: React.FC = () => {
 
   const unmappedRequiredCount = useMemo(() => {
     const required = REQUIRED_FIELDS[currentCategory] ?? [];
-    return required.reduce((count, field) => {
-      const mapping = mappingIndex.get(`${currentCategory}:${field}`);
-      return count + (isMappingComplete(mapping) ? 0 : 1);
-    }, 0);
+    return required.reduce((count, field) => count + (isMappingComplete(mappingIndex.get(`${currentCategory}:${field}`)) ? 0 : 1), 0);
   }, [currentCategory, mappingIndex]);
 
   const handleExport = async () => {
@@ -320,7 +293,7 @@ const Mappings: React.FC = () => {
 
   if (isLoading) {
     return (
-      <Page title="Field mappings" fullWidth>
+      <Page title="Field Mappings" fullWidth>
         <Card>
           <Box padding="600">
             <InlineStack align="center">
@@ -334,7 +307,7 @@ const Mappings: React.FC = () => {
 
   if (error) {
     return (
-      <Page title="Field mappings" fullWidth>
+      <Page title="Field Mappings" fullWidth>
         <Banner tone="critical" title="Failed to load mappings">
           <BlockStack gap="200">
             <Text as="p">{(error as Error).message}</Text>
@@ -347,7 +320,7 @@ const Mappings: React.FC = () => {
 
   return (
     <Page
-      title="Field mappings"
+      title="Field Mappings"
       subtitle="Configure how Shopify fields map to eBay listing attributes"
       fullWidth
       primaryAction={{
@@ -358,187 +331,145 @@ const Mappings: React.FC = () => {
         loading: bulkUpdate.isPending,
       }}
       secondaryActions={[
-        {
-          content: 'Export',
-          icon: ExportIcon,
-          onAction: () => setExportModalOpen(true),
-        },
-        {
-          content: 'Import',
-          icon: ImportIcon,
-          onAction: () => setImportModalOpen(true),
-        },
+        { content: 'Export', icon: ExportIcon, onAction: () => setExportModalOpen(true) },
+        { content: 'Import', icon: ImportIcon, onAction: () => setImportModalOpen(true) },
       ]}
     >
-      {pendingUpdates.size > 0 && (
-        <Banner tone="info" title="Auto-save is enabled">
-          <Text as="p">We will save your changes automatically.</Text>
-        </Banner>
-      )}
+      <BlockStack gap="500">
+        {pendingUpdates.size > 0 && (
+          <Banner tone="info" title="Auto-save is enabled">
+            <Text as="p">Changes are saved automatically after a short delay.</Text>
+          </Banner>
+        )}
 
-      <Card>
-        <BlockStack gap="400">
-          <InlineStack gap="400" align="space-between">
-            <Box minWidth="280px">
-              <TextField
-                label="Search fields"
-                labelHidden
-                value={searchValue}
-                onChange={setSearchValue}
-                prefix={<Icon source={SearchIcon} />}
-                placeholder="Search fields"
-                clearButton
-                onClearButtonClick={() => setSearchValue('')}
-                autoComplete="off"
-              />
-            </Box>
-            <Box minWidth="220px">
-              <Select
-                label="Filter"
-                labelHidden
-                options={FILTER_OPTIONS}
-                value={filterValue}
-                onChange={setFilterValue}
-              />
-            </Box>
-          </InlineStack>
+        <Card>
+          <BlockStack gap="400">
+            {/* Header with search and filter */}
+            <InlineStack gap="200" blockAlign="center">
+              <Box background="bg-fill-secondary" borderRadius="200" padding="200">
+                <Icon source={SettingsIcon} />
+              </Box>
+              <Text variant="headingMd" as="h2">Mapping Configuration</Text>
+            </InlineStack>
 
-          <Divider />
+            <InlineStack gap="400" align="space-between">
+              <Box minWidth="280px">
+                <TextField
+                  label="Search fields"
+                  labelHidden
+                  value={searchValue}
+                  onChange={setSearchValue}
+                  prefix={<Icon source={SearchIcon} />}
+                  placeholder="Search fields"
+                  clearButton
+                  onClearButtonClick={() => setSearchValue('')}
+                  autoComplete="off"
+                />
+              </Box>
+              <Box minWidth="220px">
+                <Select
+                  label="Filter"
+                  labelHidden
+                  options={FILTER_OPTIONS}
+                  value={filterValue}
+                  onChange={setFilterValue}
+                />
+              </Box>
+            </InlineStack>
 
-          <Tabs tabs={tabDefinitions} selected={selectedTab} onSelect={setSelectedTab}>
-            <Box paddingBlockStart="400">
-              <BlockStack gap="300">
-                <InlineStack gap="200" align="space-between">
-                  <BlockStack gap="100">
-                    <Text variant="headingMd" as="h2">
-                      {CATEGORY_LABELS[currentCategory]} mappings
-                    </Text>
-                    <Text as="p" tone="subdued">
-                      {currentMappings.length} fields · {unmappedRequiredCount} required unmapped
-                    </Text>
-                  </BlockStack>
-                  <Badge tone={unmappedRequiredCount > 0 ? 'critical' : 'success'}>
-                    {unmappedRequiredCount > 0 ? 'Action needed' : 'Complete'}
-                  </Badge>
-                </InlineStack>
+            <Divider />
 
-                <IndexTable
-                  resourceName={{ singular: 'mapping', plural: 'mappings' }}
-                  itemCount={currentMappings.length}
-                  selectable={false}
-                  headings={[
-                    { title: 'Field name' },
-                    { title: '' },
-                    { title: 'Mapping type' },
-                    { title: 'Configuration' },
-                    { title: 'Enabled' },
-                  ]}
-                >
-                  {currentMappings.map((mapping, index) => {
-                    const merged = mergedMapping(mapping);
-                    const required = (REQUIRED_FIELDS[mapping.category] ?? []).includes(mapping.field_name);
+            <Tabs tabs={tabDefinitions} selected={selectedTab} onSelect={setSelectedTab}>
+              <Box paddingBlockStart="400">
+                <BlockStack gap="300">
+                  <InlineStack gap="200" align="space-between" blockAlign="center">
+                    <BlockStack gap="100">
+                      <Text variant="headingMd" as="h2">{CATEGORY_LABELS[currentCategory]} mappings</Text>
+                      <Text as="p" tone="subdued" variant="bodySm">
+                        {currentMappings.length} fields · {unmappedRequiredCount} required unmapped
+                      </Text>
+                    </BlockStack>
+                    <Badge tone={unmappedRequiredCount > 0 ? 'critical' : 'success'}>
+                      {unmappedRequiredCount > 0 ? 'Action needed' : 'Complete'}
+                    </Badge>
+                  </InlineStack>
 
-                    return (
-                      <IndexTable.Row id={`${mapping.category}-${mapping.field_name}`} key={`${mapping.category}-${mapping.field_name}`} position={index}>
-                        <IndexTable.Cell>
-                          <InlineStack gap="200" align="center">
-                            <Text variant="bodyMd" fontWeight="semibold" as="span">
-                              {formatFieldName(mapping.field_name)}
-                            </Text>
-                            {required && (
-                              <Badge tone="critical" size="small">
-                                Required
-                              </Badge>
-                            )}
-                          </InlineStack>
-                        </IndexTable.Cell>
-                        <IndexTable.Cell>
-                          <Icon source={ArrowRightIcon} tone="subdued" />
-                        </IndexTable.Cell>
-                        <IndexTable.Cell>
-                          <Select
-                            label="Mapping type"
-                            labelHidden
-                            options={MAPPING_TYPE_OPTIONS}
-                            value={merged.mapping_type}
-                            onChange={(value) => {
-                              const updates: Partial<AttributeMapping> = {
-                                mapping_type: value as AttributeMapping['mapping_type'],
-                              };
-                              if (value === 'shopify_field') {
-                                updates.source_value = '';
-                                updates.target_value = null;
-                              } else if (value === 'constant') {
-                                updates.target_value = '';
-                                updates.source_value = null;
-                              } else if (value === 'formula') {
-                                updates.target_value = '';
-                                updates.source_value = null;
-                              } else {
-                                updates.source_value = null;
-                                updates.target_value = null;
-                              }
-                              applyUpdates(mapping, updates);
-                            }}
-                          />
-                        </IndexTable.Cell>
-                        <IndexTable.Cell>
-                          <Box minWidth="220px">
-                            {merged.mapping_type === 'shopify_field' && (
-                              <Select
-                                label="Shopify field"
-                                labelHidden
-                                options={SHOPIFY_FIELD_OPTIONS}
-                                value={merged.source_value ?? ''}
-                                onChange={(value) => applyUpdates(mapping, { source_value: value })}
-                              />
-                            )}
-                            {merged.mapping_type === 'constant' && (
-                              <TextField
-                                label="Constant value"
-                                labelHidden
-                                value={merged.target_value ?? ''}
-                                onChange={(value) => applyUpdates(mapping, { target_value: value })}
-                                placeholder="Enter value"
-                                autoComplete="off"
-                              />
-                            )}
-                            {merged.mapping_type === 'formula' && (
-                              <TextField
-                                label="Formula"
-                                labelHidden
-                                value={merged.target_value ?? ''}
-                                onChange={(value) => applyUpdates(mapping, { target_value: value })}
-                                placeholder="e.g. {{title}} - {{sku}}"
-                                helpText="Use {{field}} tokens for Shopify fields"
-                                autoComplete="off"
-                              />
-                            )}
-                            {merged.mapping_type === 'edit_in_grid' && (
-                              <Text as="p" tone="subdued">
-                                Edit per product in the listings grid.
+                  <IndexTable
+                    resourceName={{ singular: 'mapping', plural: 'mappings' }}
+                    itemCount={currentMappings.length}
+                    selectable={false}
+                    headings={[
+                      { title: 'Field name' },
+                      { title: '' },
+                      { title: 'Mapping type' },
+                      { title: 'Configuration' },
+                      { title: 'Enabled' },
+                    ]}
+                  >
+                    {currentMappings.map((mapping, index) => {
+                      const merged = mergedMapping(mapping);
+                      const required = (REQUIRED_FIELDS[mapping.category] ?? []).includes(mapping.field_name);
+                      return (
+                        <IndexTable.Row id={`${mapping.category}-${mapping.field_name}`} key={`${mapping.category}-${mapping.field_name}`} position={index}>
+                          <IndexTable.Cell>
+                            <InlineStack gap="200" blockAlign="center">
+                              <Text variant="bodyMd" fontWeight="semibold" as="span">
+                                {formatFieldName(mapping.field_name)}
                               </Text>
-                            )}
-                          </Box>
-                        </IndexTable.Cell>
-                        <IndexTable.Cell>
-                          <Checkbox
-                            label="Enabled"
-                            labelHidden
-                            checked={merged.is_enabled}
-                            onChange={(value) => applyUpdates(mapping, { is_enabled: value })}
-                          />
-                        </IndexTable.Cell>
-                      </IndexTable.Row>
-                    );
-                  })}
-                </IndexTable>
-              </BlockStack>
-            </Box>
-          </Tabs>
-        </BlockStack>
-      </Card>
+                              {required && <Badge tone="critical" size="small">Required</Badge>}
+                            </InlineStack>
+                          </IndexTable.Cell>
+                          <IndexTable.Cell>
+                            <Icon source={ArrowRightIcon} tone="subdued" />
+                          </IndexTable.Cell>
+                          <IndexTable.Cell>
+                            <Select
+                              label="Mapping type"
+                              labelHidden
+                              options={MAPPING_TYPE_OPTIONS}
+                              value={merged.mapping_type}
+                              onChange={(value) => {
+                                const updates: Partial<AttributeMapping> = {
+                                  mapping_type: value as AttributeMapping['mapping_type'],
+                                };
+                                if (value === 'shopify_field') { updates.source_value = ''; updates.target_value = null; }
+                                else if (value === 'constant' || value === 'formula') { updates.target_value = ''; updates.source_value = null; }
+                                else { updates.source_value = null; updates.target_value = null; }
+                                applyUpdates(mapping, updates);
+                              }}
+                            />
+                          </IndexTable.Cell>
+                          <IndexTable.Cell>
+                            <Box minWidth="220px">
+                              {merged.mapping_type === 'shopify_field' && (
+                                <Select label="Shopify field" labelHidden options={SHOPIFY_FIELD_OPTIONS} value={merged.source_value ?? ''} onChange={(value) => applyUpdates(mapping, { source_value: value })} />
+                              )}
+                              {merged.mapping_type === 'constant' && (
+                                <TextField label="Constant value" labelHidden value={merged.target_value ?? ''} onChange={(value) => applyUpdates(mapping, { target_value: value })} placeholder="Enter value" autoComplete="off" />
+                              )}
+                              {merged.mapping_type === 'formula' && (
+                                <TextField label="Formula" labelHidden value={merged.target_value ?? ''} onChange={(value) => applyUpdates(mapping, { target_value: value })} placeholder="e.g. {{title}} - {{sku}}" helpText="Use {{field}} tokens for Shopify fields" autoComplete="off" />
+                              )}
+                              {merged.mapping_type === 'edit_in_grid' && (
+                                <Text as="p" tone="subdued" variant="bodySm">Edit per product in the listings grid.</Text>
+                              )}
+                            </Box>
+                          </IndexTable.Cell>
+                          <IndexTable.Cell>
+                            <Checkbox label="Enabled" labelHidden checked={merged.is_enabled} onChange={(value) => applyUpdates(mapping, { is_enabled: value })} />
+                          </IndexTable.Cell>
+                        </IndexTable.Row>
+                      );
+                    })}
+                  </IndexTable>
+                </BlockStack>
+              </Box>
+            </Tabs>
+          </BlockStack>
+        </Card>
+      </BlockStack>
 
+      {/* Export Modal */}
       <Modal
         open={exportModalOpen}
         onClose={() => setExportModalOpen(false)}
@@ -549,13 +480,12 @@ const Mappings: React.FC = () => {
         <Modal.Section>
           <BlockStack gap="200">
             <Text as="p">Download all mappings as a JSON file.</Text>
-            <Text as="p" tone="subdued">
-              Use this export to back up or move mappings between stores.
-            </Text>
+            <Text as="p" tone="subdued" variant="bodySm">Use this export to back up or move mappings between stores.</Text>
           </BlockStack>
         </Modal.Section>
       </Modal>
 
+      {/* Import Modal */}
       <Modal
         open={importModalOpen}
         onClose={() => setImportModalOpen(false)}
@@ -566,11 +496,7 @@ const Mappings: React.FC = () => {
         <Modal.Section>
           <BlockStack gap="300">
             <Text as="p">Upload a JSON export to replace existing mappings.</Text>
-            <DropZone
-              accept="application/json"
-              onDrop={(files) => setImportFile(files[0] ?? null)}
-              allowMultiple={false}
-            >
+            <DropZone accept="application/json" onDrop={(files) => setImportFile(files[0] ?? null)} allowMultiple={false}>
               <DropZone.FileUpload actionTitle="Add JSON file" actionHint="or drop a file" />
             </DropZone>
             {importFile && (
