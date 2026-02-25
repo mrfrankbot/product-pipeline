@@ -112,6 +112,7 @@ export interface CreateDraftInput {
 export interface ApproveOptions {
   photos: boolean;
   description: boolean;
+  publish?: boolean;
 }
 
 // ── Core CRUD ──────────────────────────────────────────────────────────
@@ -286,6 +287,13 @@ export async function approveDraft(
     if (options.description && draft.draft_description) {
       // Convert markdown to HTML — AI generates markdown but Shopify expects HTML
       updates.body_html = markdownToHtml(draft.draft_description);
+    }
+
+    // Set published_at based on publish option
+    if (options.publish === true) {
+      updates.published_at = new Date().toISOString();
+    } else if (options.publish === false) {
+      updates.published_at = null;
     }
 
     // Push product field updates to Shopify

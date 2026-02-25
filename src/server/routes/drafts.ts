@@ -188,10 +188,10 @@ router.post('/api/drafts/:id/approve', async (req: Request, res: Response) => {
       return;
     }
 
-    const { photos = true, description = true } = req.body || {};
+    const { photos = true, description = true, publish } = req.body || {};
 
-    info(`[DraftsAPI] Approving draft ${draftId} — photos=${photos}, description=${description}`);
-    const result = await approveDraft(draftId, { photos, description });
+    info(`[DraftsAPI] Approving draft ${draftId} — photos=${photos}, description=${description}, publish=${publish}`);
+    const result = await approveDraft(draftId, { photos, description, publish });
 
     if (result.success) {
       res.json({ success: true, message: 'Draft approved and pushed to Shopify' });
