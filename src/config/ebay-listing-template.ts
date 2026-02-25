@@ -1,181 +1,154 @@
 /**
  * eBay Listing HTML Template
- *
- * Generates professional branded HTML for eBay item descriptions.
+ * 
+ * Generates a professional, branded HTML description for eBay listings.
  * Uses inline CSS only (eBay strips external stylesheets).
  */
 
 export interface EbayTemplateParams {
   title: string;
   description: string;
-  conditionGrade?: string;
+  conditionGrade: string;
   conditionDescription?: string;
   includes?: string;
   price?: string;
 }
 
 const CONDITION_COLORS: Record<string, string> = {
-  'Mint / Like New': '#059669',
-  'Like New Minus': '#059669',
-  'Excellent Plus': '#0284c7',
-  'Excellent': '#0284c7',
-  'Excellent Minus': '#0284c7',
+  'Mint / Like New': '#15803d',
+  'Like New Minus': '#16a34a',
+  'Excellent Plus': '#2563eb',
+  'Excellent': '#2563eb',
+  'Excellent Minus': '#2563eb',
   'Good Plus': '#d97706',
   'Good': '#d97706',
   'Poor': '#dc2626',
-  'Ugly': '#dc2626',
+  'Ugly': '#991b1b',
   'Open Box': '#7c3aed',
   'Used': '#6b7280',
 };
 
 /**
- * Extract "Includes:" or "What's Included:" section from description text.
+ * Extract the condition grade from Shopify product tags.
  */
-export function extractIncludes(description: string): string | undefined {
-  // Try to find includes section in the text
-  const text = description.replace(/<[^>]*>/g, '');
-  const match = text.match(/(?:includes|what'?s included|in the box)[:\s]*([^\n]+(?:\n[^\n]+)*)/i);
-  if (match) {
-    return match[1].trim();
+export function gradeFromTags(tags: string[]): string | null {
+  if (!tags || tags.length === 0) return null;
+  const gradePatterns = [
+    'Mint / Like New', 'Like New Minus', 'Excellent Plus', 'Excellent Minus',
+    'Excellent', 'Good Plus', 'Good', 'Poor', 'Ugly', 'Open Box',
+  ];
+  for (const tag of tags) {
+    const normalized = tag.trim();
+    for (const grade of gradePatterns) {
+      if (normalized.toLowerCase() === grade.toLowerCase() ||
+          normalized.toLowerCase().includes(grade.toLowerCase())) {
+        return grade;
+      }
+    }
   }
-  return undefined;
+  return null;
 }
 
 /**
- * Try to detect condition grade from Shopify product tags.
+ * Extract "Includes:" section from description text.
  */
-export function gradeFromTags(tags: string[]): string | undefined {
-  const gradePatterns = [
-    'Like New', 'Mint', 'Excellent Plus', 'Excellent Minus', 'Excellent',
-    'Good Plus', 'Good', 'Poor', 'Ugly', 'Open Box',
+export function extractIncludes(description: string): string | undefined {
+  // Try to find "Includes:" or "What's Included" section
+  const patterns = [
+    /includes?:\s*(.+?)(?=\n\n|\<\/p\>|$)/is,
+    /what'?s included:?\s*(.+?)(?=\n\n|\<\/p\>|$)/is,
   ];
-  for (const tag of tags) {
-    for (const grade of gradePatterns) {
-      if (tag.toLowerCase().includes(grade.toLowerCase())) {
-        return grade;
-      }
+  for (const pattern of patterns) {
+    const match = description.match(pattern);
+    if (match?.[1]) {
+      return match[1].replace(/<[^>]*>/g, '').trim();
     }
   }
   return undefined;
 }
 
 export function buildEbayDescriptionHtml(params: EbayTemplateParams): string {
-  const {
-    title,
-    description,
-    conditionGrade = 'Used',
-    conditionDescription,
-    includes,
-  } = params;
-
+  const { title, description, conditionGrade, conditionDescription, includes } = params;
   const badgeColor = CONDITION_COLORS[conditionGrade] || '#6b7280';
 
   // Clean up description — preserve HTML if present, wrap plain text in paragraphs
-  const formattedDescription = description.includes('<')
-    ? description
-    : description.split('\n\n').map(p => `<p style="margin:0 0 12px 0;line-height:1.6;">${p.trim()}</p>`).join('\n');
+  const formattedDescription = description.includes('<') 
+    ? description 
+    : description.split('\n\n').map(p => `<p style="margin:0 0 12px;line-height:1.6;">${p}</p>`).join('');
 
   const includesSection = includes ? `
     <div style="margin-top:24px;padding:20px;background:#f8f9fa;border-radius:8px;">
-      <h3 style="margin:0 0 8px 0;font-size:16px;color:#1f2937;">What's Included</h3>
+      <h3 style="margin:0 0 8px;font-size:16px;color:#1f2937;">What's Included</h3>
       <p style="margin:0;color:#4b5563;line-height:1.6;">${includes}</p>
-    </div>
-  ` : '';
+    </div>` : '';
 
-  const conditionSection = conditionDescription ? `
-    <div style="margin-top:24px;padding:20px;background:#f0f9ff;border-left:4px solid ${badgeColor};border-radius:0 8px 8px 0;">
-      <h3 style="margin:0 0 4px 0;font-size:16px;color:#1f2937;">Condition: ${conditionGrade}</h3>
-      <p style="margin:0;color:#4b5563;line-height:1.6;">${conditionDescription}</p>
-    </div>
-  ` : '';
-
-  return `
-<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html>
+<head><meta charset="utf-8"></head>
 <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#fff;">
 <div style="max-width:800px;margin:0 auto;padding:0;">
 
   <!-- Header -->
-  <div style="background:#fff;border-bottom:3px solid #103c69;padding:20px 24px;text-align:center;">
-    <div style="font-size:28px;font-weight:800;color:#1f2937;letter-spacing:-0.5px;">
-      used<span style="background:#103c69;color:#fff;padding:2px 8px;border-radius:4px;">camera</span>gear
-    </div>
-    <p style="margin:4px 0 0;font-size:13px;color:#6b7280;">Trusted by photographers since 1989 · Backed by Pictureline</p>
+  <div style="background:#103c69;padding:20px 30px;text-align:center;">
+    <span style="font-size:24px;font-weight:800;color:#fff;letter-spacing:-.5px;">used<span style="background:#fff;color:#103c69;padding:2px 6px;border-radius:4px;margin:0 2px;">camera</span>gear</span>
+    <p style="margin:6px 0 0;color:rgba(255,255,255,.8);font-size:13px;">Expert-Inspected • 90-Day Warranty • Free Shipping Over $99</p>
   </div>
 
-  <!-- Product Title + Condition Badge -->
-  <div style="padding:24px 24px 0;">
-    <h2 style="margin:0 0 12px;font-size:22px;color:#1f2937;font-weight:700;">${title}</h2>
-    <span style="display:inline-block;padding:4px 14px;background:${badgeColor};color:#fff;border-radius:20px;font-size:13px;font-weight:600;">${conditionGrade}</span>
+  <!-- Title & Condition Badge -->
+  <div style="padding:24px 30px 0;">
+    <h2 style="margin:0 0 12px;font-size:22px;font-weight:700;color:#1f2937;">${title}</h2>
+    <span style="display:inline-block;padding:4px 12px;background:${badgeColor};color:#fff;border-radius:20px;font-size:13px;font-weight:600;">Condition: ${conditionGrade}</span>
   </div>
 
   <!-- Description -->
-  <div style="padding:20px 24px;color:#374151;font-size:15px;">
+  <div style="padding:20px 30px;color:#374151;font-size:15px;">
     ${formattedDescription}
   </div>
 
   ${includesSection}
-  ${conditionSection}
 
-  <!-- Trust Badges -->
-  <div style="margin-top:32px;display:flex;border-top:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;">
-    <div style="flex:1;padding:20px;text-align:center;border-right:1px solid #e5e7eb;">
-      <div style="font-size:20px;">🔍</div>
-      <div style="font-size:13px;font-weight:700;color:#1f2937;margin-top:4px;">Expert Inspected</div>
-      <div style="font-size:12px;color:#6b7280;">Tested & graded by<br>Pictureline's camera experts</div>
-    </div>
-    <div style="flex:1;padding:20px;text-align:center;border-right:1px solid #e5e7eb;">
-      <div style="font-size:20px;">🛡️</div>
-      <div style="font-size:13px;font-weight:700;color:#1f2937;margin-top:4px;">90-Day Warranty</div>
-      <div style="font-size:12px;color:#6b7280;">Shop with confidence —<br>all purchases covered</div>
-    </div>
-    <div style="flex:1;padding:20px;text-align:center;">
-      <div style="font-size:20px;">📦</div>
-      <div style="font-size:13px;font-weight:700;color:#1f2937;margin-top:4px;">Free Shipping</div>
-      <div style="font-size:12px;color:#6b7280;">Orders over $99<br>ship free & insured</div>
+  <!-- Condition Details -->
+  ${conditionDescription ? `
+  <div style="margin:16px 30px;padding:20px;background:#f0f7ff;border-left:4px solid #103c69;border-radius:0 8px 8px 0;">
+    <h3 style="margin:0 0 8px;font-size:16px;color:#103c69;">Condition Details — ${conditionGrade}</h3>
+    <p style="margin:0;color:#374151;line-height:1.6;font-size:14px;">${conditionDescription}</p>
+  </div>` : ''}
+
+  <!-- Info Grid -->
+  <div style="padding:24px 30px;">
+    <div style="display:table;width:100%;border-spacing:12px;">
+      <div style="display:table-row;">
+        <div style="display:table-cell;width:33%;padding:16px;background:#f8f9fa;border-radius:8px;text-align:center;vertical-align:top;">
+          <div style="font-size:20px;margin-bottom:6px;">📦</div>
+          <h4 style="margin:0 0 4px;font-size:14px;color:#1f2937;">FREE Shipping</h4>
+          <p style="margin:0;font-size:12px;color:#6b7280;">Orders over $99 ship free.<br>Tested, packed & insured.</p>
+        </div>
+        <div style="display:table-cell;width:33%;padding:16px;background:#f8f9fa;border-radius:8px;text-align:center;vertical-align:top;">
+          <div style="font-size:20px;margin-bottom:6px;">💳</div>
+          <h4 style="margin:0 0 4px;font-size:14px;color:#1f2937;">Secure Payment</h4>
+          <p style="margin:0;font-size:12px;color:#6b7280;">All major credit cards,<br>PayPal & Google Pay.</p>
+        </div>
+        <div style="display:table-cell;width:33%;padding:16px;background:#f8f9fa;border-radius:8px;text-align:center;vertical-align:top;">
+          <div style="font-size:20px;margin-bottom:6px;">↩️</div>
+          <h4 style="margin:0 0 4px;font-size:14px;color:#1f2937;">30-Day Returns</h4>
+          <p style="margin:0;font-size:12px;color:#6b7280;">Free returns within 30 days.<br>We want you to be happy.</p>
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- Shipping / Payment / Returns -->
-  <div style="padding:24px;">
-    <table style="width:100%;border-collapse:collapse;">
-      <tr>
-        <td style="padding:16px;vertical-align:top;width:33%;border:1px solid #e5e7eb;background:#fafafa;">
-          <div style="font-weight:700;font-size:14px;color:#1f2937;margin-bottom:8px;">📦 SHIPPING</div>
-          <div style="font-size:13px;color:#4b5563;line-height:1.5;">
-            FREE shipping on orders over $99.<br>
-            All items carefully packed and insured.<br>
-            Ships from Salt Lake City, UT.
-          </div>
-        </td>
-        <td style="padding:16px;vertical-align:top;width:33%;border:1px solid #e5e7eb;background:#fafafa;">
-          <div style="font-weight:700;font-size:14px;color:#1f2937;margin-bottom:8px;">💳 PAYMENT</div>
-          <div style="font-size:13px;color:#4b5563;line-height:1.5;">
-            We accept PayPal and all major credit cards.<br>
-            Immediate payment required on Buy It Now.
-          </div>
-        </td>
-        <td style="padding:16px;vertical-align:top;width:33%;border:1px solid #e5e7eb;background:#fafafa;">
-          <div style="font-weight:700;font-size:14px;color:#1f2937;margin-bottom:8px;">↩️ RETURNS</div>
-          <div style="font-size:13px;color:#4b5563;line-height:1.5;">
-            30-day return policy.<br>
-            Seller pays return shipping.<br>
-            We want you to be happy with your purchase.
-          </div>
-        </td>
-      </tr>
-    </table>
+  <!-- 90-Day Warranty Banner -->
+  <div style="margin:0 30px 24px;padding:16px 20px;background:#103c69;border-radius:8px;text-align:center;">
+    <span style="color:#fff;font-size:15px;font-weight:600;">🛡️ Every purchase includes a 90-Day Warranty</span>
   </div>
 
   <!-- Footer -->
-  <div style="background:#f8f9fa;padding:20px 24px;text-align:center;border-top:1px solid #e5e7eb;">
-    <div style="font-size:20px;font-weight:800;color:#1f2937;">
-      used<span style="background:#103c69;color:#fff;padding:1px 6px;border-radius:3px;font-size:18px;">camera</span>gear<span style="color:#6b7280;font-size:14px;">.com</span>
-    </div>
-    <p style="margin:6px 0 0;font-size:12px;color:#9ca3af;">Backed by Pictureline since 1989 · Salt Lake City, UT</p>
+  <div style="padding:20px 30px;background:#f8f9fa;text-align:center;border-top:1px solid #e5e7eb;">
+    <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:#1f2937;">usedcameragear.com</p>
+    <p style="margin:0;font-size:12px;color:#6b7280;">Trusted by photographers since 1989 — backed by Pictureline</p>
   </div>
 
 </div>
 </body>
-</html>`.trim();
+</html>`;
 }

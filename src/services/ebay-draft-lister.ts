@@ -32,6 +32,7 @@ import { cleanTitle, parsePrice } from '../sync/mapper.js';
 import { info, warn, error as logError } from '../utils/logger.js';
 import { loadShopifyCredentials } from '../config/credentials.js';
 import { getConditionDescription as getGradeDescription } from '../config/condition-descriptions.js';
+import { buildEbayDescriptionHtml, extractIncludes, gradeFromTags } from '../config/ebay-listing-template.js';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -481,9 +482,16 @@ export const listDraftOnEbay = async (
         ? [data.barcode]
         : ['Does Not Apply'];
 
-    const finalDescription = effectiveDescription.length > 500000
-      ? effectiveDescription.slice(0, 499997) + '...'
-      : effectiveDescription;
+    // Wrap description in branded HTML template
+    const detectedGrade = gradeFromTags(data.tags) || conditionText || 'Used';
+    const includes = extractIncludes(effectiveDescription);
+    const finalDescription = buildEbayDescriptionHtml({
+      title: effectiveTitle,
+      description: effectiveDescription,
+      conditionGrade: detectedGrade,
+      conditionDescription: conditionDesc,
+      includes,
+    });
 
     // ── Step 1: Create/replace inventory item ──────────────────────
     info(`[EbayDraftLister] Creating inventory item for draft ${draftId} (SKU: ${data.sku})`);

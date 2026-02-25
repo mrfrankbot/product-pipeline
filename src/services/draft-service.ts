@@ -91,7 +91,6 @@ export interface Draft {
   updated_at: number;
   reviewed_at: number | null;
   reviewed_by: string | null;
-  tags: string | null;
 }
 
 export interface DraftWithParsed extends Draft {
