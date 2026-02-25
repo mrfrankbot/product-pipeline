@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { getDb, getRawDb } from '../db/client.js';
 import { info, error as logError } from '../utils/logger.js';
@@ -150,6 +151,21 @@ app.get('/{*path}', (req, res) => {
     res.status(404).json({ error: 'Not found' });
     return;
   }
+  
+  // In TEST_MODE, serve index.html without Shopify App Bridge (which causes auth redirects)
+  if (isTestMode()) {
+    const indexPath = path.join(webDistPath, 'index.html');
+    try {
+      let html = fs.readFileSync(indexPath, 'utf8');
+      html = html.replace(/<meta name="shopify-api-key"[^>]*>/, '');
+      html = html.replace(/<script src="https:\/\/cdn\.shopify\.com\/shopifycloud\/app-bridge\.js"><\/script>/, '');
+      res.type('html').send(html);
+      return;
+    } catch (err) {
+      // Fall through to normal handler
+    }
+  }
+  
   res.sendFile(path.join(webDistPath, 'index.html'), (err) => {
     if (err) {
       res.status(200).json({
