@@ -25,6 +25,7 @@ import ebayOrderRoutes from './routes/ebay-orders.js';
 import ebayMetadataRoutes from './routes/ebay-metadata.js';
 import timRoutes from './routes/tim.js';
 import { apiKeyAuth, rateLimit } from './middleware/auth.js';
+import { testModeMiddleware, testModeRoute, isTestMode } from './middleware/test-mode.js';
 import { getCapabilities, getNewCapabilities } from './capabilities.js';
 import { initPhotoTemplatesTable } from '../services/photo-templates.js';
 import { seedHelpArticles } from './seeds/help-articles.js';
@@ -58,6 +59,11 @@ app.use(cors({
       return callback(null, true);
     }
     
+    // In TEST_MODE, allow localhost origins
+    if (isTestMode() && (origin.includes('localhost') || origin.includes('127.0.0.1'))) {
+      return callback(null, true);
+    }
+
     return callback(new Error('Not allowed by CORS'), false);
   },
   credentials: true,
@@ -80,9 +86,16 @@ app.use('/webhooks/ebay', express.text({ type: ['text/xml', 'application/xml', '
 // JSON for everything else
 app.use(express.json({ limit: '50mb' }));
 
+// --- Test Mode ---
+app.use(testModeMiddleware);
+app.get('/api/test-mode', testModeRoute);
+
 // --- Security Middleware ---
 app.use(rateLimit);
-app.use('/api', apiKeyAuth); // Protect API routes with API key auth
+// In TEST_MODE, skip API key auth so browser tests can hit routes directly
+if (!isTestMode()) {
+  app.use('/api', apiKeyAuth);
+}
 
 // --- Routes ---
 app.use(healthRoutes);
