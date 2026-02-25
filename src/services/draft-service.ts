@@ -617,25 +617,25 @@ async function uploadDraftImagesToShopify(
  */
 export async function checkExistingContent(
   shopifyProductId: string,
-): Promise<{ hasPhotos: boolean; hasDescription: boolean; title: string; description: string; images: string[] }> {
+): Promise<{ hasPhotos: boolean; hasDescription: boolean; title: string; description: string; images: string[]; tags: string[] }> {
   const db = await getRawDb();
   const tokenRow = db.prepare(
     `SELECT access_token FROM auth_tokens WHERE platform = 'shopify'`,
   ).get() as { access_token: string } | undefined;
 
   if (!tokenRow?.access_token) {
-    return { hasPhotos: false, hasDescription: false, title: '', description: '', images: [] };
+    return { hasPhotos: false, hasDescription: false, title: '', description: '', images: [], tags: [] };
   }
 
   try {
     const creds = await loadShopifyCredentials();
-    const url = `https://${creds.storeDomain}/admin/api/2024-01/products/${shopifyProductId}.json?fields=id,title,body_html,images`;
+    const url = `https://${creds.storeDomain}/admin/api/2024-01/products/${shopifyProductId}.json?fields=id,title,body_html,images,tags`;
     const response = await fetch(url, {
       headers: { 'X-Shopify-Access-Token': tokenRow.access_token },
     });
 
     if (!response.ok) {
-      return { hasPhotos: false, hasDescription: false, title: '', description: '', images: [] };
+      return { hasPhotos: false, hasDescription: false, title: '', description: '', images: [], tags: [] };
     }
 
     const data = (await response.json()) as {
@@ -643,12 +643,14 @@ export async function checkExistingContent(
         title: string;
         body_html: string | null;
         images: Array<{ src: string }>;
+        tags: string;
       };
     };
 
     const product = data.product;
     const description = product.body_html || '';
     const images = (product.images || []).map((img) => img.src);
+    const tags = product.tags ? product.tags.split(',').map((t: string) => t.trim()) : [];
 
     return {
       hasPhotos: images.length > 0,
@@ -656,9 +658,62 @@ export async function checkExistingContent(
       title: product.title || '',
       description,
       images,
+      tags,
     };
   } catch (err) {
     warn(`[DraftService] Failed to check existing content for ${shopifyProductId}: ${err}`);
-    return { hasPhotos: false, hasDescription: false, title: '', description: '', images: [] };
+    return { hasPhotos: false, hasDescription: false, title: '', description: '', images: [], tags: [] };
   }
+}
+
+/**
+ * Fetch tags for multiple products in parallel.
+ * Returns a map of shopify_product_id → tags array.
+ */
+export async function fetchProductTagsBatch(
+  productIds: string[],
+): Promise<Record<string, string[]>> {
+  if (productIds.length === 0) return {};
+
+  const db = await getRawDb();
+  const tokenRow = db.prepare(
+    `SELECT access_token FROM auth_tokens WHERE platform = 'shopify'`,
+  ).get() as { access_token: string } | undefined;
+
+  if (!tokenRow?.access_token) return {};
+
+  const result: Record<string, string[]> = {};
+
+  try {
+    const creds = await loadShopifyCredentials();
+
+    // Fetch in parallel, max 10 at a time
+    const chunks: string[][] = [];
+    for (let i = 0; i < productIds.length; i += 10) {
+      chunks.push(productIds.slice(i, i + 10));
+    }
+
+    for (const chunk of chunks) {
+      const promises = chunk.map(async (pid) => {
+        try {
+          const url = `https://${creds.storeDomain}/admin/api/2024-01/products/${pid}.json?fields=id,tags`;
+          const response = await fetch(url, {
+            headers: { 'X-Shopify-Access-Token': tokenRow.access_token },
+          });
+          if (!response.ok) return;
+          const data = (await response.json()) as { product: { tags: string } };
+          result[pid] = data.product.tags
+            ? data.product.tags.split(',').map((t: string) => t.trim())
+            : [];
+        } catch {
+          // Skip failed fetches
+        }
+      });
+      await Promise.all(promises);
+    }
+  } catch (err) {
+    warn(`[DraftService] Failed to batch fetch tags: ${err}`);
+  }
+
+  return result;
 }
