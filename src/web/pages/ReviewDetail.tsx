@@ -411,6 +411,7 @@ const ReviewDetail: React.FC = () => {
   // Step 2 state
   const [shopifySuccess, setShopifySuccess] = useState(false);
   const [publishOnShopify, setPublishOnShopify] = useState(true);
+  const [publishedToShopify, setPublishedToShopify] = useState<boolean | null>(null);
 
   // Step 3 state
   const [ebayPreview, setEbayPreview] = useState<EbayListingPreview | null>(null);
@@ -458,6 +459,7 @@ const ReviewDetail: React.FC = () => {
     setStateInitialized(false);
     setWizardStep(1);
     setShopifySuccess(false);
+    setPublishedToShopify(null);
     setEbayPreview(null);
     setEbaySuccess(null);
     setNotesInit(false);
@@ -481,6 +483,14 @@ const ReviewDetail: React.FC = () => {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [prevId, nextId, navigate, wizardStep]);
+
+  // ── Auto-advance to Step 3 after Shopify success ─────────────────────
+  useEffect(() => {
+    if (shopifySuccess && wizardStep === 2) {
+      const t = setTimeout(() => setWizardStep(3), 1200);
+      return () => clearTimeout(t);
+    }
+  }, [shopifySuccess, wizardStep]);
 
   // ── Mutations ─────────────────────────────────────────────────────────
 
@@ -527,16 +537,32 @@ const ReviewDetail: React.FC = () => {
   });
 
   const approveMutation = useMutation({
-    mutationFn: () => apiClient.post(`/drafts/${draftId}/approve`, { photos: true, description: true, publish: publishOnShopify }),
-    onSuccess: () => {
+    mutationFn: () => apiClient.post<{ success: boolean; published?: boolean; publishError?: string; error?: string }>(
+      `/drafts/${draftId}/approve`,
+      { photos: true, description: true, publish: publishOnShopify },
+    ),
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['drafts'] });
       queryClient.invalidateQueries({ queryKey: ['drafts-count'] });
       setShopifySuccess(true);
-      addNotification({ type: 'success', title: 'Saved to Shopify!', message: 'Content pushed live', autoClose: 4000 });
-      // Load eBay preview while user sees success
+      setPublishedToShopify(data?.published ?? false);
+      if (data?.published === false && data?.publishError) {
+        addNotification({
+          type: 'warning',
+          title: 'Saved to Shopify (not published)',
+          message: 'Content saved but product was not published. You can publish manually in Shopify.',
+          autoClose: 8000,
+        });
+      } else {
+        addNotification({
+          type: 'success',
+          title: '✅ Saved to Shopify!',
+          message: data?.published ? 'Content pushed and product published' : 'Content pushed to Shopify',
+          autoClose: 4000,
+        });
+      }
+      // Load eBay preview while user sees success; step advance handled by useEffect
       ebayPreviewMutation.mutate();
-      // Auto-advance to Step 3 after 1.5s
-      setTimeout(() => setWizardStep(3), 1500);
     },
     onError: (err) => {
       addNotification({
@@ -1070,12 +1096,19 @@ const ReviewDetail: React.FC = () => {
           <Layout>
             <Layout.Section>
               {shopifySuccess ? (
-                <Banner tone="success">
-                  <BlockStack gap="200">
-                    <Text variant="headingMd" as="h2">✅ Saved to Shopify!</Text>
-                    <Text as="p">Title, description, and photos have been pushed to your Shopify product.</Text>
-                  </BlockStack>
-                </Banner>
+                <BlockStack gap="300">
+                  <Banner tone="success">
+                    <BlockStack gap="200">
+                      <Text variant="headingMd" as="h2">✅ Saved to Shopify!</Text>
+                      <Text as="p">Title, description, and photos have been pushed to your Shopify product.</Text>
+                    </BlockStack>
+                  </Banner>
+                  {publishedToShopify === false && (
+                    <Banner tone="warning">
+                      <Text as="p">Content saved but product was not published on Shopify.</Text>
+                    </Banner>
+                  )}
+                </BlockStack>
               ) : (
                 <Banner tone="info">
                   <Text as="p">

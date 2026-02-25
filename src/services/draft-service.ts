@@ -251,10 +251,17 @@ export async function listPendingDrafts(options?: {
  * CRITICAL: Only pushes content explicitly approved. Never overwrites anything
  * without explicit user action.
  */
+export interface ApproveDraftResult {
+  success: boolean;
+  error?: string;
+  published?: boolean;
+  publishError?: string;
+}
+
 export async function approveDraft(
   draftId: number,
   options: ApproveOptions,
-): Promise<{ success: boolean; error?: string }> {
+): Promise<ApproveDraftResult> {
   const db = await getRawDb();
   const draft = db.prepare(`SELECT * FROM product_drafts WHERE id = ?`).get(draftId) as Draft | undefined;
 
@@ -279,6 +286,9 @@ export async function approveDraft(
     }
 
     const creds = await loadShopifyCredentials();
+    const url = `https://${creds.storeDomain}/admin/api/2024-01/products/${draft.shopify_product_id}.json`;
+
+    // Step 1: Push title/description — never includes published_at
     const updates: Record<string, any> = {};
 
     if (options.description && draft.draft_title) {
@@ -289,16 +299,7 @@ export async function approveDraft(
       updates.body_html = markdownToHtml(draft.draft_description);
     }
 
-    // Set published_at based on publish option
-    if (options.publish === true) {
-      updates.published_at = new Date().toISOString();
-    } else if (options.publish === false) {
-      updates.published_at = null;
-    }
-
-    // Push product field updates to Shopify
     if (Object.keys(updates).length > 0) {
-      const url = `https://${creds.storeDomain}/admin/api/2024-01/products/${draft.shopify_product_id}.json`;
       const response = await fetch(url, {
         method: 'PUT',
         headers: {
@@ -315,6 +316,33 @@ export async function approveDraft(
       }
 
       info(`[DraftService] ✅ Pushed description/title to Shopify product ${draft.shopify_product_id}`);
+    }
+
+    // Step 2: Publish — separate call, non-blocking
+    let published = false;
+    let publishError: string | undefined;
+    if (options.publish === true) {
+      try {
+        const pubResponse = await fetch(url, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Shopify-Access-Token': tokenRow.access_token,
+          },
+          body: JSON.stringify({ product: { id: draft.shopify_product_id, published: true } }),
+        });
+        if (pubResponse.ok) {
+          published = true;
+          info(`[DraftService] ✅ Published product ${draft.shopify_product_id} on Shopify`);
+        } else {
+          const text = await pubResponse.text();
+          publishError = `Publish failed: ${pubResponse.status}`;
+          warn(`[DraftService] Publish failed (non-fatal): ${pubResponse.status} — ${text}`);
+        }
+      } catch (err) {
+        publishError = String(err);
+        warn(`[DraftService] Publish error (non-fatal): ${err}`);
+      }
     }
 
     // Push images to Shopify
@@ -339,7 +367,7 @@ export async function approveDraft(
     ).run(newStatus, now, now, draftId);
 
     info(`[DraftService] Draft ${draftId} ${newStatus} for product ${draft.shopify_product_id}`);
-    return { success: true };
+    return { success: true, published, publishError };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logError(`[DraftService] Approve error for draft ${draftId}: ${msg}`);
