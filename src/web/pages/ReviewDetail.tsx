@@ -421,7 +421,7 @@ const ReviewDetail: React.FC = () => {
   // ── Queue Navigation ─────────────────────────────────────────────────
   const { data: queueData } = useQuery({
     queryKey: ['drafts', 'pending,approved', 'nav'],
-    queryFn: () => apiClient.get<DraftListResponse>('/drafts?status=pending,approved&limit=200&offset=0'),
+    queryFn: () => apiClient.get<DraftListResponse>('/drafts?status=pending,approved,partial&limit=200&offset=0'),
     staleTime: 30000,
   });
 
@@ -708,8 +708,9 @@ const ReviewDetail: React.FC = () => {
   const tags = draft.parsedTags || [];
   const listingId = ebaySuccess?.listingId || draft.ebay_listing_id;
 
-  // Non-pending drafts: show read-only view
-  if (draft.status !== 'pending' && wizardStep === 1) {
+  // Non-pending drafts: show read-only view (but NOT if approved without eBay listing — those resume at step 3)
+  const isApprovedNeedsEbay = draft.status === 'approved' && !draft.ebay_listing_id;
+  if (draft.status !== 'pending' && !isApprovedNeedsEbay && wizardStep === 1) {
     return (
       <>
         <Page
