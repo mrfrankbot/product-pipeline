@@ -416,6 +416,7 @@ const ReviewDetail: React.FC = () => {
   // Step 3 state
   const [ebayPreview, setEbayPreview] = useState<EbayListingPreview | null>(null);
   const [ebaySuccess, setEbaySuccess] = useState<{ listingId: string; ebayUrl: string } | null>(null);
+  const [ebayError, setEbayError] = useState<string | null>(null);
 
   // ── Queue Navigation ─────────────────────────────────────────────────
   const { data: queueData } = useQuery({
@@ -596,26 +597,31 @@ const ReviewDetail: React.FC = () => {
       if (data.success && data.listingId) {
         queryClient.invalidateQueries({ queryKey: ['draft-detail', draftId] });
         queryClient.invalidateQueries({ queryKey: ['drafts'] });
+        setEbayError(null);
         setEbaySuccess({
           listingId: data.listingId,
           ebayUrl: data.ebayUrl || `https://www.ebay.com/itm/${data.listingId}`,
         });
         addNotification({ type: 'success', title: '🎉 Listed on eBay!', message: `Listing #${data.listingId}`, autoClose: 8000 });
       } else {
+        const errorMsg = data.error || 'Unknown error';
+        setEbayError(errorMsg);
         addNotification({
           type: 'error',
           title: 'eBay listing failed',
-          message: data.error || 'Unknown error',
-          autoClose: 10000,
+          message: errorMsg,
+          autoClose: 30000,
         });
       }
     },
     onError: (err) => {
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      setEbayError(errorMsg);
       addNotification({
         type: 'error',
         title: 'eBay listing failed',
-        message: err instanceof Error ? err.message : 'Unknown error',
-        autoClose: 10000,
+        message: errorMsg,
+        autoClose: 30000,
       });
     },
   });
@@ -1394,12 +1400,19 @@ const ReviewDetail: React.FC = () => {
 
                       <Divider />
 
+                      {ebayError && (
+                        <Banner tone="critical" onDismiss={() => setEbayError(null)}>
+                          <Text variant="bodySm" as="p" fontWeight="semibold">eBay listing failed</Text>
+                          <Text variant="bodySm" as="p">{ebayError}</Text>
+                        </Banner>
+                      )}
+
                       <Button
                         variant="primary"
                         tone="success"
                         size="large"
                         fullWidth
-                        onClick={() => listOnEbayMutation.mutate()}
+                        onClick={() => { setEbayError(null); listOnEbayMutation.mutate(); }}
                         loading={listOnEbayMutation.isPending}
                         disabled={listOnEbayMutation.isPending}
                       >
