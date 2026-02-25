@@ -1,5 +1,4 @@
 node_modules/
-dist/
 *.db
 *.db-journal
 .env
@@ -8,3 +7,4 @@ dist/
 image-service/training-data/originals/
 image-service/training-data/processed/
 image-service/test_output/
+
