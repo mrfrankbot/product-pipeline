@@ -1,21 +1,30 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   Badge,
+  Banner,
   BlockStack,
   Box,
   Button,
   Card,
+  Divider,
   EmptyState,
   FormLayout,
+  Icon,
   InlineStack,
   Layout,
   Modal,
   Page,
   Select,
-  Spinner,
+  SkeletonBodyText,
   Text,
   TextField,
 } from '@shopify/polaris';
+import {
+  StarIcon,
+  StarFilledIcon,
+  ChartLineIcon,
+  PlusIcon,
+} from '@shopify/polaris-icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../hooks/useApi';
 
@@ -67,6 +76,7 @@ const priorityBadge = (priority: string) => {
 
 const FeatureRequests: React.FC = () => {
   const queryClient = useQueryClient();
+
   const voterId = useMemo(() => {
     if (typeof window === 'undefined') return 'anonymous';
     const existing = localStorage.getItem('pp-feature-voter-id');
@@ -84,8 +94,7 @@ const FeatureRequests: React.FC = () => {
     try {
       const raw = localStorage.getItem('pp-feature-votes');
       if (!raw) return new Set();
-      const parsed = JSON.parse(raw) as number[];
-      return new Set(parsed);
+      return new Set(JSON.parse(raw) as number[]);
     } catch {
       return new Set();
     }
@@ -107,8 +116,12 @@ const FeatureRequests: React.FC = () => {
   });
 
   const submitRequest = useMutation({
-    mutationFn: (body: { title: string; description: string; requested_by?: string; priority?: string }) =>
-      apiClient.post('/features', body),
+    mutationFn: (body: {
+      title: string;
+      description: string;
+      requested_by?: string;
+      priority?: string;
+    }) => apiClient.post('/features', body),
     onSuccess: () => {
       setSubmitOpen(false);
       setNewTitle('');
@@ -120,7 +133,8 @@ const FeatureRequests: React.FC = () => {
   });
 
   const voteForFeature = useMutation({
-    mutationFn: (featureId: number) => apiClient.post(`/features/${featureId}/vote`, { voterId }),
+    mutationFn: (featureId: number) =>
+      apiClient.post(`/features/${featureId}/vote`, { voterId }),
     onSuccess: (_data, featureId) => {
       setVotedIds((prev) => {
         const next = new Set(prev);
@@ -144,45 +158,23 @@ const FeatureRequests: React.FC = () => {
     });
   }, [newTitle, newDescription, newPriority, newRequestedBy, submitRequest]);
 
-  const statusOptions = useMemo(
-    () => [
-      { label: 'All', value: 'all' },
-      { label: 'New', value: 'new' },
-      { label: 'Planned', value: 'planned' },
-      { label: 'In Progress', value: 'in_progress' },
-      { label: 'Completed', value: 'completed' },
-      { label: 'Declined', value: 'declined' },
-    ],
-    [],
-  );
+  const statusOptions = [
+    { label: 'All', value: 'all' },
+    { label: 'New', value: 'new' },
+    { label: 'Planned', value: 'planned' },
+    { label: 'In Progress', value: 'in_progress' },
+    { label: 'Completed', value: 'completed' },
+    { label: 'Declined', value: 'declined' },
+  ];
 
   const features = data?.data || [];
-
-  if (isLoading) {
-    return (
-      <Page title="Feature Requests">
-        <Card>
-          <Box padding="600">
-            <InlineStack align="center">
-              <Spinner size="large" accessibilityLabel="Loading feature requests" />
-            </InlineStack>
-          </Box>
-        </Card>
-      </Page>
-    );
-  }
 
   if (error) {
     return (
       <Page title="Feature Requests">
-        <Card>
-          <BlockStack gap="200">
-            <Text variant="headingMd" as="h2">
-              Failed to load feature requests
-            </Text>
-            <Text as="p">{(error as Error).message}</Text>
-          </BlockStack>
-        </Card>
+        <Banner tone="critical" title="Failed to load feature requests">
+          <Text as="p">{(error as Error).message}</Text>
+        </Banner>
       </Page>
     );
   }
@@ -193,22 +185,47 @@ const FeatureRequests: React.FC = () => {
       subtitle="Suggest improvements and track what's coming"
       primaryAction={{
         content: 'Submit Request',
+        icon: PlusIcon,
         onAction: () => setSubmitOpen(true),
       }}
     >
       <Layout>
-        {/* Filter */}
+        {/* Header stats + filter */}
         <Layout.Section>
           <Card>
-            <Box minWidth="200px" maxWidth="300px">
-              <Select label="Filter by status" options={statusOptions} value={filterStatus} onChange={setFilterStatus} />
-            </Box>
+            <InlineStack align="space-between" blockAlign="center" wrap>
+              <InlineStack gap="300" blockAlign="center">
+                <Box background="bg-fill-secondary" borderRadius="200" padding="200">
+                  <Icon source={StarIcon} />
+                </Box>
+                <BlockStack gap="050">
+                  <Text variant="headingSm" as="h2">Feature requests</Text>
+                  <Text variant="bodySm" tone="subdued" as="p">
+                    {features.length} request{features.length !== 1 ? 's' : ''}
+                    {filterStatus !== 'all' ? ` with status "${filterStatus}"` : ''}
+                  </Text>
+                </BlockStack>
+              </InlineStack>
+              <Box minWidth="200px">
+                <Select
+                  label="Filter by status"
+                  labelHidden
+                  options={statusOptions}
+                  value={filterStatus}
+                  onChange={setFilterStatus}
+                />
+              </Box>
+            </InlineStack>
           </Card>
         </Layout.Section>
 
         {/* Feature list */}
         <Layout.Section>
-          {features.length === 0 ? (
+          {isLoading ? (
+            <Card>
+              <SkeletonBodyText lines={8} />
+            </Card>
+          ) : features.length === 0 ? (
             <Card>
               <EmptyState heading="No feature requests" image="">
                 <Text as="p">
@@ -216,77 +233,103 @@ const FeatureRequests: React.FC = () => {
                     ? 'No requests with this status. Try a different filter.'
                     : 'No feature requests yet. Be the first to submit one!'}
                 </Text>
+                <Button onClick={() => setSubmitOpen(true)} variant="primary">
+                  Submit first request
+                </Button>
               </EmptyState>
             </Card>
           ) : (
-            <BlockStack gap="300">
-              {features.map((feature) => (
-                <Card key={feature.id}>
-                  <BlockStack gap="200">
-                    <InlineStack align="space-between" blockAlign="start" wrap>
-                      <BlockStack gap="100">
-                        <Text variant="headingSm" as="h3">
-                          {feature.title}
-                        </Text>
-                        <InlineStack gap="200">
-                          {statusBadge(feature.status)}
-                          {priorityBadge(feature.priority)}
+            <Card>
+              <BlockStack gap="0">
+                {features.map((feature, index) => (
+                  <React.Fragment key={feature.id}>
+                    {index > 0 && <Divider />}
+                    <Box padding="400">
+                      <BlockStack gap="300">
+                        {/* Title + badges */}
+                        <InlineStack align="space-between" blockAlign="start" wrap>
+                          <BlockStack gap="100">
+                            <Text variant="headingSm" as="h3">
+                              {feature.title}
+                            </Text>
+                            <InlineStack gap="200">
+                              {statusBadge(feature.status)}
+                              {priorityBadge(feature.priority)}
+                            </InlineStack>
+                          </BlockStack>
+
+                          {/* Votes + date */}
+                          <BlockStack gap="100" inlineAlign="end">
+                            <Text variant="bodySm" tone="subdued" as="span">
+                              {new Date(feature.created_at).toLocaleDateString()}
+                            </Text>
+                            <InlineStack gap="200" blockAlign="center">
+                              <InlineStack gap="100" blockAlign="center">
+                                <Icon
+                                  source={votedIds.has(feature.id) ? StarFilledIcon : StarIcon}
+                                  tone={votedIds.has(feature.id) ? 'warning' : 'subdued'}
+                                />
+                                <Text variant="bodySm" fontWeight="semibold" as="span">
+                                  {feature.votes ?? 0}
+                                </Text>
+                              </InlineStack>
+                              <Button
+                                size="slim"
+                                variant={votedIds.has(feature.id) ? 'secondary' : 'primary'}
+                                disabled={votedIds.has(feature.id)}
+                                onClick={() => voteForFeature.mutate(feature.id)}
+                              >
+                                {votedIds.has(feature.id) ? 'Voted' : 'Vote'}
+                              </Button>
+                            </InlineStack>
+                          </BlockStack>
                         </InlineStack>
-                      </BlockStack>
-                      <BlockStack gap="100" inlineAlign="end">
-                        <Text as="span" tone="subdued" variant="bodySm">
-                          {new Date(feature.created_at).toLocaleDateString()}
+
+                        {/* Description */}
+                        <Text variant="bodyMd" tone="subdued" as="p">
+                          {feature.description}
                         </Text>
-                        <InlineStack gap="100" blockAlign="center">
-                          <Badge tone="info">{`${feature.votes ?? 0} votes`}</Badge>
-                          <Button
-                            size="slim"
-                            disabled={votedIds.has(feature.id)}
-                            onClick={() => voteForFeature.mutate(feature.id)}
+
+                        {/* Admin notes */}
+                        {feature.admin_notes && (
+                          <Box
+                            background="bg-fill-secondary"
+                            borderRadius="200"
+                            paddingInlineStart="300"
+                            paddingBlockStart="200"
+                            paddingBlockEnd="200"
+                            paddingInlineEnd="300"
                           >
-                            {votedIds.has(feature.id) ? 'Voted' : 'Vote'}
-                          </Button>
+                            <BlockStack gap="050">
+                              <Text variant="bodySm" fontWeight="semibold" tone="subdued" as="span">
+                                Admin notes
+                              </Text>
+                              <Text variant="bodySm" as="p">
+                                {feature.admin_notes}
+                              </Text>
+                            </BlockStack>
+                          </Box>
+                        )}
+
+                        {/* Footer */}
+                        <InlineStack gap="300">
+                          {feature.requested_by && (
+                            <Text variant="bodySm" tone="subdued" as="span">
+                              Requested by {feature.requested_by}
+                            </Text>
+                          )}
+                          {feature.completed_at && (
+                            <Text variant="bodySm" tone="subdued" as="span">
+                              · Completed {new Date(feature.completed_at).toLocaleDateString()}
+                            </Text>
+                          )}
                         </InlineStack>
                       </BlockStack>
-                    </InlineStack>
-
-                    <Text as="p">{feature.description}</Text>
-
-                    {feature.admin_notes && (
-                      <Box
-                        paddingInlineStart="300"
-                        paddingBlockStart="200"
-                        paddingBlockEnd="200"
-                        borderInlineStartWidth="025"
-                        borderColor="border"
-                      >
-                        <BlockStack gap="100">
-                          <Text variant="bodySm" as="span" tone="subdued" fontWeight="semibold">
-                            Admin notes:
-                          </Text>
-                          <Text as="p" variant="bodySm">
-                            {feature.admin_notes}
-                          </Text>
-                        </BlockStack>
-                      </Box>
-                    )}
-
-                    <InlineStack gap="200">
-                      {feature.requested_by && (
-                        <Text as="span" tone="subdued" variant="bodySm">
-                          Requested by {feature.requested_by}
-                        </Text>
-                      )}
-                      {feature.completed_at && (
-                        <Text as="span" tone="subdued" variant="bodySm">
-                          · Completed {new Date(feature.completed_at).toLocaleDateString()}
-                        </Text>
-                      )}
-                    </InlineStack>
-                  </BlockStack>
-                </Card>
-              ))}
-            </BlockStack>
+                    </Box>
+                  </React.Fragment>
+                ))}
+              </BlockStack>
+            </Card>
           )}
         </Layout.Section>
       </Layout>
@@ -319,7 +362,7 @@ const FeatureRequests: React.FC = () => {
               value={newDescription}
               onChange={setNewDescription}
               multiline={4}
-              placeholder="Describe the feature you'd like and why it would be useful..."
+              placeholder="Describe the feature and why it would be useful…"
               autoComplete="off"
               requiredIndicator
             />

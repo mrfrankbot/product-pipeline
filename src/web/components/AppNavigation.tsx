@@ -8,15 +8,13 @@ import {
   ProductIcon,
   OrderIcon,
   SettingsIcon,
-  ChartLineIcon,
+  ChartVerticalFilledIcon,
   ImageIcon,
-  ClipboardChecklistIcon,
-  ListBulletedIcon,
+  ViewIcon,
   QuestionCircleIcon,
   StarIcon,
-  PackageIcon,
-  ViewIcon,
-  AutomationIcon,
+  ListBulletedIcon,
+  CategoriesIcon,
 } from '@shopify/polaris-icons';
 
 const AppNavigation: React.FC = () => {
@@ -66,7 +64,7 @@ const AppNavigation: React.FC = () => {
         items={[
           {
             label: 'Listings',
-            icon: PackageIcon,
+            icon: ViewIcon,
             selected: isSelected('/ebay/listings') || location.pathname.startsWith('/ebay/listings/'),
             onClick: () => navigate('/ebay/listings'),
             url: '/ebay/listings',
@@ -80,14 +78,14 @@ const AppNavigation: React.FC = () => {
           },
           {
             label: 'eBay Orders',
-            icon: OrderIcon,
+            icon: ListBulletedIcon,
             selected: isSelected('/ebay-orders'),
             onClick: () => navigate('/ebay-orders'),
             url: '/ebay-orders',
           },
           {
             label: 'Mappings',
-            icon: ListBulletedIcon,
+            icon: CategoriesIcon,
             selected: isSelected('/mappings'),
             onClick: () => navigate('/mappings'),
             url: '/mappings',
@@ -101,14 +99,14 @@ const AppNavigation: React.FC = () => {
         items={[
           {
             label: 'Overview',
-            icon: AutomationIcon,
+            icon: ListBulletedIcon,
             selected: isSelected('/pipeline'),
             onClick: () => navigate('/pipeline'),
             url: '/pipeline',
           },
           {
             label: 'Review Queue',
-            icon: ClipboardChecklistIcon,
+            icon: ProductIcon,
             selected: location.pathname.startsWith('/review'),
             onClick: () => navigate('/review'),
             url: '/review',
@@ -123,7 +121,7 @@ const AppNavigation: React.FC = () => {
           },
           {
             label: 'Category Mapping',
-            icon: ListBulletedIcon,
+            icon: CategoriesIcon,
             selected: isSelected('/category-mapping'),
             onClick: () => navigate('/category-mapping'),
             url: '/category-mapping',
@@ -138,7 +136,7 @@ const AppNavigation: React.FC = () => {
         items={[
           {
             label: 'Analytics',
-            icon: ChartLineIcon,
+            icon: ChartVerticalFilledIcon,
             selected: isSelected('/logs'),
             onClick: () => navigate('/logs'),
             url: '/logs',

@@ -1,23 +1,31 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   Badge,
+  Banner,
   BlockStack,
   Box,
   Button,
   Card,
   Collapsible,
+  Divider,
   EmptyState,
   FormLayout,
+  Icon,
   InlineStack,
   Layout,
   Page,
   Select,
-  Spinner,
+  SkeletonBodyText,
   Tabs,
   Text,
   TextField,
 } from '@shopify/polaris';
 import type { TabProps } from '@shopify/polaris';
+import {
+  StarIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+} from '@shopify/polaris-icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../hooks/useApi';
 
@@ -74,7 +82,6 @@ const FeatureAdmin: React.FC = () => {
   const [selectedTab, setSelectedTab] = useState(0);
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
-  // Edit form state
   const [editStatus, setEditStatus] = useState('');
   const [editPriority, setEditPriority] = useState('');
   const [editNotes, setEditNotes] = useState('');
@@ -90,8 +97,15 @@ const FeatureAdmin: React.FC = () => {
   });
 
   const updateFeature = useMutation({
-    mutationFn: ({ id, ...body }: { id: number; status?: string; priority?: string; admin_notes?: string }) =>
-      apiClient.put(`/features/${id}`, body),
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: number;
+      status?: string;
+      priority?: string;
+      admin_notes?: string;
+    }) => apiClient.put(`/features/${id}`, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['features-admin'] });
       queryClient.invalidateQueries({ queryKey: ['features'] });
@@ -135,92 +149,93 @@ const FeatureAdmin: React.FC = () => {
 
   const tabs: TabProps[] = STATUS_TABS.map((status) => ({
     id: status,
-    content: status === 'in_progress' ? 'In Progress' : status.charAt(0).toUpperCase() + status.slice(1),
+    content:
+      status === 'in_progress'
+        ? 'In Progress'
+        : status.charAt(0).toUpperCase() + status.slice(1),
     accessibilityLabel: `${status} feature requests`,
     panelID: `${status}-panel`,
   }));
 
   const features = data?.data || [];
 
-  if (isLoading) {
-    return (
-      <Page title="Feature Admin">
-        <Card>
-          <Box padding="600">
-            <InlineStack align="center">
-              <Spinner size="large" accessibilityLabel="Loading feature requests" />
-            </InlineStack>
-          </Box>
-        </Card>
-      </Page>
-    );
-  }
-
   if (error) {
     return (
-      <Page title="Feature Admin">
-        <Card>
-          <BlockStack gap="200">
-            <Text variant="headingMd" as="h2">
-              Failed to load feature requests
-            </Text>
-            <Text as="p">{(error as Error).message}</Text>
-          </BlockStack>
-        </Card>
+      <Page title="Feature Admin" subtitle="Manage feature requests — set status, priority, and notes">
+        <Banner tone="critical" title="Failed to load feature requests">
+          <Text as="p">{(error as Error).message}</Text>
+        </Banner>
       </Page>
     );
   }
 
   return (
-    <Page title="Feature Admin" subtitle="Manage feature requests — set status, priority, and notes">
+    <Page
+      title="Feature Admin"
+      subtitle="Manage feature requests — set status, priority, and notes"
+    >
       <Layout>
         <Layout.Section>
           <Card>
             <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab}>
               <Box paddingBlockStart="400">
-                {features.length === 0 ? (
-                  <EmptyState heading="No feature requests" image="">
-                    <Text as="p">No {activeStatus === 'all' ? '' : activeStatus} feature requests found.</Text>
+                {isLoading ? (
+                  <SkeletonBodyText lines={8} />
+                ) : features.length === 0 ? (
+                  <EmptyState heading="No feature requests found" image="">
+                    <Text as="p">
+                      No {activeStatus === 'all' ? '' : activeStatus} feature requests yet.
+                    </Text>
                   </EmptyState>
                 ) : (
-                  <BlockStack gap="300">
-                    {features.map((f) => {
+                  <BlockStack gap="0">
+                    {features.map((f, index) => {
                       const isExpanded = expandedId === f.id;
                       return (
-                        <Card key={f.id}>
-                          <BlockStack gap="200">
-                            <div
-                              onClick={() => handleExpand(f)}
-                              style={{ cursor: 'pointer' }}
-                              role="button"
-                              tabIndex={0}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') handleExpand(f);
-                              }}
-                            >
-                              <InlineStack align="space-between" blockAlign="center" wrap>
-                                <InlineStack gap="200" blockAlign="center" wrap>
-                                  <Text variant="headingSm" as="span">
-                                    {isExpanded ? '▾' : '▸'} #{f.id}
-                                  </Text>
-                                  <Text as="span" variant="bodyMd">
-                                    {f.title.length > 60 ? f.title.slice(0, 60) + '…' : f.title}
-                                  </Text>
+                        <React.Fragment key={f.id}>
+                          {index > 0 && <Divider />}
+                          <Box padding="400">
+                            <BlockStack gap="200">
+                              {/* Header row */}
+                              <div
+                                onClick={() => handleExpand(f)}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleExpand(f); }}
+                                style={{ cursor: 'pointer' }}
+                              >
+                                <InlineStack align="space-between" blockAlign="center" wrap>
+                                  <InlineStack gap="200" blockAlign="center">
+                                    <Icon
+                                      source={isExpanded ? ChevronDownIcon : ChevronRightIcon}
+                                      tone="subdued"
+                                    />
+                                    <BlockStack gap="050">
+                                      <Text variant="bodyMd" fontWeight="semibold" as="span">
+                                        {f.title.length > 60 ? f.title.slice(0, 60) + '…' : f.title}
+                                      </Text>
+                                      <Text variant="bodySm" tone="subdued" as="span">
+                                        #{f.id} ·{' '}
+                                        {f.requested_by ? `By ${f.requested_by}` : 'Anonymous'} ·{' '}
+                                        {new Date(f.created_at).toLocaleDateString()}
+                                      </Text>
+                                    </BlockStack>
+                                  </InlineStack>
+                                  <InlineStack gap="200" blockAlign="center">
+                                    <InlineStack gap="100" blockAlign="center">
+                                      <Icon source={StarIcon} tone="subdued" />
+                                      <Text variant="bodySm" fontWeight="semibold" as="span">
+                                        {f.votes ?? 0}
+                                      </Text>
+                                    </InlineStack>
+                                    {priorityBadge(f.priority)}
+                                    {statusBadge(f.status)}
+                                  </InlineStack>
                                 </InlineStack>
-                                <InlineStack gap="200" blockAlign="center">
-                                  <Badge tone="info">{`${f.votes ?? 0} votes`}</Badge>
-                                  {priorityBadge(f.priority)}
-                                  {statusBadge(f.status)}
-                                </InlineStack>
-                              </InlineStack>
-                            </div>
+                              </div>
 
-                            <InlineStack gap="400">
-                              <Text as="span" tone="subdued" variant="bodySm">
-                                {f.requested_by ? `By ${f.requested_by}` : 'Anonymous'} ·{' '}
-                                {new Date(f.created_at).toLocaleDateString()}
-                              </Text>
-                              <InlineStack gap="100">
+                              {/* Actions */}
+                              <InlineStack gap="200">
                                 <Button
                                   size="slim"
                                   tone="critical"
@@ -233,75 +248,82 @@ const FeatureAdmin: React.FC = () => {
                                   Delete
                                 </Button>
                               </InlineStack>
-                            </InlineStack>
 
-                            <Collapsible open={isExpanded} id={`edit-feature-${f.id}`}>
-                              <Box
-                                paddingBlockStart="400"
-                                paddingBlockEnd="200"
-                                borderBlockStartWidth="025"
-                                borderColor="border"
-                              >
-                                <FormLayout>
-                                  <Text variant="headingSm" as="h3">
-                                    Description
-                                  </Text>
-                                  <Text as="p">{f.description}</Text>
+                              {/* Expandable edit form */}
+                              <Collapsible open={isExpanded} id={`edit-feature-${f.id}`}>
+                                <Box
+                                  paddingBlockStart="400"
+                                  paddingBlockEnd="200"
+                                  borderBlockStartWidth="025"
+                                  borderColor="border"
+                                >
+                                  <FormLayout>
+                                    <BlockStack gap="100">
+                                      <Text variant="headingSm" as="h3">Description</Text>
+                                      <Box
+                                        background="bg-fill-secondary"
+                                        borderRadius="200"
+                                        padding="300"
+                                      >
+                                        <Text as="p">{f.description}</Text>
+                                      </Box>
+                                    </BlockStack>
 
-                                  <InlineStack gap="400" wrap>
-                                    <Box minWidth="200px">
-                                      <Select
-                                        label="Status"
-                                        options={[
-                                          { label: 'New', value: 'new' },
-                                          { label: 'Planned', value: 'planned' },
-                                          { label: 'In Progress', value: 'in_progress' },
-                                          { label: 'Completed', value: 'completed' },
-                                          { label: 'Declined', value: 'declined' },
-                                        ]}
-                                        value={editStatus}
-                                        onChange={setEditStatus}
-                                      />
-                                    </Box>
-                                    <Box minWidth="200px">
-                                      <Select
-                                        label="Priority"
-                                        options={[
-                                          { label: 'Low', value: 'low' },
-                                          { label: 'Medium', value: 'medium' },
-                                          { label: 'High', value: 'high' },
-                                          { label: 'Critical', value: 'critical' },
-                                        ]}
-                                        value={editPriority}
-                                        onChange={setEditPriority}
-                                      />
-                                    </Box>
-                                  </InlineStack>
+                                    <InlineStack gap="400" wrap>
+                                      <Box minWidth="200px">
+                                        <Select
+                                          label="Status"
+                                          options={[
+                                            { label: 'New', value: 'new' },
+                                            { label: 'Planned', value: 'planned' },
+                                            { label: 'In Progress', value: 'in_progress' },
+                                            { label: 'Completed', value: 'completed' },
+                                            { label: 'Declined', value: 'declined' },
+                                          ]}
+                                          value={editStatus}
+                                          onChange={setEditStatus}
+                                        />
+                                      </Box>
+                                      <Box minWidth="200px">
+                                        <Select
+                                          label="Priority"
+                                          options={[
+                                            { label: 'Low', value: 'low' },
+                                            { label: 'Medium', value: 'medium' },
+                                            { label: 'High', value: 'high' },
+                                            { label: 'Critical', value: 'critical' },
+                                          ]}
+                                          value={editPriority}
+                                          onChange={setEditPriority}
+                                        />
+                                      </Box>
+                                    </InlineStack>
 
-                                  <TextField
-                                    label="Admin Notes"
-                                    value={editNotes}
-                                    onChange={setEditNotes}
-                                    multiline={3}
-                                    placeholder="Internal notes about this request..."
-                                    autoComplete="off"
-                                  />
+                                    <TextField
+                                      label="Admin notes"
+                                      value={editNotes}
+                                      onChange={setEditNotes}
+                                      multiline={3}
+                                      placeholder="Internal notes about this request…"
+                                      autoComplete="off"
+                                    />
 
-                                  <InlineStack gap="200">
-                                    <Button
-                                      variant="primary"
-                                      onClick={() => handleSave(f.id)}
-                                      loading={updateFeature.isPending}
-                                    >
-                                      Save
-                                    </Button>
-                                    <Button onClick={() => setExpandedId(null)}>Cancel</Button>
-                                  </InlineStack>
-                                </FormLayout>
-                              </Box>
-                            </Collapsible>
-                          </BlockStack>
-                        </Card>
+                                    <InlineStack gap="200">
+                                      <Button
+                                        variant="primary"
+                                        onClick={() => handleSave(f.id)}
+                                        loading={updateFeature.isPending}
+                                      >
+                                        Save
+                                      </Button>
+                                      <Button onClick={() => setExpandedId(null)}>Cancel</Button>
+                                    </InlineStack>
+                                  </FormLayout>
+                                </Box>
+                              </Collapsible>
+                            </BlockStack>
+                          </Box>
+                        </React.Fragment>
                       );
                     })}
                   </BlockStack>

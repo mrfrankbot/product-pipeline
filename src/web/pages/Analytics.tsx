@@ -17,19 +17,25 @@ import {
   Text,
 } from '@shopify/polaris';
 import {
-  ChartLineIcon,
-  ChartVerticalIcon,
-  OrderIcon,
-  StatusActiveIcon,
+  ChartVerticalFilledIcon,
   AlertCircleIcon,
-  ViewIcon,
+  ClockIcon,
+  StatusActiveIcon,
 } from '@shopify/polaris-icons';
 import { useListingHealth, useLogs } from '../hooks/useApi';
 
+/* ────────────────── Helpers ────────────────── */
+
 const formatTimestamp = (value?: string | null) => {
   if (!value) return '—';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  if (diffMs < 60_000) return 'Just now';
+  if (diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)}m ago`;
+  if (diffMs < 86_400_000) return `${Math.floor(diffMs / 3_600_000)}h ago`;
+  return d.toLocaleDateString();
 };
 
 /* ────────────────── Stat Card ────────────────── */
@@ -37,29 +43,30 @@ const formatTimestamp = (value?: string | null) => {
 interface StatCardProps {
   label: string;
   value: string | number;
-  icon: React.FC<any>;
+  icon: any;
   tone?: 'success' | 'critical' | 'warning' | 'info';
 }
 
 const StatCard: React.FC<StatCardProps> = ({ label, value, icon, tone }) => (
   <Card>
     <BlockStack gap="200">
-      <Box
-        background={
-          tone === 'success'
-            ? 'bg-fill-success-secondary'
-            : tone === 'critical'
-              ? 'bg-fill-critical-secondary'
-              : tone === 'warning'
-                ? 'bg-fill-warning-secondary'
-                : 'bg-fill-secondary'
-        }
-        borderRadius="200"
-        padding="200"
-        width="fit-content"
-      >
-        <Icon source={icon} tone={tone ?? 'base'} />
-      </Box>
+      <InlineStack align="space-between" blockAlign="center">
+        <Box
+          background={
+            tone === 'success'
+              ? 'bg-fill-success-secondary'
+              : tone === 'critical'
+                ? 'bg-fill-critical-secondary'
+                : tone === 'warning'
+                  ? 'bg-fill-warning-secondary'
+                  : 'bg-fill-secondary'
+          }
+          borderRadius="200"
+          padding="200"
+        >
+          <Icon source={icon} tone={tone ?? 'base'} />
+        </Box>
+      </InlineStack>
       <Text variant="headingXl" as="p">
         {typeof value === 'number' ? value.toLocaleString() : value}
       </Text>
@@ -80,7 +87,7 @@ const Analytics: React.FC = () => {
     if (!logsData?.data) return [];
     return logsData.data
       .filter((log) => log.status === 'error')
-      .slice(0, 10)
+      .slice(0, 6)
       .map((log) => [
         log.topic ?? log.message ?? 'Error',
         log.source ?? 'System',
@@ -88,14 +95,9 @@ const Analytics: React.FC = () => {
       ]);
   }, [logsData]);
 
-  const ageBucketRows = useMemo(() => {
-    return Object.entries(healthData?.ageBuckets ?? {}).map(([bucket, count]) => [bucket, count]);
-  }, [healthData]);
-
   const isLoading = logsLoading || healthLoading;
-  const hasError = logsError || healthError;
 
-  if (hasError) {
+  if (logsError || healthError) {
     return (
       <Page title="Analytics" subtitle="Sync history and listing health" fullWidth>
         <Banner tone="critical" title="Analytics unavailable">
@@ -108,32 +110,27 @@ const Analytics: React.FC = () => {
   return (
     <Page title="Analytics" subtitle="Sync history and listing health" fullWidth>
       <BlockStack gap="500">
-
         {/* ── Listing Health Stats ── */}
         <Layout>
           <Layout.Section>
             <Card>
               <BlockStack gap="400">
-                <InlineStack align="space-between" blockAlign="center">
-                  <InlineStack gap="300" blockAlign="center">
-                    <Box background="bg-fill-secondary" borderRadius="200" padding="200">
-                      <Icon source={ChartLineIcon} />
-                    </Box>
-                    <BlockStack gap="050">
-                      <Text variant="headingMd" as="h2">Listing health</Text>
-                      <Text variant="bodySm" tone="subdued" as="p">
-                        Snapshot of your eBay listings
-                      </Text>
-                    </BlockStack>
-                  </InlineStack>
+                <InlineStack gap="300" blockAlign="center">
+                  <Box background="bg-fill-secondary" borderRadius="200" padding="200">
+                    <Icon source={ChartVerticalFilledIcon} />
+                  </Box>
+                  <BlockStack gap="050">
+                    <Text variant="headingMd" as="h2">Listing Health</Text>
+                    <Text variant="bodySm" tone="subdued" as="p">
+                      Overview of your active listings and performance
+                    </Text>
+                  </BlockStack>
                 </InlineStack>
-
                 <Divider />
-
                 <InlineGrid columns={{ xs: 2, sm: 2, md: 4 }} gap="300">
                   {isLoading ? (
                     <>
-                      {[...Array(4)].map((_, i) => (
+                      {[1, 2, 3, 4].map((i) => (
                         <Card key={i}>
                           <BlockStack gap="200">
                             <SkeletonDisplayText size="large" />
@@ -145,26 +142,26 @@ const Analytics: React.FC = () => {
                   ) : (
                     <>
                       <StatCard
-                        label="Active listings"
+                        label="Active Listings"
                         value={healthData?.totalActive ?? 0}
                         icon={StatusActiveIcon}
-                        tone={healthData?.totalActive ? 'success' : undefined}
+                        tone={(healthData?.totalActive ?? 0) > 0 ? 'success' : undefined}
                       />
                       <StatCard
-                        label="Ended listings"
+                        label="Ended Listings"
                         value={healthData?.totalEnded ?? 0}
-                        icon={AlertCircleIcon}
+                        icon={ClockIcon}
                       />
                       <StatCard
-                        label="Avg days listed"
+                        label="Avg Days Listed"
                         value={healthData?.averageDaysListed ?? 0}
-                        icon={ChartVerticalIcon}
+                        icon={ClockIcon}
                       />
                       <StatCard
                         label="Revenue"
                         value={`$${(healthData?.revenue ?? 0).toLocaleString()}`}
-                        icon={ViewIcon}
-                        tone={healthData?.revenue ? 'success' : undefined}
+                        icon={ChartVerticalFilledIcon}
+                        tone={(healthData?.revenue ?? 0) > 0 ? 'success' : undefined}
                       />
                     </>
                   )}
@@ -174,123 +171,102 @@ const Analytics: React.FC = () => {
           </Layout.Section>
         </Layout>
 
-        {/* ── Age Buckets + Errors ── */}
-        <Layout>
-          <Layout.Section variant="oneHalf">
-            <Card>
-              <BlockStack gap="300">
-                <InlineStack gap="200" blockAlign="center">
-                  <Box background="bg-fill-secondary" borderRadius="200" padding="200">
-                    <Icon source={ChartVerticalIcon} />
-                  </Box>
-                  <Text variant="headingMd" as="h2">Listings by age</Text>
-                </InlineStack>
-                <Divider />
-                {isLoading ? (
-                  <SkeletonBodyText lines={5} />
-                ) : ageBucketRows.length === 0 ? (
-                  <Box padding="400">
-                    <Text tone="subdued" as="p">No listing age data available.</Text>
-                  </Box>
-                ) : (
-                  <DataTable
-                    columnContentTypes={['text', 'numeric']}
-                    headings={['Age bucket', 'Listings']}
-                    rows={ageBucketRows}
-                  />
-                )}
-              </BlockStack>
-            </Card>
-          </Layout.Section>
+        {/* ── Age Distribution ── */}
+        {!isLoading && Object.keys(healthData?.ageBuckets ?? {}).length > 0 && (
+          <Card>
+            <BlockStack gap="300">
+              <Text variant="headingMd" as="h2">Age Distribution</Text>
+              <Divider />
+              <DataTable
+                columnContentTypes={['text', 'numeric']}
+                headings={['Age Bucket', 'Listings']}
+                rows={Object.entries(healthData?.ageBuckets ?? {}).map(([bucket, count]) => [bucket, count])}
+              />
+            </BlockStack>
+          </Card>
+        )}
 
-          <Layout.Section variant="oneHalf">
-            <Card>
-              <BlockStack gap="300">
-                <InlineStack gap="200" blockAlign="center">
-                  <Box background="bg-fill-critical-secondary" borderRadius="200" padding="200">
-                    <Icon source={AlertCircleIcon} tone="critical" />
-                  </Box>
-                  <Text variant="headingMd" as="h2">Recent errors</Text>
-                </InlineStack>
-                <Divider />
-                {isLoading ? (
-                  <SkeletonBodyText lines={5} />
-                ) : errorRows.length === 0 ? (
-                  <Box padding="400">
-                    <BlockStack gap="200" inlineAlign="center">
-                      <Icon source={StatusActiveIcon} tone="success" />
-                      <Text tone="subdued" as="p">No recent errors — all good!</Text>
-                    </BlockStack>
-                  </Box>
-                ) : (
-                  <DataTable
-                    columnContentTypes={['text', 'text', 'text']}
-                    headings={['Message', 'Source', 'Timestamp']}
-                    rows={errorRows}
-                  />
-                )}
+        {/* ── Recent Errors ── */}
+        <Card>
+          <BlockStack gap="300">
+            <InlineStack gap="300" blockAlign="center">
+              <Box
+                background={errorRows.length > 0 ? 'bg-fill-critical-secondary' : 'bg-fill-success-secondary'}
+                borderRadius="200"
+                padding="200"
+              >
+                <Icon
+                  source={AlertCircleIcon}
+                  tone={errorRows.length > 0 ? 'critical' : 'success'}
+                />
+              </Box>
+              <BlockStack gap="050">
+                <Text variant="headingMd" as="h2">Recent Errors</Text>
+                <Text variant="bodySm" tone="subdued" as="p">
+                  {errorRows.length === 0 ? 'No recent errors — all clear!' : `${errorRows.length} error${errorRows.length !== 1 ? 's' : ''} found`}
+                </Text>
               </BlockStack>
-            </Card>
-          </Layout.Section>
-        </Layout>
+            </InlineStack>
+            {errorRows.length > 0 && (
+              <>
+                <Divider />
+                <DataTable
+                  columnContentTypes={['text', 'text', 'text']}
+                  headings={['Message', 'Source', 'Timestamp']}
+                  rows={errorRows}
+                />
+              </>
+            )}
+          </BlockStack>
+        </Card>
 
         {/* ── Sync History ── */}
-        <Layout>
-          <Layout.Section>
-            <Card>
-              <BlockStack gap="300">
-                <InlineStack gap="200" blockAlign="center">
-                  <Box background="bg-fill-secondary" borderRadius="200" padding="200">
-                    <Icon source={OrderIcon} />
-                  </Box>
-                  <Text variant="headingMd" as="h2">Latest sync history</Text>
-                </InlineStack>
-                <Divider />
-                {isLoading ? (
-                  <SkeletonBodyText lines={6} />
-                ) : (logsData?.data ?? []).length === 0 ? (
-                  <Box padding="400">
-                    <Text tone="subdued" as="p">No sync activity yet.</Text>
-                  </Box>
-                ) : (
-                  <BlockStack gap="300">
-                    {(logsData?.data ?? []).slice(0, 10).map((log) => (
-                      <InlineStack key={String(log.id ?? Math.random())} align="space-between" blockAlign="start">
-                        <BlockStack gap="050">
-                          <Text variant="bodyMd" fontWeight="medium" as="p">
-                            {log.topic ?? log.message ?? 'Sync event'}
-                          </Text>
-                          <Text variant="bodySm" tone="subdued" as="p">
-                            {log.source ?? 'System'}
-                          </Text>
-                        </BlockStack>
-                        <InlineStack gap="200" blockAlign="center">
-                          <Badge
-                            tone={
-                              log.status === 'error'
-                                ? 'critical'
-                                : log.status === 'warning'
-                                  ? 'warning'
-                                  : log.status === 'success'
-                                    ? 'success'
-                                    : 'info'
-                            }
-                          >
-                            {log.status ?? 'info'}
-                          </Badge>
-                          <Text variant="bodySm" tone="subdued" as="p">
-                            {formatTimestamp(log.createdAt ?? log.created_at)}
-                          </Text>
-                        </InlineStack>
-                      </InlineStack>
-                    ))}
-                  </BlockStack>
-                )}
+        <Card>
+          <BlockStack gap="300">
+            <Text variant="headingMd" as="h2">Latest Sync History</Text>
+            <Divider />
+            {isLoading ? (
+              <SkeletonBodyText lines={6} />
+            ) : (logsData?.data ?? []).length === 0 ? (
+              <BlockStack gap="200" inlineAlign="center">
+                <Text tone="subdued" as="p">No sync activity yet</Text>
               </BlockStack>
-            </Card>
-          </Layout.Section>
-        </Layout>
-
+            ) : (
+              <BlockStack gap="300">
+                {(logsData?.data ?? []).slice(0, 8).map((log) => (
+                  <InlineStack key={String(log.id ?? Math.random())} align="space-between" blockAlign="start">
+                    <BlockStack gap="050">
+                      <Text variant="bodyMd" as="p" fontWeight="medium">
+                        {log.topic ?? log.message ?? 'Sync event'}
+                      </Text>
+                      <Text variant="bodySm" tone="subdued" as="p">
+                        {log.source ?? 'System'}
+                      </Text>
+                    </BlockStack>
+                    <InlineStack gap="200" blockAlign="center">
+                      <Badge
+                        tone={
+                          log.status === 'error'
+                            ? 'critical'
+                            : log.status === 'warning'
+                              ? 'warning'
+                              : log.status === 'success'
+                                ? 'success'
+                                : 'info'
+                        }
+                      >
+                        {log.status ?? 'info'}
+                      </Badge>
+                      <Text variant="bodySm" tone="subdued" as="p">
+                        {formatTimestamp(log.createdAt ?? log.created_at)}
+                      </Text>
+                    </InlineStack>
+                  </InlineStack>
+                ))}
+              </BlockStack>
+            )}
+          </BlockStack>
+        </Card>
       </BlockStack>
     </Page>
   );
