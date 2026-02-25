@@ -530,7 +530,6 @@ const ReviewDetail: React.FC = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['drafts'] });
       queryClient.invalidateQueries({ queryKey: ['drafts-count'] });
-      queryClient.invalidateQueries({ queryKey: ['draft-detail'] });
       setShopifySuccess(true);
       addNotification({ type: 'success', title: 'Saved to Shopify!', message: 'Content pushed live', autoClose: 4000 });
       // Load eBay preview while user sees success
@@ -670,7 +669,7 @@ const ReviewDetail: React.FC = () => {
   const listingId = ebaySuccess?.listingId || draft.ebay_listing_id;
 
   // Non-pending drafts: show read-only view
-  if (draft.status !== 'pending') {
+  if (draft.status !== 'pending' && wizardStep === 1) {
     return (
       <>
         <Page
