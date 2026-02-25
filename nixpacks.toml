@@ -1,8 +1,0 @@
-[phases.install]
-cmds = ["npm ci"]
-
-[phases.build]
-cmds = ["echo 'Using committed dist — skipping build'"]
-
-[start]
-cmd = "node dist/server/index.js"
