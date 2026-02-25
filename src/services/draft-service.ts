@@ -84,17 +84,20 @@ export interface Draft {
   original_title: string | null;
   original_description: string | null;
   original_images_json: string | null;
+  tags: string | null;
   status: 'pending' | 'approved' | 'rejected' | 'partial';
   auto_publish: number;
   created_at: number;
   updated_at: number;
   reviewed_at: number | null;
   reviewed_by: string | null;
+  tags: string | null;
 }
 
 export interface DraftWithParsed extends Draft {
   draftImages: string[];
   originalImages: string[];
+  parsedTags: string[];
 }
 
 export interface CreateDraftInput {
@@ -104,6 +107,7 @@ export interface CreateDraftInput {
   originalTitle?: string;
   originalDescription?: string;
   originalImages?: string[];
+  tags?: string[];
 }
 
 export interface ApproveOptions {
@@ -139,6 +143,7 @@ export async function createDraft(
         original_title = COALESCE(?, original_title),
         original_description = COALESCE(?, original_description),
         original_images_json = COALESCE(?, original_images_json),
+        tags = COALESCE(?, tags),
         updated_at = ?
       WHERE id = ?`,
     ).run(
@@ -148,6 +153,7 @@ export async function createDraft(
       input.originalTitle ?? null,
       input.originalDescription ?? null,
       input.originalImages ? JSON.stringify(input.originalImages) : null,
+      input.tags ? JSON.stringify(input.tags) : null,
       now,
       existing.id,
     );
@@ -160,8 +166,8 @@ export async function createDraft(
     `INSERT INTO product_drafts
       (shopify_product_id, draft_title, draft_description, draft_images_json,
        original_title, original_description, original_images_json,
-       status, auto_publish, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?)`,
+       tags, status, auto_publish, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?)`,
   ).run(
     shopifyProductId,
     input.title ?? null,
@@ -170,6 +176,7 @@ export async function createDraft(
     input.originalTitle ?? null,
     input.originalDescription ?? null,
     input.originalImages ? JSON.stringify(input.originalImages) : null,
+    input.tags ? JSON.stringify(input.tags) : null,
     now,
     now,
   );
@@ -509,6 +516,7 @@ function parseDraft(row: Draft): DraftWithParsed {
     ...row,
     draftImages: row.draft_images_json ? JSON.parse(row.draft_images_json) : [],
     originalImages: row.original_images_json ? JSON.parse(row.original_images_json) : [],
+    parsedTags: row.tags ? JSON.parse(row.tags) : [],
   };
 }
 
