@@ -6,6 +6,7 @@ import { fetchDetailedShopifyProduct } from '../shopify/products.js';
 import { saveProductOverride } from './attribute-mapping-service.js';
 import { getRawDb } from '../db/client.js';
 import { info, warn, error as logError } from '../utils/logger.js';
+import { GRADE_DESCRIPTIONS } from '../config/condition-descriptions.js';
 import { getImageService } from '../services/image-service-factory.js';
 import {
   createPipelineJob,
@@ -136,11 +137,7 @@ Key Features
 
 Condition: {Grade}
 [1-2 sentences describing ONLY the cosmetic/external condition. Do NOT mention optics, glass, sensor, or internal components — we test those separately. Use this exact scale from Pictureline:]
-- Like New Minus: Looks like it just came out of the box. 99-100% of original condition.
-- Excellent Plus: Very little to no use, wear only visible under close inspection. 90-99% of original condition.
-- Excellent: Normal signs of use appropriate for the age. Most enthusiast/beginning pro gear falls here. 75-90% of original condition.
-- Good Plus: Visible wear but fully functional. 65-75% of original condition.
-- Poor: Excessive wear, brassing, or finish loss but still operational. 50-65% of original condition.
+{CONDITION_SCALE}
 [Match the description to the grade. Do NOT speculate about optics, internal condition, or functionality beyond what the grade implies.]
 
 Who Is It For?
@@ -153,13 +150,35 @@ STRICT RULES:
 - NO exclamation marks anywhere in the description
 - NO hype phrases: "gem", "must-have", "game-changer", "don't miss", "incredible value", "like never before"
 - NO invented accessories or "original packaging (if available)" — only list what you KNOW is included
+- NEVER list included accessories — we do not know what is included with this specific used item
 - NO calls to action or urgency language
 - NO mentioning retail price unless explicitly provided in the input data
 - Write like an expert, not a salesperson
 - Plain text output, no HTML, no markdown bold
 - Do not add section labels like "Title:" or "Intro:" — just write the content directly`;
 
+/** Build a condition scale string from canonical grades, optionally overridden by DB settings. */
+async function buildConditionScale(): Promise<string> {
+  let descriptions: Record<string, string> = { ...GRADE_DESCRIPTIONS };
+  try {
+    const db = await getRawDb();
+    const row = db
+      .prepare(`SELECT value FROM settings WHERE key = 'condition_descriptions'`)
+      .get() as { value: string } | undefined;
+    if (row?.value) {
+      const custom = JSON.parse(row.value) as Record<string, string>;
+      descriptions = { ...descriptions, ...custom };
+    }
+  } catch {
+    // DB unavailable or parse error — use defaults
+  }
+  return Object.entries(descriptions)
+    .map(([grade, desc]) => `- ${grade}: ${desc}`)
+    .join('\n');
+}
+
 async function getDescriptionPrompt(): Promise<string> {
+  const scale = await buildConditionScale();
   try {
     const db = await getRawDb();
     const row = db
@@ -167,13 +186,13 @@ async function getDescriptionPrompt(): Promise<string> {
       .get() as { value: string } | undefined;
     // Use code default unless a non-empty custom prompt was explicitly saved
     const val = row?.value?.trim();
-    if (!val || val.length < 200) return DEFAULT_DESCRIPTION_PROMPT;
+    if (!val || val.length < 200) return DEFAULT_DESCRIPTION_PROMPT.replace('{CONDITION_SCALE}', scale);
     // If DB has the old short prompt, ignore it in favor of the better code default
     if (val.includes('Format: **Title line**') && !val.includes('Format your output as follows'))
-      return DEFAULT_DESCRIPTION_PROMPT;
-    return val;
+      return DEFAULT_DESCRIPTION_PROMPT.replace('{CONDITION_SCALE}', scale);
+    return val.replace('{CONDITION_SCALE}', scale);
   } catch {
-    return DEFAULT_DESCRIPTION_PROMPT;
+    return DEFAULT_DESCRIPTION_PROMPT.replace('{CONDITION_SCALE}', scale);
   }
 }
 
@@ -193,7 +212,7 @@ async function generateDescription(
       conditionLine = `Used — ${timConditionText.trim()}`;
     }
 
-    let userContent = `Product: ${title}\nBrand: ${vendor}\nCondition: ${conditionLine}\nCategory: Auto-detect from product name\nIncluded accessories: Standard items for this product (caps, hood, etc. — assume typical unless specified)`;
+    let userContent = `Product: ${title}\nBrand: ${vendor}\nCondition: ${conditionLine}\nCategory: Auto-detect from product name\nIncluded accessories: UNKNOWN — do not list any accessories in the description since we do not know what is physically included with this specific item`;
 
     if (productNotes?.trim()) {
       userContent += `\n\nProduct condition notes (MUST be mentioned in the description): ${productNotes.trim()}`;
