@@ -1,0 +1,6 @@
+# Skip rebuilding — dist/ is committed and pre-built locally
+[phases.build]
+cmds = []
+
+[start]
+cmd = "node dist/server/index.js"
