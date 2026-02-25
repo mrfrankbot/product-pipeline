@@ -6,12 +6,12 @@ import {
   Box,
   Button,
   Card,
-  Collapsible,
   Divider,
+  Icon,
   IndexTable,
+  InlineGrid,
   InlineStack,
   Layout,
-  Modal,
   Page,
   Pagination,
   Select,
@@ -20,13 +20,23 @@ import {
   TextField,
   Tooltip,
 } from '@shopify/polaris';
-import { SearchIcon } from '@shopify/polaris-icons';
+import {
+  SearchIcon,
+  OrderIcon,
+  ImportIcon,
+  AlertCircleIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  DeliveryIcon,
+} from '@shopify/polaris-icons';
 import {
   useEbayOrders,
   useEbayOrderStats,
   useImportEbayOrders,
   type EbayOrderItem,
 } from '../hooks/useApi';
+
+/* ────────────────── Constants ────────────────── */
 
 const PAGE_SIZE = 25;
 
@@ -50,6 +60,8 @@ const DAYS_OPTIONS = [
   { label: 'Last 60 days', value: '60' },
   { label: 'Last 90 days', value: '90' },
 ];
+
+/* ────────────────── Helpers ────────────────── */
 
 const formatCurrency = (amount?: number | null, currency = 'USD') => {
   if (amount === undefined || amount === null) return '—';
@@ -86,7 +98,33 @@ const paymentTone = (status?: string | null): 'success' | 'critical' | 'attentio
   }
 };
 
-/** Inline detail panel for an order */
+/* ────────────────── Stat Card ────────────────── */
+
+const StatCard: React.FC<{ label: string; value: number | string; icon: any; tone?: 'success' | 'critical' | 'warning' | 'info' }> = ({ label, value, icon, tone }) => (
+  <Card>
+    <BlockStack gap="200">
+      <InlineStack align="space-between" blockAlign="center">
+        <Box
+          background={
+            tone === 'success' ? 'bg-fill-success-secondary'
+              : tone === 'critical' ? 'bg-fill-critical-secondary'
+                : tone === 'warning' ? 'bg-fill-warning-secondary'
+                  : 'bg-fill-secondary'
+          }
+          borderRadius="200"
+          padding="200"
+        >
+          <Icon source={icon} tone={tone ?? 'base'} />
+        </Box>
+      </InlineStack>
+      <Text variant="headingXl" as="p">{typeof value === 'number' ? value.toLocaleString() : value}</Text>
+      <Text variant="bodySm" tone="subdued" as="p">{label}</Text>
+    </BlockStack>
+  </Card>
+);
+
+/* ────────────────── Order Detail ────────────────── */
+
 const OrderDetail: React.FC<{ order: EbayOrderItem }> = ({ order }) => {
   const lineItems = useMemo(() => {
     try { return JSON.parse(order.line_items_json || '[]'); } catch { return []; }
@@ -100,9 +138,13 @@ const OrderDetail: React.FC<{ order: EbayOrderItem }> = ({ order }) => {
     <Box padding="400" background="bg-surface-secondary">
       <BlockStack gap="400">
         <InlineStack gap="800" align="start">
-          {/* Line items */}
           <BlockStack gap="200">
-            <Text variant="headingSm" as="h3">Line Items</Text>
+            <InlineStack gap="200" blockAlign="center">
+              <Box background="bg-fill-secondary" borderRadius="200" padding="200">
+                <Icon source={OrderIcon} />
+              </Box>
+              <Text variant="headingSm" as="h3">Line Items</Text>
+            </InlineStack>
             {lineItems.length === 0 && <Text as="p" tone="subdued">No line items</Text>}
             {lineItems.map((item: any, i: number) => (
               <InlineStack key={i} gap="200" blockAlign="center">
@@ -117,10 +159,14 @@ const OrderDetail: React.FC<{ order: EbayOrderItem }> = ({ order }) => {
             ))}
           </BlockStack>
 
-          {/* Shipping */}
           {shipping && (
             <BlockStack gap="200">
-              <Text variant="headingSm" as="h3">Shipping Address</Text>
+              <InlineStack gap="200" blockAlign="center">
+                <Box background="bg-fill-secondary" borderRadius="200" padding="200">
+                  <Icon source={DeliveryIcon} />
+                </Box>
+                <Text variant="headingSm" as="h3">Shipping Address</Text>
+              </InlineStack>
               <Text as="p" variant="bodySm">{shipping.fullName}</Text>
               {shipping.contactAddress && (
                 <>
@@ -135,6 +181,7 @@ const OrderDetail: React.FC<{ order: EbayOrderItem }> = ({ order }) => {
           )}
         </InlineStack>
 
+        <Divider />
         <InlineStack gap="200">
           <Tooltip content="Coming soon">
             <Button disabled>Sync to Shopify</Button>
@@ -144,6 +191,8 @@ const OrderDetail: React.FC<{ order: EbayOrderItem }> = ({ order }) => {
     </Box>
   );
 };
+
+/* ────────────────── EbayOrders Page ────────────────── */
 
 const EbayOrders: React.FC = () => {
   const [search, setSearch] = useState('');
@@ -172,8 +221,6 @@ const EbayOrders: React.FC = () => {
   const handleImport = useCallback(() => {
     importMutation.mutate({ days: parseInt(importDays) });
   }, [importDays, importMutation]);
-
-  const resourceName = { singular: 'order', plural: 'orders' };
 
   const rowMarkup = orders.map((order, index) => (
     <React.Fragment key={order.id}>
@@ -221,9 +268,9 @@ const EbayOrders: React.FC = () => {
   ));
 
   return (
-    <Page title="eBay Orders" fullWidth>
+    <Page title="eBay Orders" subtitle="Import and manage eBay orders" fullWidth>
       <BlockStack gap="500">
-        {/* ─── CRITICAL SAFETY BANNER ─────────────────────────────────────── */}
+        {/* Safety banner */}
         <Banner tone="critical" title="⚠️ Lightspeed POS Impact — Read Before Syncing">
           <BlockStack gap="200">
             <Text as="p">
@@ -235,77 +282,66 @@ const EbayOrders: React.FC = () => {
               Syncing to Shopify requires explicit confirmation and is rate-limited to 5 orders/hour.
             </Text>
             <Text as="p" tone="critical">
-              If you suspect duplicates already exist in Shopify, <strong>stop immediately</strong> and
-              contact the developer before proceeding. Do not bulk-sync without verifying.
+              If you suspect duplicates exist in Shopify, <strong>stop immediately</strong> and contact the developer.
             </Text>
           </BlockStack>
         </Banner>
 
+        {/* Stats + Import */}
         <Layout>
           <Layout.Section variant="oneThird">
-            {/* Import controls */}
             <Card>
               <BlockStack gap="300">
-                <Text variant="headingSm" as="h2">Import from eBay</Text>
-                <Select
-                  label="Time range"
-                  options={DAYS_OPTIONS}
-                  value={importDays}
-                  onChange={setImportDays}
-                />
-                <Button
-                  variant="primary"
-                  onClick={handleImport}
-                  loading={importMutation.isPending}
-                >
-                  Import Orders from eBay
+                <InlineStack gap="200" blockAlign="center">
+                  <Box background="bg-fill-secondary" borderRadius="200" padding="200">
+                    <Icon source={ImportIcon} />
+                  </Box>
+                  <Text variant="headingSm" as="h2">Import from eBay</Text>
+                </InlineStack>
+                <Select label="Time range" options={DAYS_OPTIONS} value={importDays} onChange={setImportDays} />
+                <Button variant="primary" onClick={handleImport} loading={importMutation.isPending} fullWidth>
+                  Import Orders
                 </Button>
                 {stats?.lastImportedAt && (
-                  <Text as="p" variant="bodySm" tone="subdued">
-                    Last import: {formatTimestamp(stats.lastImportedAt)}
-                  </Text>
+                  <Text as="p" variant="bodySm" tone="subdued">Last import: {formatTimestamp(stats.lastImportedAt)}</Text>
                 )}
               </BlockStack>
             </Card>
           </Layout.Section>
 
           <Layout.Section>
-            {/* Stats */}
-            <Card>
-              <InlineStack gap="800" align="start">
-                <BlockStack gap="100">
-                  <Text variant="headingLg" as="p">{stats?.total ?? 0}</Text>
-                  <Text as="p" variant="bodySm" tone="subdued">Total Orders</Text>
-                </BlockStack>
-                {stats?.byFulfillmentStatus && Object.entries(stats.byFulfillmentStatus).map(([status, count]) => (
-                  <BlockStack gap="100" key={status}>
-                    <Text variant="headingLg" as="p">{count}</Text>
-                    <Text as="p" variant="bodySm" tone="subdued">{status}</Text>
-                  </BlockStack>
-                ))}
-                <BlockStack gap="100">
-                  <Text variant="headingLg" as="p">{stats?.synced ?? 0}</Text>
-                  <Text as="p" variant="bodySm" tone="subdued">Synced</Text>
-                </BlockStack>
-              </InlineStack>
-            </Card>
+            <InlineGrid columns={{ xs: 2, sm: 4 }} gap="300">
+              <StatCard label="Total Orders" value={stats?.total ?? 0} icon={OrderIcon} />
+              {stats?.byFulfillmentStatus && Object.entries(stats.byFulfillmentStatus).map(([status, count]) => (
+                <StatCard
+                  key={status}
+                  label={status}
+                  value={count}
+                  icon={status === 'FULFILLED' ? CheckCircleIcon : status === 'NOT_STARTED' ? AlertCircleIcon : ClockIcon}
+                  tone={status === 'FULFILLED' ? 'success' : status === 'NOT_STARTED' ? 'warning' : 'info'}
+                />
+              ))}
+              <StatCard label="Synced" value={stats?.synced ?? 0} icon={CheckCircleIcon} tone="success" />
+            </InlineGrid>
           </Layout.Section>
         </Layout>
 
         {/* Filters */}
         <Card>
           <InlineStack gap="300" align="start" blockAlign="end">
-            <div style={{ flexGrow: 1, maxWidth: 300 }}>
+            <Box minWidth="280px">
               <TextField
                 label="Search"
                 labelHidden
                 placeholder="Search order ID or buyer…"
                 value={search}
                 onChange={(v) => { setSearch(v); setPageOffset(0); }}
-                prefix={<span>🔍</span>}
+                prefix={<Icon source={SearchIcon} />}
                 autoComplete="off"
+                clearButton
+                onClearButtonClick={() => { setSearch(''); setPageOffset(0); }}
               />
-            </div>
+            </Box>
             <Select
               label="Fulfillment"
               labelHidden
@@ -327,11 +363,13 @@ const EbayOrders: React.FC = () => {
         <Card padding="0">
           {isLoading ? (
             <Box padding="800">
-              <InlineStack align="center"><Spinner /></InlineStack>
+              <InlineStack align="center">
+                <Spinner accessibilityLabel="Loading orders" size="large" />
+              </InlineStack>
             </Box>
           ) : (
             <IndexTable
-              resourceName={resourceName}
+              resourceName={{ singular: 'order', plural: 'orders' }}
               itemCount={orders.length}
               headings={[
                 { title: 'Order ID' },
@@ -352,7 +390,7 @@ const EbayOrders: React.FC = () => {
 
         {/* Pagination */}
         {total > PAGE_SIZE && (
-          <InlineStack align="center">
+          <InlineStack align="center" gap="300">
             <Pagination
               hasPrevious={hasPrev}
               hasNext={hasNext}
