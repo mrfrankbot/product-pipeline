@@ -1,23 +1,32 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   Badge,
+  Banner,
   BlockStack,
   Box,
   Button,
   Card,
   Collapsible,
+  Divider,
   EmptyState,
   FormLayout,
+  Icon,
   InlineStack,
   Layout,
   Page,
   Select,
-  Spinner,
+  SkeletonBodyText,
   Tabs,
   Text,
   TextField,
 } from '@shopify/polaris';
 import type { TabProps } from '@shopify/polaris';
+import {
+  QuestionCircleIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CheckCircleIcon,
+} from '@shopify/polaris-icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../hooks/useApi';
 
@@ -57,14 +66,12 @@ const HelpAdmin: React.FC = () => {
   const [selectedTab, setSelectedTab] = useState(0);
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
-  // Edit form state
   const [editAnswer, setEditAnswer] = useState('');
   const [editCategory, setEditCategory] = useState('');
   const [editStatus, setEditStatus] = useState('');
 
   const activeStatus = STATUS_TABS[selectedTab];
 
-  // Fetch questions
   const { data, isLoading, error } = useQuery({
     queryKey: ['help-questions', activeStatus],
     queryFn: () => {
@@ -73,10 +80,17 @@ const HelpAdmin: React.FC = () => {
     },
   });
 
-  // Update mutation
   const updateQuestion = useMutation({
-    mutationFn: ({ id, ...body }: { id: number; answer?: string; status?: string; category?: string; answered_by?: string }) =>
-      apiClient.put(`/help/questions/${id}`, body),
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: number;
+      answer?: string;
+      status?: string;
+      category?: string;
+      answered_by?: string;
+    }) => apiClient.put(`/help/questions/${id}`, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['help-questions'] });
       queryClient.invalidateQueries({ queryKey: ['help-faq'] });
@@ -84,7 +98,6 @@ const HelpAdmin: React.FC = () => {
     },
   });
 
-  // Delete mutation
   const deleteQuestion = useMutation({
     mutationFn: (id: number) => apiClient.delete(`/help/questions/${id}`),
     onSuccess: () => {
@@ -120,7 +133,6 @@ const HelpAdmin: React.FC = () => {
     [editAnswer, editStatus, editCategory, updateQuestion],
   );
 
-  // Quick actions
   const handleQuickPublish = useCallback(
     (q: HelpQuestion) => {
       if (!q.answer) return;
@@ -145,31 +157,12 @@ const HelpAdmin: React.FC = () => {
 
   const questions = data?.data || [];
 
-  if (isLoading) {
-    return (
-      <Page title="Help Admin">
-        <Card>
-          <Box padding="600">
-            <InlineStack align="center">
-              <Spinner size="large" accessibilityLabel="Loading questions" />
-            </InlineStack>
-          </Box>
-        </Card>
-      </Page>
-    );
-  }
-
   if (error) {
     return (
-      <Page title="Help Admin">
-        <Card>
-          <BlockStack gap="200">
-            <Text variant="headingMd" as="h2">
-              Failed to load questions
-            </Text>
-            <Text as="p">{(error as Error).message}</Text>
-          </BlockStack>
-        </Card>
+      <Page title="Help Admin" subtitle="Manage questions and FAQ content">
+        <Banner tone="critical" title="Failed to load questions">
+          <Text as="p">{(error as Error).message}</Text>
+        </Banner>
       </Page>
     );
   }
@@ -181,54 +174,67 @@ const HelpAdmin: React.FC = () => {
           <Card>
             <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab}>
               <Box paddingBlockStart="400">
-                {questions.length === 0 ? (
-                  <EmptyState heading="No questions" image="">
-                    <Text as="p">No {activeStatus === 'all' ? '' : activeStatus} questions found.</Text>
+                {isLoading ? (
+                  <SkeletonBodyText lines={8} />
+                ) : questions.length === 0 ? (
+                  <EmptyState heading="No questions found" image="">
+                    <Text as="p">
+                      No {activeStatus === 'all' ? '' : activeStatus} questions yet.
+                    </Text>
                   </EmptyState>
                 ) : (
-                  <BlockStack gap="300">
-                    {questions.map((q) => {
+                  <BlockStack gap="0">
+                    {questions.map((q, index) => {
                       const isExpanded = expandedId === q.id;
                       const questionText =
                         q.question || q.question_text || q.title || 'Untitled question';
                       return (
-                        <Card key={q.id}>
-                          <BlockStack gap="200">
-                            {/* Header row */}
-                            <div
-                              onClick={() => handleExpand(q)}
-                              style={{ cursor: 'pointer' }}
-                              role="button"
-                              tabIndex={0}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') handleExpand(q);
-                              }}
-                            >
-                              <InlineStack align="space-between" blockAlign="center" wrap>
-                                <InlineStack gap="200" blockAlign="center" wrap>
-                                  <Text variant="headingSm" as="span">
-                                    {isExpanded ? '▾' : '▸'} #{q.id}
-                                  </Text>
-                                  <Text as="span" variant="bodyMd">
-                                    {questionText.length > 80 ? questionText.slice(0, 80) + '…' : questionText}
-                                  </Text>
+                        <React.Fragment key={q.id}>
+                          {index > 0 && <Divider />}
+                          <Box padding="400">
+                            <BlockStack gap="200">
+                              {/* Header row */}
+                              <div
+                                onClick={() => handleExpand(q)}
+                                style={{ cursor: 'pointer' }}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleExpand(q); }}
+                              >
+                                <InlineStack align="space-between" blockAlign="center" wrap>
+                                  <InlineStack gap="200" blockAlign="center">
+                                    <Icon
+                                      source={isExpanded ? ChevronDownIcon : ChevronRightIcon}
+                                      tone="subdued"
+                                    />
+                                    <BlockStack gap="050">
+                                      <Text variant="bodyMd" fontWeight="semibold" as="span">
+                                        {questionText.length > 80
+                                          ? questionText.slice(0, 80) + '…'
+                                          : questionText}
+                                      </Text>
+                                      <Text variant="bodySm" tone="subdued" as="span">
+                                        #{q.id} ·{' '}
+                                        {q.asked_by ? `Asked by ${q.asked_by}` : 'Anonymous'} ·{' '}
+                                        {new Date(q.created_at).toLocaleDateString()}
+                                      </Text>
+                                    </BlockStack>
+                                  </InlineStack>
+                                  <InlineStack gap="200" blockAlign="center">
+                                    {q.category && <Badge>{q.category}</Badge>}
+                                    {statusBadge(q.status)}
+                                  </InlineStack>
                                 </InlineStack>
-                                <InlineStack gap="200" blockAlign="center">
-                                  {q.category && <Badge>{q.category}</Badge>}
-                                  {statusBadge(q.status)}
-                                </InlineStack>
-                              </InlineStack>
-                            </div>
+                              </div>
 
-                            {/* Meta line */}
-                            <InlineStack gap="400">
-                              <Text as="span" tone="subdued" variant="bodySm">
-                                {q.asked_by ? `Asked by ${q.asked_by}` : 'Anonymous'} ·{' '}
-                                {new Date(q.created_at).toLocaleDateString()}
-                              </Text>
-                              <InlineStack gap="100">
+                              {/* Quick actions */}
+                              <InlineStack gap="200" blockAlign="center">
                                 {q.answer && q.status !== 'published' && (
-                                  <Button size="slim" onClick={() => handleQuickPublish(q)}>
+                                  <Button
+                                    size="slim"
+                                    icon={CheckCircleIcon}
+                                    onClick={() => handleQuickPublish(q)}
+                                  >
                                     Publish
                                   </Button>
                                 )}
@@ -249,68 +255,76 @@ const HelpAdmin: React.FC = () => {
                                   Delete
                                 </Button>
                               </InlineStack>
-                            </InlineStack>
 
-                            {/* Expandable edit form */}
-                            <Collapsible open={isExpanded} id={`edit-${q.id}`}>
-                              <Box
-                                paddingBlockStart="400"
-                                paddingBlockEnd="200"
-                                borderBlockStartWidth="025"
-                                borderColor="border"
-                              >
-                                <FormLayout>
-                                  <Text variant="headingSm" as="h3">
-                                    Full question
-                                  </Text>
-                                  <Text as="p">{questionText}</Text>
+                              {/* Expandable edit form */}
+                              <Collapsible open={isExpanded} id={`edit-${q.id}`}>
+                                <Box
+                                  paddingBlockStart="400"
+                                  paddingBlockEnd="200"
+                                  borderBlockStartWidth="025"
+                                  borderColor="border"
+                                >
+                                  <FormLayout>
+                                    <BlockStack gap="100">
+                                      <Text variant="headingSm" as="h3">
+                                        Full question
+                                      </Text>
+                                      <Box
+                                        background="bg-fill-secondary"
+                                        borderRadius="200"
+                                        padding="300"
+                                      >
+                                        <Text as="p">{questionText}</Text>
+                                      </Box>
+                                    </BlockStack>
 
-                                  <TextField
-                                    label="Answer"
-                                    value={editAnswer}
-                                    onChange={setEditAnswer}
-                                    multiline={4}
-                                    autoComplete="off"
-                                  />
-                                  <InlineStack gap="400" wrap>
-                                    <Box minWidth="200px">
-                                      <TextField
-                                        label="Category"
-                                        value={editCategory}
-                                        onChange={setEditCategory}
-                                        placeholder="e.g. Shipping, Returns"
-                                        autoComplete="off"
-                                      />
-                                    </Box>
-                                    <Box minWidth="200px">
-                                      <Select
-                                        label="Status"
-                                        options={[
-                                          { label: 'Pending', value: 'pending' },
-                                          { label: 'Answered', value: 'answered' },
-                                          { label: 'Published', value: 'published' },
-                                          { label: 'Archived', value: 'archived' },
-                                        ]}
-                                        value={editStatus}
-                                        onChange={setEditStatus}
-                                      />
-                                    </Box>
-                                  </InlineStack>
-                                  <InlineStack gap="200">
-                                    <Button
-                                      variant="primary"
-                                      onClick={() => handleSave(q.id)}
-                                      loading={updateQuestion.isPending}
-                                    >
-                                      Save
-                                    </Button>
-                                    <Button onClick={() => setExpandedId(null)}>Cancel</Button>
-                                  </InlineStack>
-                                </FormLayout>
-                              </Box>
-                            </Collapsible>
-                          </BlockStack>
-                        </Card>
+                                    <TextField
+                                      label="Answer"
+                                      value={editAnswer}
+                                      onChange={setEditAnswer}
+                                      multiline={4}
+                                      autoComplete="off"
+                                    />
+                                    <InlineStack gap="400" wrap>
+                                      <Box minWidth="200px">
+                                        <TextField
+                                          label="Category"
+                                          value={editCategory}
+                                          onChange={setEditCategory}
+                                          placeholder="e.g. Shipping, Returns"
+                                          autoComplete="off"
+                                        />
+                                      </Box>
+                                      <Box minWidth="200px">
+                                        <Select
+                                          label="Status"
+                                          options={[
+                                            { label: 'Pending', value: 'pending' },
+                                            { label: 'Answered', value: 'answered' },
+                                            { label: 'Published', value: 'published' },
+                                            { label: 'Archived', value: 'archived' },
+                                          ]}
+                                          value={editStatus}
+                                          onChange={setEditStatus}
+                                        />
+                                      </Box>
+                                    </InlineStack>
+                                    <InlineStack gap="200">
+                                      <Button
+                                        variant="primary"
+                                        onClick={() => handleSave(q.id)}
+                                        loading={updateQuestion.isPending}
+                                      >
+                                        Save
+                                      </Button>
+                                      <Button onClick={() => setExpandedId(null)}>Cancel</Button>
+                                    </InlineStack>
+                                  </FormLayout>
+                                </Box>
+                              </Collapsible>
+                            </BlockStack>
+                          </Box>
+                        </React.Fragment>
                       );
                     })}
                   </BlockStack>

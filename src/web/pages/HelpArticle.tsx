@@ -1,21 +1,36 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Spinner } from '@shopify/polaris';
+import {
+  Badge,
+  BlockStack,
+  Box,
+  Button,
+  Card,
+  Divider,
+  EmptyState,
+  Icon,
+  InlineStack,
+  Page,
+  Spinner,
+  Text,
+} from '@shopify/polaris';
+import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  ThumbsUpIcon,
+  ThumbsDownIcon,
+  ChevronRightIcon,
+} from '@shopify/polaris-icons';
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
-import type { HelpArticle as HelpArticleType, HelpCategoryInfo } from './HelpCenter';
+import type { HelpArticle as HelpArticleType } from './HelpCenter';
 import { categorySlug } from './HelpCenter';
 
 /* ── Simple markdown-ish renderer ───────────────────────── */
 function renderArticleContent(text: string): React.ReactNode {
   if (!text) return null;
-
-  // Split into paragraphs by double-newline
   const blocks = text.split(/\n\n+/);
-
   return blocks.map((block, i) => {
     const trimmed = block.trim();
     if (!trimmed) return null;
-
-    // Check if the block is a numbered list (lines starting with digits)
     const lines = trimmed.split('\n');
     const isNumberedList = lines.every(
       (l) => /^\d+\.\s/.test(l.trim()) || l.trim() === '',
@@ -23,53 +38,51 @@ function renderArticleContent(text: string): React.ReactNode {
     const isBulletList = lines.every(
       (l) => /^[-•]\s/.test(l.trim()) || l.trim() === '',
     );
-
     if (isNumberedList) {
       return (
-        <ol key={i}>
+        <ol key={i} style={{ paddingLeft: 20, margin: '8px 0' }}>
           {lines
             .filter((l) => l.trim())
             .map((l, j) => (
-              <li key={j}>{renderInline(l.replace(/^\d+\.\s*/, ''))}</li>
+              <li key={j} style={{ marginBottom: 4 }}>
+                {renderInline(l.replace(/^\d+\.\s*/, ''))}
+              </li>
             ))}
         </ol>
       );
     }
-
     if (isBulletList) {
       return (
-        <ul key={i}>
+        <ul key={i} style={{ paddingLeft: 20, margin: '8px 0' }}>
           {lines
             .filter((l) => l.trim())
             .map((l, j) => (
-              <li key={j}>{renderInline(l.replace(/^[-•]\s*/, ''))}</li>
+              <li key={j} style={{ marginBottom: 4 }}>
+                {renderInline(l.replace(/^[-•]\s*/, ''))}
+              </li>
             ))}
         </ul>
       );
     }
-
-    // Regular paragraph
-    return <p key={i}>{renderInline(trimmed)}</p>;
+    return (
+      <p key={i} style={{ margin: '8px 0', lineHeight: 1.6 }}>
+        {renderInline(trimmed)}
+      </p>
+    );
   });
 }
 
 function renderInline(text: string): React.ReactNode {
-  // Handle **bold** markers
   const parts: React.ReactNode[] = [];
   const regex = /\*\*(.+?)\*\*/g;
   let lastIdx = 0;
   let match: RegExpExecArray | null;
-
   while ((match = regex.exec(text)) !== null) {
-    if (match.index > lastIdx) {
-      parts.push(text.slice(lastIdx, match.index));
-    }
+    if (match.index > lastIdx) parts.push(text.slice(lastIdx, match.index));
     parts.push(<strong key={match.index}>{match[1]}</strong>);
     lastIdx = regex.lastIndex;
   }
-  if (lastIdx < text.length) {
-    parts.push(text.slice(lastIdx));
-  }
+  if (lastIdx < text.length) parts.push(text.slice(lastIdx));
   return parts.length === 1 ? parts[0] : <>{parts}</>;
 }
 
@@ -95,10 +108,7 @@ const HelpArticlePage: React.FC = () => {
     [articles, id],
   );
 
-  // Build ordered flat list for prev/next
-  const orderedArticles = useMemo(() => {
-    return categories.flatMap((c) => c.items);
-  }, [categories]);
+  const orderedArticles = useMemo(() => categories.flatMap((c) => c.items), [categories]);
 
   const currentIndex = useMemo(
     () => orderedArticles.findIndex((a) => a.id === Number(id)),
@@ -111,7 +121,6 @@ const HelpArticlePage: React.FC = () => {
       ? orderedArticles[currentIndex + 1]
       : null;
 
-  // Related articles = same category, excluding current
   const relatedArticles = useMemo(() => {
     if (!article) return [];
     return articles
@@ -125,138 +134,161 @@ const HelpArticlePage: React.FC = () => {
 
   if (!articles.length) {
     return (
-      <div className="help-loading">
-        <Spinner size="large" accessibilityLabel="Loading article" />
-      </div>
+      <Card>
+        <Box padding="600">
+          <InlineStack align="center">
+            <Spinner size="large" accessibilityLabel="Loading article" />
+          </InlineStack>
+        </Box>
+      </Card>
     );
   }
 
   if (!article) {
     return (
-      <div className="help-empty">
-        <h3>Article not found</h3>
-        <p>This article may have been removed or the link is incorrect.</p>
-      </div>
+      <Card>
+        <EmptyState heading="Article not found" image="">
+          <Text as="p">This article may have been removed or the link is incorrect.</Text>
+          <Button onClick={() => navigate('/help')}>Back to Help Center</Button>
+        </EmptyState>
+      </Card>
     );
   }
 
-  const catName = article.category || 'general';
+  const catName = article.category || 'General';
 
   return (
-    <div className="help-article">
+    <BlockStack gap="400">
       {/* Breadcrumbs */}
-      <nav className="help-breadcrumbs">
-        <span className="help-breadcrumb-link" onClick={() => navigate('/help')}>
+      <InlineStack gap="200" blockAlign="center">
+        <Button variant="plain" onClick={() => navigate('/help')}>
           Help
-        </span>
-        <span className="help-breadcrumb-sep">›</span>
-        <span
-          className="help-breadcrumb-link"
+        </Button>
+        <Icon source={ChevronRightIcon} tone="subdued" />
+        <Button
+          variant="plain"
           onClick={() => navigate(`/help/category/${categorySlug(catName)}`)}
         >
           {catName}
-        </span>
-        <span className="help-breadcrumb-sep">›</span>
-        <span className="help-breadcrumb-current">
-          {article.question.length > 50
-            ? article.question.slice(0, 50) + '…'
+        </Button>
+        <Icon source={ChevronRightIcon} tone="subdued" />
+        <Text variant="bodySm" tone="subdued" as="span">
+          {article.question.length > 40
+            ? article.question.slice(0, 40) + '…'
             : article.question}
-        </span>
-      </nav>
+        </Text>
+      </InlineStack>
 
-      {/* Header */}
-      <div className="help-article-header">
-        <span className="help-article-category-badge">{catName}</span>
-        <h1 className="help-article-title">{article.question}</h1>
-        <p className="help-article-meta">
-          Last updated{' '}
-          {new Date(article.updated_at).toLocaleDateString('en-US', {
-            month: 'long',
-            day: 'numeric',
-            year: 'numeric',
-          })}
-        </p>
-      </div>
+      {/* Article */}
+      <Card>
+        <BlockStack gap="400">
+          <BlockStack gap="200">
+            <InlineStack gap="200" blockAlign="center">
+              <Badge>{catName}</Badge>
+            </InlineStack>
+            <Text variant="headingLg" as="h1">
+              {article.question}
+            </Text>
+            <Text variant="bodySm" tone="subdued" as="p">
+              Last updated{' '}
+              {new Date(article.updated_at).toLocaleDateString('en-US', {
+                month: 'long',
+                day: 'numeric',
+                year: 'numeric',
+              })}
+            </Text>
+          </BlockStack>
 
-      {/* Body */}
-      <div className="help-article-body">{renderArticleContent(article.answer || '')}</div>
+          <Divider />
 
-      {/* Feedback */}
-      <div className="help-feedback">
-        <p className="help-feedback-title">Was this article helpful?</p>
-        {feedback ? (
-          <p className="help-feedback-thanks">Thanks for your feedback!</p>
-        ) : (
-          <div className="help-feedback-buttons">
-            <button className="help-feedback-btn" onClick={() => handleFeedback('yes')}>
-              👍 Yes
-            </button>
-            <button className="help-feedback-btn" onClick={() => handleFeedback('no')}>
-              👎 No
-            </button>
-          </div>
-        )}
-      </div>
+          {/* Article body */}
+          <Box>
+            <div style={{ lineHeight: 1.7, color: 'var(--p-color-text)' }}>
+              {renderArticleContent(article.answer || '')}
+            </div>
+          </Box>
 
-      {/* Related Articles */}
+          <Divider />
+
+          {/* Feedback */}
+          <Box background="bg-fill-secondary" borderRadius="200" padding="400">
+            <BlockStack gap="200" inlineAlign="center">
+              <Text variant="bodySm" fontWeight="semibold" as="p">
+                Was this article helpful?
+              </Text>
+              {feedback ? (
+                <Text variant="bodySm" tone="success" as="p">
+                  Thanks for your feedback!
+                </Text>
+              ) : (
+                <InlineStack gap="300">
+                  <Button
+                    icon={ThumbsUpIcon}
+                    onClick={() => handleFeedback('yes')}
+                  >
+                    Yes, helpful
+                  </Button>
+                  <Button
+                    icon={ThumbsDownIcon}
+                    onClick={() => handleFeedback('no')}
+                  >
+                    Not really
+                  </Button>
+                </InlineStack>
+              )}
+            </BlockStack>
+          </Box>
+        </BlockStack>
+      </Card>
+
+      {/* Related articles */}
       {relatedArticles.length > 0 && (
-        <div className="help-related">
-          <h3 className="help-related-title">Related Articles</h3>
-          <div className="help-related-list">
-            {relatedArticles.map((a) => (
-              <div
-                key={a.id}
-                className="help-related-link"
-                onClick={() => navigate(`/help/article/${a.id}`)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') navigate(`/help/article/${a.id}`);
-                }}
-              >
-                → {a.question}
-              </div>
-            ))}
-          </div>
-        </div>
+        <Card>
+          <BlockStack gap="300">
+            <Text variant="headingMd" as="h3">Related articles</Text>
+            <Divider />
+            <BlockStack gap="200">
+              {relatedArticles.map((a) => (
+                <InlineStack key={a.id} align="space-between" blockAlign="center">
+                  <Button variant="plain" onClick={() => navigate(`/help/article/${a.id}`)}>
+                    {a.question}
+                  </Button>
+                  <Icon source={ChevronRightIcon} tone="subdued" />
+                </InlineStack>
+              ))}
+            </BlockStack>
+          </BlockStack>
+        </Card>
       )}
 
       {/* Prev / Next */}
-      <nav className="help-article-nav">
+      <InlineStack align="space-between">
         {prevArticle ? (
-          <div
-            className="help-article-nav-btn prev"
+          <Button
+            icon={ArrowLeftIcon}
             onClick={() => navigate(`/help/article/${prevArticle.id}`)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') navigate(`/help/article/${prevArticle.id}`);
-            }}
           >
-            <span className="help-article-nav-label">← Previous</span>
-            <span className="help-article-nav-title">{prevArticle.question}</span>
-          </div>
+            {prevArticle.question.length > 35
+              ? prevArticle.question.slice(0, 35) + '…'
+              : prevArticle.question}
+          </Button>
         ) : (
-          <div />
+          <Box />
         )}
         {nextArticle ? (
-          <div
-            className="help-article-nav-btn next"
+          <Button
+            icon={ArrowRightIcon}
             onClick={() => navigate(`/help/article/${nextArticle.id}`)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') navigate(`/help/article/${nextArticle.id}`);
-            }}
           >
-            <span className="help-article-nav-label">Next →</span>
-            <span className="help-article-nav-title">{nextArticle.question}</span>
-          </div>
+            {nextArticle.question.length > 35
+              ? nextArticle.question.slice(0, 35) + '…'
+              : nextArticle.question}
+          </Button>
         ) : (
-          <div />
+          <Box />
         )}
-      </nav>
-    </div>
+      </InlineStack>
+    </BlockStack>
   );
 };
 

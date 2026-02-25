@@ -256,7 +256,6 @@ const HelpCenter: React.FC = () => {
                       key={article.id}
                       className={`help-sidebar-article-link${activeArticleId === article.id ? ' active' : ''}`}
                       onClick={() => goToArticle(article.id)}
-                      role="button"
                       tabIndex={0}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') goToArticle(article.id);
@@ -359,7 +358,6 @@ const HelpLanding: React.FC<HelpLandingProps> = ({ articles, categories, goToArt
                 key={a.id}
                 className="help-search-result-item"
                 onClick={() => goToArticle(a.id)}
-                role="button"
                 tabIndex={0}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') goToArticle(a.id);
@@ -385,7 +383,6 @@ const HelpLanding: React.FC<HelpLandingProps> = ({ articles, categories, goToArt
                   key={cat.name}
                   className="help-category-card"
                   onClick={() => goToCategory(cat.name)}
-                  role="button"
                   tabIndex={0}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') goToCategory(cat.name);
@@ -419,7 +416,6 @@ const HelpLanding: React.FC<HelpLandingProps> = ({ articles, categories, goToArt
                     key={a.id}
                     className="help-popular-item"
                     onClick={() => goToArticle(a.id)}
-                    role="button"
                     tabIndex={0}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') goToArticle(a.id);

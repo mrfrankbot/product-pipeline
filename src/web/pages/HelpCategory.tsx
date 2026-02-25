@@ -1,56 +1,27 @@
 import React, { useMemo } from 'react';
-import { Spinner } from '@shopify/polaris';
+import {
+  Badge,
+  BlockStack,
+  Box,
+  Button,
+  Card,
+  Divider,
+  EmptyState,
+  Icon,
+  InlineStack,
+  Spinner,
+  Text,
+} from '@shopify/polaris';
+import { ChevronRightIcon, QuestionCircleIcon } from '@shopify/polaris-icons';
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import type { HelpArticle } from './HelpCenter';
 import { categorySlug, categoryFromSlug } from './HelpCenter';
-
-/* ── Category metadata (duplicated for icons/descriptions) ── */
-const CATEGORY_META: Record<string, { icon: string; description: string }> = {
-  'Getting Started': {
-    icon: '🚀',
-    description: 'New to ProductPipeline? Start here with setup guides and first steps.',
-  },
-  products: {
-    icon: '📦',
-    description: 'Managing products, syncing to eBay, per-product overrides, and filtering.',
-  },
-  mappings: {
-    icon: '🔗',
-    description: 'Configuring field mappings between Shopify and eBay listing fields.',
-  },
-  pipeline: {
-    icon: '⚙️',
-    description: 'Auto-listing pipeline stages, image processing, and AI enrichment.',
-  },
-  orders: {
-    icon: '🛒',
-    description: 'Order syncing, fulfillment, and order management between platforms.',
-  },
-  analytics: {
-    icon: '📊',
-    description: 'Listing health reports, sync analytics, and performance tracking.',
-  },
-  chat: {
-    icon: '💬',
-    description: 'Using the AI chat assistant for help and running commands.',
-  },
-  general: {
-    icon: '📖',
-    description: 'General information, safety guards, feature requests, and support.',
-  },
-};
-
-const getMeta = (name: string) =>
-  CATEGORY_META[name] || { icon: '📄', description: '' };
 
 const snippet = (text: string, max = 140) => {
   const plain = text.replace(/\*\*/g, '').replace(/\n/g, ' ');
   return plain.length > max ? plain.slice(0, max) + '…' : plain;
 };
 
-/* ═══════════════════════════════════════════════════════════
-   HelpCategoryPage
-   ═══════════════════════════════════════════════════════════ */
 interface OutletCtx {
   articles: HelpArticle[];
   categories: { name: string; items: HelpArticle[] }[];
@@ -73,71 +44,93 @@ const HelpCategoryPage: React.FC = () => {
   );
 
   const catArticles = useMemo(
-    () => articles.filter((a) => (a.category || 'general') === catName),
+    () => articles.filter((a) => (a.category || 'General') === catName),
     [articles, catName],
   );
 
-  const meta = getMeta(catName);
-
   if (!articles.length) {
     return (
-      <div className="help-loading">
-        <Spinner size="large" accessibilityLabel="Loading" />
-      </div>
+      <Card>
+        <Box padding="600">
+          <InlineStack align="center">
+            <Spinner size="large" accessibilityLabel="Loading" />
+          </InlineStack>
+        </Box>
+      </Card>
     );
   }
 
   if (!catArticles.length) {
     return (
-      <div className="help-empty">
-        <h3>Category not found</h3>
-        <p>No articles found for this category.</p>
-      </div>
+      <Card>
+        <EmptyState heading="Category not found" image="">
+          <Text as="p">No articles found for this category.</Text>
+          <Button onClick={() => navigate('/help')}>Back to Help Center</Button>
+        </EmptyState>
+      </Card>
     );
   }
 
   return (
-    <div className="help-category-page">
+    <BlockStack gap="400">
       {/* Breadcrumbs */}
-      <nav className="help-breadcrumbs">
-        <span className="help-breadcrumb-link" onClick={() => navigate('/help')}>
+      <InlineStack gap="200" blockAlign="center">
+        <Button variant="plain" onClick={() => navigate('/help')}>
           Help
-        </span>
-        <span className="help-breadcrumb-sep">›</span>
-        <span className="help-breadcrumb-current">{catName}</span>
-      </nav>
+        </Button>
+        <Icon source={ChevronRightIcon} tone="subdued" />
+        <Text variant="bodySm" tone="subdued" as="span">
+          {catName}
+        </Text>
+      </InlineStack>
 
-      {/* Category Header */}
-      <div className="help-category-header">
-        <h1 className="help-category-title">
-          <span>{meta.icon}</span> {catName}
-        </h1>
-        {meta.description && (
-          <p className="help-category-desc">{meta.description}</p>
-        )}
-      </div>
+      {/* Category header */}
+      <Card>
+        <BlockStack gap="200">
+          <InlineStack gap="200" blockAlign="center">
+            <Box background="bg-fill-secondary" borderRadius="200" padding="200">
+              <Icon source={QuestionCircleIcon} />
+            </Box>
+            <BlockStack gap="050">
+              <Text variant="headingLg" as="h1">{catName}</Text>
+              <Text variant="bodySm" tone="subdued" as="p">
+                {catArticles.length} article{catArticles.length !== 1 ? 's' : ''}
+              </Text>
+            </BlockStack>
+          </InlineStack>
+        </BlockStack>
+      </Card>
 
-      {/* Article List */}
-      <div className="help-category-articles">
-        {catArticles.map((article) => (
-          <div
-            key={article.id}
-            className="help-category-article-card"
-            onClick={() => navigate(`/help/article/${article.id}`)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') navigate(`/help/article/${article.id}`);
-            }}
-          >
-            <p className="help-category-article-title">{article.question}</p>
-            <p className="help-category-article-snippet">
-              {snippet(article.answer || '')}
-            </p>
-          </div>
-        ))}
-      </div>
-    </div>
+      {/* Article list */}
+      <Card>
+        <BlockStack gap="0">
+          {catArticles.map((article, index) => (
+            <React.Fragment key={article.id}>
+              {index > 0 && <Divider />}
+              <div
+                onClick={() => navigate(`/help/article/${article.id}`)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/help/article/${article.id}`); }}
+                style={{ cursor: 'pointer', padding: 'var(--p-space-400)' }}
+              >
+                <InlineStack align="space-between" blockAlign="center">
+                  <BlockStack gap="100">
+                    <Text variant="bodyMd" fontWeight="semibold" as="p">
+                      {article.question}
+                    </Text>
+                    <Text variant="bodySm" tone="subdued" as="p">
+                      {snippet(article.answer || '')}
+                    </Text>
+                  </BlockStack>
+                  <Icon source={ChevronRightIcon} tone="subdued" />
+                </InlineStack>
+              </div>
+            </React.Fragment>
+          ))}
+        </BlockStack>
+      </Card>
+    </BlockStack>
   );
 };
 

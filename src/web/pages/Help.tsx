@@ -1,22 +1,31 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Badge,
+  Banner,
   BlockStack,
   Box,
   Button,
   Card,
   Collapsible,
+  Divider,
   EmptyState,
   FormLayout,
+  Icon,
   InlineStack,
   Layout,
   Modal,
   Page,
+  SkeletonBodyText,
   Select,
-  Spinner,
   Text,
   TextField,
 } from '@shopify/polaris';
+import {
+  QuestionCircleIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  SearchIcon,
+} from '@shopify/polaris-icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../hooks/useApi';
 
@@ -31,22 +40,17 @@ interface FaqItem {
 const Help: React.FC = () => {
   const queryClient = useQueryClient();
 
-  // Fetch published FAQ
   const { data, isLoading, error } = useQuery({
     queryKey: ['help-faq'],
     queryFn: () => apiClient.get<{ data: FaqItem[]; total: number }>('/help/faq'),
   });
 
-  // "Ask a Question" modal state
   const [askOpen, setAskOpen] = useState(false);
   const [newQuestion, setNewQuestion] = useState('');
   const [newCategory, setNewCategory] = useState('');
   const [askedBy, setAskedBy] = useState('');
 
-  // Track which FAQ items are expanded
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
-
-  // Search / filter
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
 
@@ -59,7 +63,6 @@ const Help: React.FC = () => {
     });
   }, []);
 
-  // Derive categories from FAQ data
   const categories = useMemo(() => {
     if (!data?.data) return [];
     const cats = new Set<string>();
@@ -70,11 +73,13 @@ const Help: React.FC = () => {
   }, [data]);
 
   const categoryOptions = useMemo(
-    () => [{ label: 'All categories', value: 'all' }, ...categories.map((c) => ({ label: c, value: c }))],
+    () => [
+      { label: 'All categories', value: 'all' },
+      ...categories.map((c) => ({ label: c, value: c })),
+    ],
     [categories],
   );
 
-  // Filtered FAQ items
   const filteredFaq = useMemo(() => {
     if (!data?.data) return [];
     return data.data.filter((item) => {
@@ -91,7 +96,6 @@ const Help: React.FC = () => {
     });
   }, [data, filterCategory, search]);
 
-  // Submit question mutation
   const submitQuestion = useMutation({
     mutationFn: (body: { question: string; asked_by?: string; category?: string }) =>
       apiClient.post('/help/questions', body),
@@ -113,31 +117,12 @@ const Help: React.FC = () => {
     });
   }, [newQuestion, askedBy, newCategory, submitQuestion]);
 
-  if (isLoading) {
-    return (
-      <Page title="Help & FAQ">
-        <Card>
-          <Box padding="600">
-            <InlineStack align="center">
-              <Spinner size="large" accessibilityLabel="Loading FAQ" />
-            </InlineStack>
-          </Box>
-        </Card>
-      </Page>
-    );
-  }
-
   if (error) {
     return (
       <Page title="Help & FAQ">
-        <Card>
-          <BlockStack gap="200">
-            <Text variant="headingMd" as="h2">
-              Failed to load FAQ
-            </Text>
-            <Text as="p">{(error as Error).message}</Text>
-          </BlockStack>
-        </Card>
+        <Banner tone="critical" title="Failed to load FAQ">
+          <Text as="p">{(error as Error).message}</Text>
+        </Banner>
       </Page>
     );
   }
@@ -148,6 +133,7 @@ const Help: React.FC = () => {
       subtitle="Frequently asked questions and support"
       primaryAction={{
         content: 'Ask a Question',
+        icon: QuestionCircleIcon,
         onAction: () => setAskOpen(true),
       }}
     >
@@ -156,12 +142,14 @@ const Help: React.FC = () => {
         <Layout.Section>
           <Card>
             <InlineStack gap="400" wrap>
-              <Box minWidth="240px" width="50%">
+              <Box minWidth="240px">
                 <TextField
                   label="Search FAQ"
+                  labelHidden
                   value={search}
                   onChange={setSearch}
-                  placeholder="Search questions..."
+                  placeholder="Search questions…"
+                  prefix={<Icon source={SearchIcon} />}
                   clearButton
                   onClearButtonClick={() => setSearch('')}
                   autoComplete="off"
@@ -171,6 +159,7 @@ const Help: React.FC = () => {
                 <Box minWidth="200px">
                   <Select
                     label="Category"
+                    labelHidden
                     options={categoryOptions}
                     value={filterCategory}
                     onChange={setFilterCategory}
@@ -183,7 +172,11 @@ const Help: React.FC = () => {
 
         {/* FAQ items */}
         <Layout.Section>
-          {filteredFaq.length === 0 ? (
+          {isLoading ? (
+            <Card>
+              <SkeletonBodyText lines={8} />
+            </Card>
+          ) : filteredFaq.length === 0 ? (
             <Card>
               <EmptyState heading="No FAQ items found" image="">
                 <Text as="p">
@@ -194,44 +187,50 @@ const Help: React.FC = () => {
               </EmptyState>
             </Card>
           ) : (
-            <BlockStack gap="300">
-              {filteredFaq.map((item) => {
-                const isOpen = expandedIds.has(item.id);
-                return (
-                  <Card key={item.id}>
-                    <Box
-                      paddingBlockStart="200"
-                      paddingBlockEnd="200"
-                    >
-                      <BlockStack gap="200">
-                        <div
-                          onClick={() => toggleExpanded(item.id)}
-                          style={{ cursor: 'pointer' }}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') toggleExpanded(item.id);
-                          }}
-                        >
-                          <InlineStack align="space-between" blockAlign="center">
-                            <Text variant="headingSm" as="span">
-                              {isOpen ? '▾' : '▸'} {item.question}
-                            </Text>
-                            {item.category && <Badge>{item.category}</Badge>}
-                          </InlineStack>
-                        </div>
+            <Card>
+              <BlockStack gap="0">
+                {filteredFaq.map((item, index) => {
+                  const isOpen = expandedIds.has(item.id);
+                  return (
+                    <React.Fragment key={item.id}>
+                      {index > 0 && <Divider />}
+                      <Box padding="400">
+                        <BlockStack gap="200">
+                          <div
+                            onClick={() => toggleExpanded(item.id)}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleExpanded(item.id); }}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            <InlineStack align="space-between" blockAlign="center">
+                              <InlineStack gap="200" blockAlign="center">
+                                <Icon
+                                  source={isOpen ? ChevronDownIcon : ChevronRightIcon}
+                                  tone="subdued"
+                                />
+                                <Text variant="headingSm" as="span">
+                                  {item.question}
+                                </Text>
+                              </InlineStack>
+                              {item.category && <Badge>{item.category}</Badge>}
+                            </InlineStack>
+                          </div>
 
-                        <Collapsible open={isOpen} id={`faq-${item.id}`}>
-                          <Box paddingInlineStart="400" paddingBlockStart="200">
-                            <Text as="p">{item.answer}</Text>
-                          </Box>
-                        </Collapsible>
-                      </BlockStack>
-                    </Box>
-                  </Card>
-                );
-              })}
-            </BlockStack>
+                          <Collapsible open={isOpen} id={`faq-${item.id}`}>
+                            <Box paddingInlineStart="600" paddingBlockStart="100">
+                              <Text as="p" tone="subdued">
+                                {item.answer}
+                              </Text>
+                            </Box>
+                          </Collapsible>
+                        </BlockStack>
+                      </Box>
+                    </React.Fragment>
+                  );
+                })}
+              </BlockStack>
+            </Card>
           )}
         </Layout.Section>
       </Layout>
@@ -258,6 +257,7 @@ const Help: React.FC = () => {
               multiline={3}
               autoComplete="off"
               requiredIndicator
+              placeholder="How do I…?"
             />
             <TextField
               label="Your name (optional)"
