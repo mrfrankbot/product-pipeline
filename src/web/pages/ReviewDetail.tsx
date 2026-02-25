@@ -16,6 +16,7 @@ import {
   Modal,
   InlineGrid,
   Thumbnail,
+  Checkbox,
 } from '@shopify/polaris';
 import {
   ExternalIcon,
@@ -408,6 +409,7 @@ const ReviewDetail: React.FC = () => {
 
   // Step 2 state
   const [shopifySuccess, setShopifySuccess] = useState(false);
+  const [publishOnShopify, setPublishOnShopify] = useState(true);
 
   // Step 3 state
   const [ebayPreview, setEbayPreview] = useState<EbayListingPreview | null>(null);
@@ -524,7 +526,7 @@ const ReviewDetail: React.FC = () => {
   });
 
   const approveMutation = useMutation({
-    mutationFn: () => apiClient.post(`/drafts/${draftId}/approve`, { photos: true, description: true }),
+    mutationFn: () => apiClient.post(`/drafts/${draftId}/approve`, { photos: true, description: true, publish: publishOnShopify }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['drafts'] });
       queryClient.invalidateQueries({ queryKey: ['drafts-count'] });
@@ -533,6 +535,8 @@ const ReviewDetail: React.FC = () => {
       addNotification({ type: 'success', title: 'Saved to Shopify!', message: 'Content pushed live', autoClose: 4000 });
       // Load eBay preview while user sees success
       ebayPreviewMutation.mutate();
+      // Auto-advance to Step 3 after 1.5s
+      setTimeout(() => setWizardStep(3), 1500);
     },
     onError: (err) => {
       addNotification({
@@ -1156,26 +1160,29 @@ const ReviewDetail: React.FC = () => {
                     <Divider />
 
                     {!shopifySuccess ? (
-                      <Button
-                        variant="primary"
-                        tone="success"
-                        size="large"
-                        fullWidth
-                        onClick={handleSaveToShopify}
-                        loading={approveMutation.isPending}
-                        icon={CheckIcon}
-                      >
-                        Save to Shopify
-                      </Button>
+                      <BlockStack gap="300">
+                        <Checkbox
+                          label="Publish on Shopify"
+                          helpText="Make this product visible in your store"
+                          checked={publishOnShopify}
+                          onChange={setPublishOnShopify}
+                        />
+                        <Button
+                          variant="primary"
+                          tone="success"
+                          size="large"
+                          fullWidth
+                          onClick={handleSaveToShopify}
+                          loading={approveMutation.isPending}
+                          icon={CheckIcon}
+                        >
+                          Save to Shopify
+                        </Button>
+                      </BlockStack>
                     ) : (
-                      <Button
-                        variant="primary"
-                        size="large"
-                        fullWidth
-                        onClick={handleAdvanceToEbay}
-                      >
-                        Continue to eBay →
-                      </Button>
+                      <Text variant="bodyMd" as="p" tone="success" fontWeight="semibold">
+                        ✅ Saved to Shopify — advancing to eBay…
+                      </Text>
                     )}
 
                     {shopifySuccess && (
