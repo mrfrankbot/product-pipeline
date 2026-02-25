@@ -431,17 +431,23 @@ export const listDraftOnEbay = async (
 
   const data = buildListingData(draft, shopifyProduct);
 
-  // Apply overrides to image list (overrides take full precedence)
-  const rawImageUrls = (overrides.imageUrls && overrides.imageUrls.length > 0)
-    ? overrides.imageUrls
-    : data.imageUrls;
-
-  // Prepare URLs for eBay (convert GCS signed → public, trim to length limits, fall back to Shopify)
+  // Always prefer Shopify CDN URLs — they're reliable, short, and don't need auth
   const shopifyImageUrls = (shopifyProduct.images ?? [])
     .slice(0, 12)
     .map((img: any) => (img.src || img.url || '').replace(/^http:/, 'https:'))
     .filter((u: string) => u.length > 0);
-  const effectiveImageUrls = prepareImageUrlsForEbay(rawImageUrls, shopifyImageUrls);
+
+  // Use Shopify images as primary; only fall back to draft/override images if Shopify has none
+  let effectiveImageUrls: string[];
+  if (shopifyImageUrls.length > 0) {
+    effectiveImageUrls = shopifyImageUrls;
+    info(`[EbayDraftLister] Using ${effectiveImageUrls.length} Shopify CDN image(s)`);
+  } else {
+    const rawImageUrls = (overrides.imageUrls && overrides.imageUrls.length > 0)
+      ? overrides.imageUrls
+      : data.imageUrls;
+    effectiveImageUrls = prepareImageUrlsForEbay(rawImageUrls, []);
+  }
 
   // eBay requires at least one image
   if (effectiveImageUrls.length === 0) {

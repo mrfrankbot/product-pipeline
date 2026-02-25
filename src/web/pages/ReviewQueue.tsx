@@ -26,6 +26,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../hooks/useApi';
 import AutoPublishSettings from '../components/AutoPublishSettings';
+import ConditionBadge from '../components/ConditionBadge';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -46,6 +47,7 @@ interface Draft {
   reviewed_by: string | null;
   draftImages: string[];
   originalImages: string[];
+  parsedTags: string[];
 }
 
 interface DraftListResponse {
@@ -80,6 +82,26 @@ const formatDate = (unix: number) =>
     hour: '2-digit',
     minute: '2-digit',
   });
+
+const conditionBadge = (tags: string[]) => {
+  const conditionPatterns = [
+    { match: /like.new/i, label: 'Like New', tone: 'success' as const },
+    { match: /excellent\+/i, label: 'Excellent+', tone: 'success' as const },
+    { match: /excellent/i, label: 'Excellent', tone: 'info' as const },
+    { match: /good/i, label: 'Good', tone: 'attention' as const },
+    { match: /fair/i, label: 'Fair', tone: 'warning' as const },
+    { match: /poor/i, label: 'Poor', tone: 'critical' as const },
+    { match: /ugly/i, label: 'Ugly', tone: 'critical' as const },
+  ];
+  for (const tag of tags) {
+    for (const { match, label, tone } of conditionPatterns) {
+      if (match.test(tag)) {
+        return <Badge tone={tone}>{label}</Badge>;
+      }
+    }
+  }
+  return null;
+};
 
 const truncateHtml = (html: string, maxLen = 120) => {
   const text = html.replace(/<[^>]*>/g, '').replace(/&[^;]+;/g, ' ');
