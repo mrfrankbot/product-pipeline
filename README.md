@@ -197,3 +197,20 @@ SQLite at `~/.clawdbot/ebaysync.db` with tables:
 - @shopify/shopify-api (Shopify client)
 - Native fetch (eBay REST APIs)
 - ora (spinners), chalk (colors)
+
+## TEST_MODE (Browser Testing)
+
+Set `TEST_MODE=true` to run the app on localhost without Shopify authentication or the admin iframe. This is for automated browser testing (QA agents, Playwright, etc.).
+
+```bash
+TEST_MODE=true npm run dev
+```
+
+What it does:
+- **Skips API key auth** — all `/api/*` routes are accessible without credentials
+- **Injects a mock Shopify session** — routes that expect a session get `test-store.myshopify.com`
+- **Allows localhost CORS** — no origin restrictions for local requests
+- **Disables App Bridge** — the frontend renders standalone (no Shopify admin iframe required)
+- **`GET /api/test-mode`** — returns `{ testMode: true }` so QA tools can verify the mode
+
+⚠️ **Never deploy with TEST_MODE=true** — it disables all authentication.
