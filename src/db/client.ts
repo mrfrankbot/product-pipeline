@@ -128,6 +128,7 @@ const initExtraTables = (sqlite: InstanceType<typeof Database>) => {
       original_title TEXT,
       original_description TEXT,
       original_images_json TEXT,
+      tags TEXT,
       status TEXT NOT NULL DEFAULT 'pending',
       auto_publish INTEGER DEFAULT 0,
       created_at INTEGER NOT NULL DEFAULT (unixepoch()),
@@ -853,6 +854,15 @@ const migrateHelpCategoryCase = (sqlite: InstanceType<typeof Database>) => {
   `);
 };
 
+const migrateProductDraftsTags = (sqlite: InstanceType<typeof Database>) => {
+  const cols = sqlite.prepare(`PRAGMA table_info(product_drafts)`).all() as any[];
+  const colNames = new Set(cols.map((c: any) => c.name));
+
+  if (!colNames.has('tags')) {
+    sqlite.exec(`ALTER TABLE product_drafts ADD COLUMN tags TEXT`);
+  }
+};
+
 const migrateNotificationLog = (sqlite: InstanceType<typeof Database>) => {
   const cols = sqlite.prepare(`PRAGMA table_info(notification_log)`).all() as any[];
   const colNames = new Set(cols.map((c: any) => c.name));
@@ -876,6 +886,7 @@ export const getDb = async () => {
     migrateProductDraftsEbay(rawSqlite);
     migrateHelpQuestions(rawSqlite);
     migrateHelpCategoryCase(rawSqlite);
+    migrateProductDraftsTags(rawSqlite);
     migrateNotificationLog(rawSqlite);
     await seedDefaultMappings(rawSqlite);
     seedHelpContent(rawSqlite);
