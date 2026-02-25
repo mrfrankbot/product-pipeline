@@ -52,8 +52,27 @@ const queryClient = new QueryClient({
   },
 });
 
+/** Check if TEST_MODE is active (set by backend, cached on first call) */
+let testModeCache: boolean | null = null;
+const checkTestMode = async (): Promise<boolean> => {
+  if (testModeCache !== null) return testModeCache;
+  try {
+    const res = await fetch('/api/test-mode');
+    const data = await res.json();
+    testModeCache = data.testMode === true;
+  } catch {
+    testModeCache = false;
+  }
+  return testModeCache;
+};
+
+// Eagerly check on load (result cached for sync access)
+checkTestMode();
+
 /** Detect whether the app is embedded inside Shopify Admin */
 const isEmbedded = (): boolean => {
+  // In TEST_MODE, never treat as embedded — skip App Bridge
+  if (testModeCache) return false;
   try {
     return window.self !== window.top;
   } catch {
