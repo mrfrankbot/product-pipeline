@@ -404,6 +404,7 @@ const ReviewDetail: React.FC = () => {
   // UI state
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [editingPhotoIndex, setEditingPhotoIndex] = useState<number | null>(null);
+  const [editingPhotoUrl, setEditingPhotoUrl] = useState<string | null>(null);
   const [localNotes, setLocalNotes] = useState('');
   const [notesInit, setNotesInit] = useState(false);
 
@@ -687,16 +688,13 @@ const ReviewDetail: React.FC = () => {
                     {tags.length > 0 && <ConditionBadge tags={tags} />}
                   </InlineStack>
                   {draftImages.length > 0 ? (
-                    <InlineGrid columns={{ xs: 2, sm: 3, md: 4 }} gap="200">
-                      {draftImages.map((img, i) => (
-                        <Card key={i} padding="200">
-                          <BlockStack gap="200" inlineAlign="center">
-                            <Thumbnail source={img} alt={`Photo ${i + 1}`} size="large" />
-                            <Button variant="plain" icon={ViewIcon} onClick={() => setLightboxSrc(img)}>View</Button>
-                          </BlockStack>
-                        </Card>
-                      ))}
-                    </InlineGrid>
+                    <DraggablePhotoGrid
+                      imageUrls={draftImages}
+                      onChange={handleReorderPhotos}
+                      onEditPhoto={(i) => { setEditingPhotoIndex(i); setEditingPhotoUrl(draftImages[i]); }}
+                      enableBulkEdit
+                      draftId={draftId}
+                    />
                   ) : (
                     <Banner tone="info"><Text as="p">No photos available.</Text></Banner>
                   )}
@@ -749,6 +747,25 @@ const ReviewDetail: React.FC = () => {
             <InlineStack align="center">{lightboxSrc ? <Thumbnail source={lightboxSrc} alt="Enlarged photo" size="large" /> : null}</InlineStack>
           </Modal.Section>
         </Modal>
+
+        {/* Photo Editor */}
+        {editingPhotoIndex !== null && editingPhotoUrl && (
+          <ProductPhotoEditor
+            open={true}
+            imageUrl={editingPhotoUrl}
+            draftId={draftId}
+            imageIndex={editingPhotoIndex}
+            allDraftImages={draftImages.length > 0 ? draftImages : liveImages}
+            onSave={() => {
+              queryClient.invalidateQueries({ queryKey: ['draft-detail', draftId] });
+              setEditingPhotoIndex(null);
+              setEditingPhotoUrl(null);
+              addNotification({ type: 'success', title: 'Photo updated', message: 'Edited photo saved', autoClose: 4000 });
+            }}
+            onClose={() => { setEditingPhotoIndex(null); setEditingPhotoUrl(null); }}
+            productId={draft.shopify_product_id}
+          />
+        )}
       </>
     );
   }
@@ -817,7 +834,7 @@ const ReviewDetail: React.FC = () => {
                         <DraggablePhotoGrid
                           imageUrls={draftImages}
                           onChange={handleReorderPhotos}
-                          onEditPhoto={(i) => setEditingPhotoIndex(i)}
+                          onEditPhoto={(i) => { setEditingPhotoIndex(i); setEditingPhotoUrl(draftImages[i] || liveImages[i] || null); }}
                           enableBulkEdit
                           draftId={draftId}
                         />
@@ -842,22 +859,27 @@ const ReviewDetail: React.FC = () => {
                       <DraggablePhotoGrid
                         imageUrls={draftImages}
                         onChange={handleReorderPhotos}
-                        onEditPhoto={(i) => setEditingPhotoIndex(i)}
+                        onEditPhoto={(i) => { setEditingPhotoIndex(i); setEditingPhotoUrl(draftImages[i] || liveImages[i] || null); }}
                         enableBulkEdit
                         draftId={draftId}
                       />
                     </BlockStack>
                   ) : (
-                    <InlineGrid columns={{ xs: 2, sm: 3, md: 4 }} gap="200">
-                      {liveImages.map((img, i) => (
-                        <Card key={i} padding="200">
-                          <BlockStack gap="200" inlineAlign="center">
-                            <Thumbnail source={img} alt={`Live photo ${i + 1}`} size="large" />
-                            <Button variant="plain" icon={ViewIcon} onClick={() => setLightboxSrc(img)}>View</Button>
-                          </BlockStack>
-                        </Card>
-                      ))}
-                    </InlineGrid>
+                    // Only live photos — use DraggablePhotoGrid so they're editable
+                    <BlockStack gap="200">
+                      <Text variant="headingSm" as="h3" tone="subdued">📷 Current Live Photos — drag to reorder</Text>
+                      <DraggablePhotoGrid
+                        imageUrls={liveImages}
+                        onChange={async (newImages) => {
+                          // live image reorder — update the draft's images to new order
+                          setLocalDraftImages(newImages);
+                          await reorderMutation.mutateAsync(newImages);
+                        }}
+                        onEditPhoto={(i) => { setEditingPhotoIndex(i); setEditingPhotoUrl(liveImages[i]); }}
+                        enableBulkEdit
+                        draftId={draftId}
+                      />
+                    </BlockStack>
                   )}
                 </BlockStack>
               </Card>
@@ -1417,19 +1439,20 @@ const ReviewDetail: React.FC = () => {
       </Modal>
 
       {/* ── Photo Editor ── */}
-      {editingPhotoIndex !== null && draft && (
+      {editingPhotoIndex !== null && draft && editingPhotoUrl && (
         <ProductPhotoEditor
-          open={editingPhotoIndex !== null}
-          imageUrl={draftImages[editingPhotoIndex]}
+          open={true}
+          imageUrl={editingPhotoUrl}
           draftId={draftId}
           imageIndex={editingPhotoIndex}
-          allDraftImages={draftImages}
+          allDraftImages={draftImages.length > 0 ? draftImages : liveImages}
           onSave={() => {
             queryClient.invalidateQueries({ queryKey: ['draft-detail', draftId] });
             setEditingPhotoIndex(null);
+            setEditingPhotoUrl(null);
             addNotification({ type: 'success', title: 'Photo updated', message: 'Edited photo saved', autoClose: 4000 });
           }}
-          onClose={() => setEditingPhotoIndex(null)}
+          onClose={() => { setEditingPhotoIndex(null); setEditingPhotoUrl(null); }}
           productId={draft.shopify_product_id}
         />
       )}
