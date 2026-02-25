@@ -1,12 +1,15 @@
 FROM node:20
 WORKDIR /app
 
-# Install dependencies (includes native module compilation)
+# Install dependencies
 COPY package*.json ./
 RUN npm ci
 
-# Copy pre-built dist (no rebuild needed)
-COPY dist/ ./dist/
+# Copy all source files
+COPY . .
+
+# Build (TypeScript + Vite client bundle)
+RUN npm run build
 
 EXPOSE 3000
 CMD ["node", "dist/server/index.js"]
