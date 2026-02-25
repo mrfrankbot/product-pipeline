@@ -226,6 +226,10 @@ export async function listPendingDrafts(options?: {
 
   if (status === 'all') {
     whereClause = '1=1';
+  } else if (status.includes(',')) {
+    const statuses = status.split(',').map(s => s.trim());
+    whereClause = `status IN (${statuses.map(() => '?').join(',')})`;
+    params.push(...statuses);
   } else {
     whereClause = 'status = ?';
     params.push(status);

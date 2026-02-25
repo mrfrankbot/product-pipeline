@@ -420,8 +420,8 @@ const ReviewDetail: React.FC = () => {
 
   // ── Queue Navigation ─────────────────────────────────────────────────
   const { data: queueData } = useQuery({
-    queryKey: ['drafts', 'pending', 'nav'],
-    queryFn: () => apiClient.get<DraftListResponse>('/drafts?status=pending&limit=200&offset=0'),
+    queryKey: ['drafts', 'pending,approved', 'nav'],
+    queryFn: () => apiClient.get<DraftListResponse>('/drafts?status=pending,approved&limit=200&offset=0'),
     staleTime: 30000,
   });
 
@@ -466,6 +466,13 @@ const ReviewDetail: React.FC = () => {
     setNotesInit(false);
     setLocalNotes('');
   }, [draftId]);
+
+  // Auto-resume: approved drafts without eBay listing should start at eBay step
+  useEffect(() => {
+    if (draft && draft.status === 'approved' && !draft.ebay_listing_id && wizardStep === 1) {
+      setWizardStep(3);
+    }
+  }, [draft, wizardStep]);
 
   useEffect(() => {
     if (notesData?.notes !== undefined && !notesInit) {
