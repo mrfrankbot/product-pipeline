@@ -18,6 +18,7 @@ import {
   setAutoPublishSetting,
   updateGlobalAutoPublishSettings,
   checkExistingContent,
+  fetchProductTagsBatch,
 } from '../../services/draft-service.js';
 import { listDraftOnEbay, previewEbayListing, type ListingOverrides } from '../../services/ebay-draft-lister.js';
 import { info, error as logError } from '../../utils/logger.js';
@@ -34,8 +35,16 @@ router.get('/api/drafts', async (req: Request, res: Response) => {
 
     const result = await listPendingDrafts({ status, limit, offset });
 
+    // Enrich drafts with Shopify tags (for condition badges)
+    const productIds = result.data.map((d: any) => d.shopify_product_id).filter(Boolean);
+    const tagsMap = await fetchProductTagsBatch(productIds);
+    const enrichedData = result.data.map((d: any) => ({
+      ...d,
+      tags: tagsMap[d.shopify_product_id] || [],
+    }));
+
     res.json({
-      data: result.data,
+      data: enrichedData,
       total: result.total,
       limit,
       offset,
@@ -119,7 +128,7 @@ router.get('/api/drafts/product/:productId', async (req: Request, res: Response)
     const liveContent = await checkExistingContent(draft.shopify_product_id);
 
     res.json({
-      draft,
+      draft: { ...draft, tags: liveContent.tags },
       live: {
         title: liveContent.title,
         description: liveContent.description,
@@ -154,7 +163,7 @@ router.get('/api/drafts/:id', async (req: Request, res: Response) => {
     const liveContent = await checkExistingContent(draft.shopify_product_id);
 
     res.json({
-      draft,
+      draft: { ...draft, tags: liveContent.tags },
       live: {
         title: liveContent.title,
         description: liveContent.description,
