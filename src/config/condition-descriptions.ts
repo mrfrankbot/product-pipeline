@@ -15,26 +15,30 @@ export type PicturelineGrade =
   | 'Excellent Minus'
   | 'Good Plus'
   | 'Good'
-  | 'Open Box';
+  | 'Open Box'
+  | 'Poor'
+  | 'Ugly';
 
 // ── Grade descriptions ─────────────────────────────────────────────────
 
 export const GRADE_DESCRIPTIONS: Record<PicturelineGrade, string> = {
   'Mint / Like New':
-    'Virtually indistinguishable from new. No visible wear, perfect optics.',
+    'Items in this category will look like they have just come out of the original box. Original accessories and packaging are usually included. 99% - 100% of the original condition, even when viewed by the most discerning eyes.',
   'Like New Minus':
-    'Near-perfect with only the faintest handling marks. Optics pristine.',
+    'Items in this category will look like they have just come out of the original box. Original accessories and packaging are usually included. 99% - 100% of the original condition, even when viewed by the most discerning eyes.',
   'Excellent Plus':
-    'Light signs of normal use, minor cosmetic marks. Optics clean, no haze/fungus/scratches.',
+    'Items in this category will look like they have had very little to no use, with any wear only visible under close inspection. 90% - 99% of original condition.',
   Excellent:
-    'Normal cosmetic wear consistent with regular use. All functions work perfectly. Optics clear.',
+    'Items in this category will have normal signs of use, or signs appropriate with the age of the item. Most items used by enthusiasts or beginning pro photographers will fall into this category. 75% - 90% of original condition.',
   'Excellent Minus':
-    'Moderate cosmetic wear, possible light marks on barrel. Optics clean and functional.',
+    'Items in this category will have normal signs of use, or signs appropriate with the age of the item. Most items used by enthusiasts or beginning pro photographers will fall into this category. 75% - 90% of original condition.',
   'Good Plus':
-    'Visible wear and cosmetic marks. Fully functional, optics may show minor dust (does not affect image quality).',
-  Good: 'Heavy wear, possible brassing or paint loss. Fully functional.',
+    'Items in this category will have excessive signs of wear, brassing, or finish loss, but are still operational. Heavy use is apparent. 50% - 65% of original condition.',
+  Good: 'Items in this category will have excessive signs of wear, brassing, or finish loss, but are still operational. Heavy use is apparent. 50% - 65% of original condition.',
   'Open Box':
     'This item has been opened and inspected but shows no signs of use. Includes all original packaging and accessories.',
+  Poor: 'Items in this category will have excessive signs of wear, brassing, or finish loss, but are still operational. Heavy use is apparent. 50% - 65% of original condition.',
+  Ugly: 'Items in this category are either inoperable or so worn from the original condition that they cannot be counted on for reliable operation.',
 };
 
 // ── eBay condition → default Pictureline grade ─────────────────────────
