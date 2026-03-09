@@ -29,6 +29,7 @@ import { apiKeyAuth, rateLimit } from './middleware/auth.js';
 import { testModeMiddleware, testModeRoute, isTestMode } from './middleware/test-mode.js';
 import { getCapabilities, getNewCapabilities } from './capabilities.js';
 import { initPhotoTemplatesTable } from '../services/photo-templates.js';
+import { warmEbayToken } from '../ebay/token-manager.js';
 import { seedHelpArticles } from './seeds/help-articles.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -209,6 +210,9 @@ async function start() {
       info(`[Server] Health: http://localhost:${PORT}/health`);
       info(`[Server] API: http://localhost:${PORT}/api/status`);
     });
+
+    // Warm eBay token on startup (proactive refresh, non-fatal)
+    warmEbayToken().catch(() => {}); // fire-and-forget
 
     // Start background sync scheduler
     startSyncScheduler(rawDb);

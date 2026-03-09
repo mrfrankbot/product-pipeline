@@ -434,22 +434,24 @@ export const listDraftOnEbay = async (
 
   const data = buildListingData(draft, shopifyProduct);
 
-  // Always prefer Shopify CDN URLs — they're reliable, short, and don't need auth
+  // Shopify CDN URLs are reliable, short, and don't need auth — use as fallback
   const shopifyImageUrls = (shopifyProduct.images ?? [])
     .slice(0, 12)
     .map((img: any) => (img.src || img.url || '').replace(/^http:/, 'https:'))
     .filter((u: string) => u.length > 0);
 
-  // Use Shopify images as primary; only fall back to draft/override images if Shopify has none
+  // Priority: explicit user overrides > Shopify CDN > draft images
+  // This ensures the listing prep UI overrides are always respected
   let effectiveImageUrls: string[];
-  if (shopifyImageUrls.length > 0) {
+  if (overrides.imageUrls && overrides.imageUrls.length > 0) {
+    info(`[EbayDraftLister] Using ${overrides.imageUrls.length} user-override image(s) from listing prep`);
+    effectiveImageUrls = prepareImageUrlsForEbay(overrides.imageUrls, shopifyImageUrls);
+  } else if (shopifyImageUrls.length > 0) {
     effectiveImageUrls = shopifyImageUrls;
     info(`[EbayDraftLister] Using ${effectiveImageUrls.length} Shopify CDN image(s)`);
   } else {
-    const rawImageUrls = (overrides.imageUrls && overrides.imageUrls.length > 0)
-      ? overrides.imageUrls
-      : data.imageUrls;
-    effectiveImageUrls = prepareImageUrlsForEbay(rawImageUrls, []);
+    effectiveImageUrls = prepareImageUrlsForEbay(data.imageUrls, []);
+    info(`[EbayDraftLister] Using ${effectiveImageUrls.length} draft image(s) (no Shopify images available)`);
   }
 
   // eBay requires at least one image

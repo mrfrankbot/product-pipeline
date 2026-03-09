@@ -304,7 +304,39 @@ function buildBagAspects(product: ShopifyProductLike, variant: ShopifyVariantLik
 }
 
 /**
- * Batteries & Chargers (48446)
+ * Binoculars & Telescopes (48446)
+ * NOTE: 48446 is the eBay category for Binoculars & Telescopes, NOT Batteries & Chargers.
+ * Batteries/chargers fall through to buildDefaultAspects via the default category.
+ */
+function buildBinocularAspects(product: ShopifyProductLike, variant: ShopifyVariantLike): Aspects {
+  const title = product.title || '';
+  const brand = product.vendor || 'Unbranded';
+  const t = title.toLowerCase();
+  let type = 'Binoculars';
+  if (t.includes('telescope') || t.includes('spotting scope')) type = 'Telescope';
+  else if (t.includes('monocular')) type = 'Monocular';
+  else if (t.includes('rangefinder')) type = 'Rangefinder';
+
+  const aspects: Aspects = {
+    'Brand': [brand],
+    'MPN': [extractMpn(variant.sku)],
+    'Type': [type],
+    'Compatible Brand': ['Universal'],
+  };
+
+  // Try to extract magnification like "10x42" or "8x30"
+  const magMatch = title.match(/(\d+)\s*[xX]\s*(\d+)/);
+  if (magMatch) {
+    aspects['Magnification'] = [`${magMatch[1]}x`];
+    aspects['Objective Lens Diameter'] = [`${magMatch[2]}mm`];
+  }
+
+  return aspects;
+}
+
+/**
+ * Batteries & Chargers — uses default aspect builder.
+ * (eBay category for batteries is NOT 48446 — that's Binoculars)
  */
 function buildBatteryAspects(product: ShopifyProductLike, variant: ShopifyVariantLike): Aspects {
   const title = product.title || '';
@@ -399,7 +431,7 @@ const ASPECT_BUILDERS: Record<string, AspectBuilder> = {
   '183331': buildDefaultAspects,      // Lighting & Studio → use default
   '30090': buildTripodAspects,
   '29982': buildBagAspects,
-  '48446': buildBatteryAspects,
+  '48446': buildBinocularAspects,   // 48446 = Binoculars & Telescopes (NOT batteries)
   '48528': buildFilterAspects,
   '48444': buildMemoryCardAspects,
 };

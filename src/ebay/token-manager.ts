@@ -66,6 +66,24 @@ export const getValidEbayToken = async (): Promise<string | null> => {
 };
 
 /**
+ * Proactively refresh the eBay token on startup if it's expired or expiring soon.
+ * Call this once when the server starts to avoid a failed first request.
+ * Non-fatal — logs warnings but does not throw.
+ */
+export const warmEbayToken = async (): Promise<void> => {
+  try {
+    const token = await getValidEbayToken();
+    if (token) {
+      info('eBay token warmed successfully on startup');
+    } else {
+      warn('eBay token not available on startup — eBay listing will be unavailable until re-authenticated');
+    }
+  } catch (err) {
+    warn(`eBay token warm-up failed: ${err instanceof Error ? err.message : err}`);
+  }
+};
+
+/**
  * Get a valid Shopify access token.
  */
 export const getValidShopifyToken = async (): Promise<string | null> => {
